@@ -8,6 +8,7 @@ use crate::server::AppState;
 
 /// Format raw keyboard bytes into a human-readable debug string.
 /// Non-printable control chars are shown as named tokens (<CR>, <ESC>, <CTRL-0x03>, etc.)
+#[allow(dead_code)]
 #[inline]
 fn format_shell_input_debug(data: &[u8]) -> String {
     data.iter()
@@ -293,7 +294,6 @@ async fn run_shell(socket: WebSocket, state: Arc<AppState>) {
                     msg = receiver.next() => {
                         match msg {
                             Some(Ok(Message::Binary(data))) => {
-                                tracing::info!(target: "shell", "keyboard input: len={} data={}", data.len(), format_shell_input_debug(&data));
                                 if let Ok(guard) = async_master.writable().await {
                                     let ret = unsafe { nix::libc::write(master_raw, data.as_ptr() as *const _, data.len()) };
                                     tracing::debug!(target: "shell", "parent: write ret={}", ret);
@@ -315,7 +315,6 @@ async fn run_shell(socket: WebSocket, state: Arc<AppState>) {
                                     }
                                     continue;
                                 }
-                                tracing::info!(target: "shell", "keyboard input: len={} data={}", text.len(), format_shell_input_debug(text.as_bytes()));
                                 if let Ok(guard) = async_master.writable().await {
                                     let ret = unsafe { nix::libc::write(master_raw, text.as_ptr() as *const _, text.len()) };
                                     tracing::debug!(target: "shell", "parent: write ret={}", ret);
@@ -399,21 +398,9 @@ async fn run_shell(socket: WebSocket, _state: Arc<AppState>) {
             msg = receiver.next() => {
                 match msg {
                     Some(Ok(Message::Binary(data))) => {
-                        tracing::info!(
-                            target: "shell",
-                            "keyboard input: len={} data={}",
-                            data.len(),
-                            format_shell_input_debug(&data)
-                        );
                         let _ = stdin.write_all(&data).await;
                     }
                     Some(Ok(Message::Text(text))) => {
-                        tracing::info!(
-                            target: "shell",
-                            "keyboard input: len={} data={}",
-                            text.len(),
-                            format_shell_input_debug(text.as_bytes())
-                        );
                         let _ = stdin.write_all(text.as_bytes()).await;
                     }
                     Some(Ok(Message::Close(_))) | None => break,

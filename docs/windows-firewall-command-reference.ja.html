@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>Windows ファイアウォール コマンドリファレンス</title>
+    <style>
+      :root { --bg: #f7f9fc; --card: #ffffff; --primary: #0d6efd; --text: #2b2b2b; --muted: #5f6673; --border: #e3e7ef; --code-bg: #0f172a; --code-text: #e2e8f0; }
+      * { box-sizing: border-box; }
+      body { font-family: "Segoe UI","PingFang SC","Microsoft YaHei","Yu Gothic","Hiragino Sans",sans-serif; margin: 0; padding: 30px 0; background: var(--bg); color: var(--text); line-height: 1.7; }
+      .container { max-width: 900px; margin: auto; padding: 0 20px 40px; }
+      h1, h2, h3 { color: var(--primary); margin-top: 32px; }
+      h1 { margin-top: 0; font-size: 2.2rem; } h2 { font-size: 1.6rem; } h3 { font-size: 1.2rem; }
+      p, li { color: var(--muted); } ul { padding-left: 20px; }
+      code { font-family: "JetBrains Mono","Fira Code",Consolas,monospace; background: rgba(13,110,253,0.08); padding: 0 4px; border-radius: 4px; color: var(--primary); }
+      pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: 10px; overflow: auto; box-shadow: 0 10px 30px rgba(15,23,42,0.35); }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+      th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; }
+      th { background: rgba(13,110,253,0.08); color: var(--primary); }
+      tr:last-child td { border-bottom: none; }
+      .card { background: var(--card); padding: 24px; border-radius: 16px; margin-bottom: 24px; box-shadow: 0 20px 40px rgba(15,23,42,0.12); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>Windows ファイアウォール コマンドリファレンス</h1>
+        <p>このドキュメントでは、PowerShell NetSecurity モジュールを使用した Windows ファイアウォール管理の一般的なコマンド、パラメーターの説明、および代表的な使用シナリオについて説明します。</p>
+
+        <h2>1. 基本概念</h2>
+        <ul>
+          <li><strong>ルール (Rule)</strong>：名前、方向、アクション、プロトコル、ポート番号、IP アドレスなどで構成されます。</li>
+          <li><strong>方向</strong>：<code>Inbound</code>（受信）、<code>Outbound</code>（送信）。</li>
+          <li><strong>アクション</strong>：<code>Allow</code>（許可）、<code>Block</code>（ブロック）。</li>
+          <li><strong>プロファイル</strong>：<code>Domain</code>、<code>Private</code>、<code>Public</code>。</li>
+        </ul>
+        <p>PowerShell の <code>NetSecurity</code> モジュールを使用して管理します。<code>Get-/New-/Remove-/Set-/Copy-NetFirewallRule</code> などのコマンドレットが含まれます。</p>
+
+        <h2>2. コマンド構文</h2>
+        <pre><code>Get-NetFirewallRule [[-Name] &lt;string[]&gt;] [-Direction] [-Action] [-Enabled] [-Profile]
+New-NetFirewallRule -DisplayName &lt;string&gt; -Direction &lt;Direction&gt; -Action &lt;Action&gt; [-LocalPort &lt;port&gt;] [-Protocol &lt;protocol&gt;]
+Remove-NetFirewallRule [-DisplayName &lt;string&gt;] [-Name &lt;string&gt;]
+Set-NetFirewallRule [-DisplayName &lt;string&gt;] [-Action &lt;Action&gt;] [-LocalPort &lt;port&gt;]</code></pre>
+
+        <h2>3. コマンド一覧</h2>
+        <h3>3.1 既存ルールの表示</h3>
+        <pre><code>Get-NetFirewallRule | Format-Table -AutoSize
+Get-NetFirewallRule -Direction Inbound -Action Allow | Format-Table DisplayName,Direction,Action,Enabled
+Get-NetFirewallRule -Action Block | Format-Table DisplayName,Direction,Enabled
+Get-NetFirewallRule -DisplayName "SSH" | Get-NetFirewallPortFilter
+Get-NetFirewallRule -Enabled True</code></pre>
+
+        <h3>3.2 新規ルールの作成</h3>
+        <pre><code>New-NetFirewallRule -DisplayName "SSH" -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
+New-NetFirewallRule -DisplayName "Web HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
+New-NetFirewallRule -DisplayName "RDP Restricted" -Direction Inbound -Protocol TCP -LocalPort 3389 -RemoteAddress 192.168.1.0/24 -Action Allow
+New-NetFirewallRule -DisplayName "Block Malicious IP" -Direction Inbound -RemoteAddress 203.0.113.55 -Action Block
+New-NetFirewallRule -DisplayName "ICMPv4 Allow" -Direction Inbound -Protocol ICMPv4 -IcmpType 8 -Action Allow</code></pre>
+
+        <h3>3.3 ルールの削除と変更</h3>
+        <pre><code>Remove-NetFirewallRule -DisplayName "SSH"
+Disable-NetFirewallRule -DisplayName "SSH"
+Enable-NetFirewallRule -DisplayName "SSH"
+Set-NetFirewallRule -DisplayName "Web HTTP" -LocalPort 8080
+Set-NetFirewallRule -DisplayName "RDP Restricted" -RemoteAddress 10.0.0.0/8</code></pre>
+
+        <h3>3.4 エクスポートとインポート</h3>
+        <pre><code>Export-NetFirewallRule -PolicyFilePath "C:\fw-backup.wfw"
+Import-NetFirewallRule -PolicyFilePath "C:\fw-backup.wfw"
+Get-NetFirewallRule | Format-List > C:\fw-rules.txt</code></pre>
+
+        <h2>4. パラメーターリファレンス</h2>
+        <table>
+          <thead><tr><th>パラメーター</th><th>説明</th><th>主な値</th></tr></thead>
+          <tbody>
+            <tr><td><code>-DisplayName</code></td><td>ルールの表示名</td><td>任意の文字列</td></tr>
+            <tr><td><code>-Direction</code></td><td>トラフィックの方向</td><td><code>Inbound</code> / <code>Outbound</code></td></tr>
+            <tr><td><code>-Action</code></td><td>アクション</td><td><code>Allow</code> / <code>Block</code></td></tr>
+            <tr><td><code>-Enabled</code></td><td>有効状態</td><td><code>True</code> / <code>False</code></td></tr>
+            <tr><td><code>-Profile</code></td><td>ネットワークプロファイル</td><td><code>Domain</code> / <code>Private</code> / <code>Public</code></td></tr>
+            <tr><td><code>-Protocol</code></td><td>通信プロトコル</td><td><code>TCP</code> / <code>UDP</code> / <code>ICMPv4</code></td></tr>
+            <tr><td><code>-LocalPort</code></td><td>ローカルポート番号</td><td>単一ポートまたは配列 <code>80,443</code></td></tr>
+            <tr><td><code>-RemoteAddress</code></td><td>リモート IP アドレス</td><td><code>192.168.0.0/16</code></td></tr>
+            <tr><td><code>-Program</code></td><td>プログラムの完全パス</td><td><code>C:\Program Files\...</code></td></tr>
+          </tbody>
+        </table>
+
+        <h2>5. シナリオ例</h2>
+        <h3>Web サービスの開放 (80/443)</h3>
+        <pre><code>New-NetFirewallRule -DisplayName "Web HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
+New-NetFirewallRule -DisplayName "Web HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow</code></pre>
+
+        <h3>管理アクセスの制限</h3>
+        <pre><code>Set-NetFirewallRule -DisplayName "Remote Desktop (TCP-In)" -RemoteAddress 10.0.0.0/8</code></pre>
+
+        <h3>すべてブロックし特定ポートのみ許可（ホワイトリスト）</h3>
+        <pre><code>Set-NetFirewallRule -DisplayName "Outbound Default" -Action Block
+New-NetFirewallRule -DisplayName "Allow DNS" -Direction Outbound -Protocol UDP -RemotePort 53 -Action Allow
+New-NetFirewallRule -DisplayName "Allow Web" -Direction Outbound -Protocol TCP -RemotePort 80,443 -Action Allow</code></pre>
+
+        <h2>6. トラブルシューティング</h2>
+        <ol>
+          <li>PowerShell を「管理者として実行」する必要があります。</li>
+          <li>Allow ルールは Block ルールより優先されます。ルールの競合に注意してください。</li>
+          <li><code>DisplayName</code> は重複可能ですが、<code>Name</code>（GUID）は一意です。</li>
+          <li>Hyper-V / Docker / WSL の仮想アダプターには追加設定が必要な場合があります。</li>
+          <li>AD ドメイン環境ではグループポリシーがローカルルールを上書きする可能性があります。</li>
+          <li><code>netsh advfirewall reset</code> でインストール時の既定値にリセットできます。</li>
+        </ol>
+
+        <h2>7. 関連情報</h2>
+        <ul>
+          <li><code>Get-Help about_NetSecurity</code></li>
+          <li><code>Get-Command -Module NetSecurity</code></li>
+          <li>Microsoft Docs: Windows Firewall with Advanced Security</li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

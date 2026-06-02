@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="utf-8" />
+    <title>Windows Firewall 常用命令參考</title>
+    <style>
+      :root { --bg: #f7f9fc; --card: #ffffff; --primary: #0d6efd; --text: #2b2b2b; --muted: #5f6673; --border: #e3e7ef; --code-bg: #0f172a; --code-text: #e2e8f0; }
+      * { box-sizing: border-box; }
+      body { font-family: "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; margin: 0; padding: 30px 0; background: var(--bg); color: var(--text); line-height: 1.7; }
+      .container { max-width: 900px; margin: auto; padding: 0 20px 40px; }
+      h1, h2, h3 { color: var(--primary); margin-top: 32px; }
+      h1 { margin-top: 0; font-size: 2.2rem; } h2 { font-size: 1.6rem; } h3 { font-size: 1.2rem; }
+      p, li { color: var(--muted); } ul { padding-left: 20px; }
+      code { font-family: "JetBrains Mono","Fira Code",Consolas,monospace; background: rgba(13,110,253,0.08); padding: 0 4px; border-radius: 4px; color: var(--primary); }
+      pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: 10px; overflow: auto; box-shadow: 0 10px 30px rgba(15,23,42,0.35); }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+      th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; }
+      th { background: rgba(13,110,253,0.08); color: var(--primary); }
+      tr:last-child td { border-bottom: none; }
+      .card { background: var(--card); padding: 24px; border-radius: 16px; margin-bottom: 24px; box-shadow: 0 20px 40px rgba(15,23,42,0.12); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>Windows Firewall 常用命令參考</h1>
+        <p>本文整理在 Windows 環境下使用 PowerShell NetSecurity 模組管理防火牆的常見命令、參數說明及典型使用場景。</p>
+
+        <h2>1. 基礎概念</h2>
+        <ul>
+          <li><strong>規則（Rule）</strong>：以規則為單位，包含名稱、方向、動作、協定、埠號、IP 位址等。</li>
+          <li><strong>方向</strong>：<code>Inbound</code>（入站）、<code>Outbound</code>（出站）。</li>
+          <li><strong>動作</strong>：<code>Allow</code>（允許）、<code>Block</code>（阻斷）。</li>
+          <li><strong>設定檔</strong>：<code>Domain</code>、<code>Private</code>、<code>Public</code>。</li>
+        </ul>
+        <p>使用 PowerShell <code>NetSecurity</code> 模組管理，包含 <code>Get-/New-/Remove-/Set-/Copy-NetFirewallRule</code> 等 Cmdlet。</p>
+
+        <h2>2. 命令結構</h2>
+        <pre><code>Get-NetFirewallRule [[-Name] &lt;string[]&gt;] [-Direction] [-Action] [-Enabled] [-Profile]
+New-NetFirewallRule -DisplayName &lt;string&gt; -Direction &lt;Direction&gt; -Action &lt;Action&gt; [-LocalPort &lt;port&gt;] [-Protocol &lt;protocol&gt;]
+Remove-NetFirewallRule [-DisplayName &lt;string&gt;] [-Name &lt;string&gt;]
+Set-NetFirewallRule [-DisplayName &lt;string&gt;] [-Action &lt;Action&gt;] [-LocalPort &lt;port&gt;]</code></pre>
+
+        <h2>3. 常用命令速查</h2>
+        <h3>3.1 查看現有規則</h3>
+        <pre><code>Get-NetFirewallRule | Format-Table -AutoSize
+Get-NetFirewallRule -Direction Inbound -Action Allow | Format-Table DisplayName,Direction,Action,Enabled
+Get-NetFirewallRule -Action Block | Format-Table DisplayName,Direction,Enabled
+Get-NetFirewallRule -DisplayName "SSH" | Get-NetFirewallPortFilter
+Get-NetFirewallRule -Enabled True</code></pre>
+
+        <h3>3.2 新增規則</h3>
+        <pre><code>New-NetFirewallRule -DisplayName "SSH" -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
+New-NetFirewallRule -DisplayName "Web HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
+New-NetFirewallRule -DisplayName "RDP Restricted" -Direction Inbound -Protocol TCP -LocalPort 3389 -RemoteAddress 192.168.1.0/24 -Action Allow
+New-NetFirewallRule -DisplayName "Block Malicious IP" -Direction Inbound -RemoteAddress 203.0.113.55 -Action Block
+New-NetFirewallRule -DisplayName "ICMPv4 Allow" -Direction Inbound -Protocol ICMPv4 -IcmpType 8 -Action Allow</code></pre>
+
+        <h3>3.3 移除與修改</h3>
+        <pre><code>Remove-NetFirewallRule -DisplayName "SSH"
+Disable-NetFirewallRule -DisplayName "SSH"
+Enable-NetFirewallRule -DisplayName "SSH"
+Set-NetFirewallRule -DisplayName "Web HTTP" -LocalPort 8080
+Set-NetFirewallRule -DisplayName "RDP Restricted" -RemoteAddress 10.0.0.0/8</code></pre>
+
+        <h3>3.4 匯出與匯入</h3>
+        <pre><code>Export-NetFirewallRule -PolicyFilePath "C:\fw-backup.wfw"
+Import-NetFirewallRule -PolicyFilePath "C:\fw-backup.wfw"
+Get-NetFirewallRule | Format-List > C:\fw-rules.txt</code></pre>
+
+        <h2>4. 參數速查</h2>
+        <table>
+          <thead><tr><th>參數</th><th>說明</th><th>常用值</th></tr></thead>
+          <tbody>
+            <tr><td><code>-DisplayName</code></td><td>規則顯示名稱</td><td>任意字串</td></tr>
+            <tr><td><code>-Direction</code></td><td>流量方向</td><td><code>Inbound</code> / <code>Outbound</code></td></tr>
+            <tr><td><code>-Action</code></td><td>動作</td><td><code>Allow</code> / <code>Block</code></td></tr>
+            <tr><td><code>-Enabled</code></td><td>啟用狀態</td><td><code>True</code> / <code>False</code></td></tr>
+            <tr><td><code>-Profile</code></td><td>設定檔</td><td><code>Domain</code> / <code>Private</code> / <code>Public</code></td></tr>
+            <tr><td><code>-Protocol</code></td><td>通訊協定</td><td><code>TCP</code> / <code>UDP</code> / <code>ICMPv4</code></td></tr>
+            <tr><td><code>-LocalPort</code></td><td>本機埠號</td><td>單一埠或陣列 <code>80,443</code></td></tr>
+            <tr><td><code>-RemoteAddress</code></td><td>遠端 IP</td><td><code>192.168.0.0/16</code></td></tr>
+            <tr><td><code>-Program</code></td><td>程式完整路徑</td><td><code>C:\Program Files\...</code></td></tr>
+          </tbody>
+        </table>
+
+        <h2>5. 場景示例</h2>
+        <h3>開放 Web 服務（80/443）</h3>
+        <pre><code>New-NetFirewallRule -DisplayName "Web HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
+New-NetFirewallRule -DisplayName "Web HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow</code></pre>
+
+        <h3>限制管理存取</h3>
+        <pre><code>Set-NetFirewallRule -DisplayName "Remote Desktop (TCP-In)" -RemoteAddress 10.0.0.0/8</code></pre>
+
+        <h3>全部封鎖，僅開放特定埠（白名單）</h3>
+        <pre><code>Set-NetFirewallRule -DisplayName "Outbound Default" -Action Block
+New-NetFirewallRule -DisplayName "Allow DNS" -Direction Outbound -Protocol UDP -RemotePort 53 -Action Allow
+New-NetFirewallRule -DisplayName "Allow Web" -Direction Outbound -Protocol TCP -RemotePort 80,443 -Action Allow</code></pre>
+
+        <h2>6. 故障排查建議</h2>
+        <ol>
+          <li>需「以系統管理員身分執行」PowerShell。</li>
+          <li>Allow 規則優先於 Block 規則，注意規則衝突。</li>
+          <li><code>DisplayName</code> 可重複但 <code>Name</code>（GUID）唯一。</li>
+          <li>Hyper-V / Docker / WSL 虛擬網卡需額外設定。</li>
+          <li>AD 網域環境下群組原則可能覆蓋本機規則。</li>
+          <li><code>netsh advfirewall reset</code> 可還原為安裝預設值。</li>
+        </ol>
+
+        <h2>7. 進階閱讀</h2>
+        <ul>
+          <li><code>Get-Help about_NetSecurity</code></li>
+          <li><code>Get-Command -Module NetSecurity</code></li>
+          <li>Microsoft Docs：Windows Firewall with Advanced Security</li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

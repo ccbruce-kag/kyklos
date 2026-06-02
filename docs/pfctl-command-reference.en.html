@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pfctl Command Reference</title>
+    <style>
+      :root { --bg: #f7f9fc; --card: #ffffff; --primary: #0d6efd; --text: #2b2b2b; --muted: #5f6673; --border: #e3e7ef; --code-bg: #0f172a; --code-text: #e2e8f0; }
+      * { box-sizing: border-box; }
+      body { font-family: "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; margin: 0; padding: 30px 0; background: var(--bg); color: var(--text); line-height: 1.7; }
+      .container { max-width: 900px; margin: auto; padding: 0 20px 40px; }
+      h1, h2, h3 { color: var(--primary); margin-top: 32px; }
+      h1 { margin-top: 0; font-size: 2.2rem; } h2 { font-size: 1.6rem; } h3 { font-size: 1.2rem; }
+      p, li { color: var(--muted); } ul { padding-left: 20px; }
+      code { font-family: "JetBrains Mono","Fira Code",Consolas,monospace; background: rgba(13,110,253,0.08); padding: 0 4px; border-radius: 4px; color: var(--primary); }
+      pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: 10px; overflow: auto; box-shadow: 0 10px 30px rgba(15,23,42,0.35); }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+      th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; }
+      th { background: rgba(13,110,253,0.08); color: var(--primary); }
+      tr:last-child td { border-bottom: none; }
+      .card { background: var(--card); padding: 24px; border-radius: 16px; margin-bottom: 24px; box-shadow: 0 20px 40px rgba(15,23,42,0.12); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>pfctl Command Reference</h1>
+        <p>This document provides a comprehensive reference for using <code>pfctl</code> (Packet Filter) on macOS, covering common commands, parameter descriptions, and typical use cases.</p>
+
+        <h2>1. Basic Concepts</h2>
+        <ul>
+          <li><strong>Anchor</strong>: A logical grouping of pf rules, similar to iptables tables + chains.</li>
+          <li><strong>Table</strong>: An efficient address set in pf, commonly used for whitelist/blacklist management.</li>
+          <li><strong>Rule</strong>: Composed of matching conditions and an action, evaluated sequentially from <code>/etc/pf.conf</code>.</li>
+          <li><strong>Action</strong>: <code>pass</code> (allow), <code>block</code> (deny), <code>match</code>, <code>scrub</code>.</li>
+          <li><strong>Direction</strong>: <code>in</code> (inbound), <code>out</code> (outbound).</li>
+        </ul>
+        <p>macOS pf does not support inserting or deleting rules by line number; you must edit the configuration file and reload.</p>
+
+        <h2>2. Command Structure</h2>
+        <pre><code>pfctl [parameters] [options]</code></pre>
+        <table>
+          <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>-s</code></td><td>Show information, used with <code>rules</code>, <code>nat</code>, <code>all</code>, etc.</td></tr>
+            <tr><td><code>-f</code></td><td>Load the specified configuration file (overwrites all existing rules).</td></tr>
+            <tr><td><code>-e</code></td><td>Enable packet filtering.</td></tr>
+            <tr><td><code>-d</code></td><td>Disable packet filtering.</td></tr>
+            <tr><td><code>-N</code></td><td>Do not load NAT rules (used with <code>-f</code>).</td></tr>
+            <tr><td><code>-a</code></td><td>Specify an anchor.</td></tr>
+            <tr><td><code>-t</code></td><td>Manipulate tables, used with <code>-T</code> subcommand.</td></tr>
+            <tr><td><code>-v</code></td><td>Verbose output.</td></tr>
+          </tbody>
+        </table>
+
+        <h2>3. Common Commands Quick Reference</h2>
+        <h3>3.1 View Status &amp; Rules</h3>
+        <pre><code>pfctl -s rules -v
+pfctl -s nat
+pfctl -s all
+pfctl -s rules -a myanchor
+pfctl -s queue</code></pre>
+
+        <h3>3.2 Enable / Disable</h3>
+        <pre><code>sudo pfctl -e
+sudo pfctl -d
+sudo pfctl -f /etc/pf.conf
+sudo pfctl -nf /etc/pf.conf</code></pre>
+
+        <h3>3.3 Manage Tables</h3>
+        <pre><code>pfctl -s tables
+pfctl -t blacklist -T show
+pfctl -t blacklist -T add 10.0.0.1
+pfctl -t blacklist -T delete 10.0.0.1
+pfctl -t whitelist -T load -f /etc/whitelist.txt
+pfctl -t blacklist -T test 10.0.0.1</code></pre>
+
+        <h3>3.4 View Connection States</h3>
+        <pre><code>pfctl -s state
+pfctl -s state -v
+pfctl -s info</code></pre>
+
+        <h2>4. pf.conf Syntax Quick Reference</h2>
+        <p><code>action [direction] [log] [quick] [on interface] [proto protocol] [from src] [to dst] [port ...]</code></p>
+
+        <h3>4.1 Basic Allow &amp; Block</h3>
+        <pre><code>pass in quick on lo0 all
+block in quick from 10.0.0.0/8 to any
+pass in proto tcp from 192.168.1.0/24 to any port 22
+block in all</code></pre>
+
+        <h3>4.2 State Tracking</h3>
+        <pre><code>pass out proto tcp all keep state
+pass in proto tcp all modulate state
+pass in proto tcp to any port { 80, 443 } keep state</code></pre>
+
+        <h3>4.3 NAT / Port Forwarding</h3>
+        <pre><code>nat on en0 from 192.168.0.0/24 to any -> (en0)
+rdr pass on en0 proto tcp to any port 2222 -> 10.0.0.10 port 22
+rdr pass on lo0 proto tcp to any port 80 -> 127.0.0.1 port 8080</code></pre>
+
+        <h3>4.4 Table Integration</h3>
+        <pre><code>table &lt;blacklist&gt; persist
+block drop in quick from &lt;blacklist&gt; to any</code></pre>
+
+        <h3>4.5 Logging</h3>
+        <pre><code>block in log all
+pass in log proto tcp to any port 22</code></pre>
+
+        <h2>5. Scenario Examples</h2>
+        <h3>Scenario A: Allow SSH Only from a Specific Subnet</h3>
+        <pre><code># /etc/pf.conf
+block in all
+pass out all keep state
+pass in quick on lo0 all
+pass in proto tcp from 192.168.1.0/24 to any port 22 keep state</code></pre>
+
+        <h3>Scenario B: macOS Internet Sharing (NAT)</h3>
+        <pre><code># /etc/pf.conf
+nat on en0 from 192.168.2.0/24 to any -> (en0)
+pass in on en1 from 192.168.2.0/24 to any keep state
+pass out on en0 from 192.168.2.0/24 to any keep state</code></pre>
+
+        <h2>6. Troubleshooting Tips</h2>
+        <ol>
+          <li>All pfctl operations require <code>sudo</code>; ensure the user has sudo privileges.</li>
+          <li>Use <code>pfctl -nf /etc/pf.conf</code> to validate syntax before loading.</li>
+          <li>Rules are matched sequentially; the <code>quick</code> keyword short-circuits further rule evaluation.</li>
+          <li><code>/etc/pf.conf</code> may be overwritten after macOS updates; keep a backup.</li>
+          <li>Use <code>tcpdump -r /var/log/pflog</code> to inspect pf logs.</li>
+        </ol>
+
+        <h2>7. Further Reading</h2>
+        <ul>
+          <li><code>man pfctl</code> / <code>man pf.conf</code></li>
+          <li>macOS default <code>/etc/pf.conf</code></li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="utf-8" />
+    <title>pfctl 常用命令參考</title>
+    <style>
+      :root { --bg: #f7f9fc; --card: #ffffff; --primary: #0d6efd; --text: #2b2b2b; --muted: #5f6673; --border: #e3e7ef; --code-bg: #0f172a; --code-text: #e2e8f0; }
+      * { box-sizing: border-box; }
+      body { font-family: "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; margin: 0; padding: 30px 0; background: var(--bg); color: var(--text); line-height: 1.7; }
+      .container { max-width: 900px; margin: auto; padding: 0 20px 40px; }
+      h1, h2, h3 { color: var(--primary); margin-top: 32px; }
+      h1 { margin-top: 0; font-size: 2.2rem; } h2 { font-size: 1.6rem; } h3 { font-size: 1.2rem; }
+      p, li { color: var(--muted); } ul { padding-left: 20px; }
+      code { font-family: "JetBrains Mono","Fira Code",Consolas,monospace; background: rgba(13,110,253,0.08); padding: 0 4px; border-radius: 4px; color: var(--primary); }
+      pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: 10px; overflow: auto; box-shadow: 0 10px 30px rgba(15,23,42,0.35); }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+      th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; }
+      th { background: rgba(13,110,253,0.08); color: var(--primary); }
+      tr:last-child td { border-bottom: none; }
+      .card { background: var(--card); padding: 24px; border-radius: 16px; margin-bottom: 24px; box-shadow: 0 20px 40px rgba(15,23,42,0.12); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>pfctl 常用命令參考</h1>
+        <p>本文整理了在 macOS 環境下使用 <code>pfctl</code>（Packet Filter）的常見命令、參數說明及典型使用場景。</p>
+
+        <h2>1. 基礎概念</h2>
+        <ul>
+          <li><strong>Anchor（錨點）</strong>：pf 規則的邏輯分組概念，類似 iptables 的表+鏈組合。</li>
+          <li><strong>Table（表格）</strong>：pf 中的高效地址集合，常用於白名單/黑名單。</li>
+          <li><strong>Rule（規則）</strong>：由匹配條件與動作組成，按 <code>/etc/pf.conf</code> 順序執行。</li>
+          <li><strong>動作</strong>：<code>pass</code>（放行）、<code>block</code>（阻斷）、<code>match</code>、<code>scrub</code>。</li>
+          <li><strong>方向</strong>：<code>in</code>（入站）、<code>out</code>（出站）。</li>
+        </ul>
+        <p>macOS pf 不支援按行號插入/刪除規則，須透過編輯設定檔後重新載入。</p>
+
+        <h2>2. 命令結構</h2>
+        <pre><code>pfctl [參數] [選項]</code></pre>
+        <table>
+          <thead><tr><th>參數</th><th>說明</th></tr></thead>
+          <tbody>
+            <tr><td><code>-s</code></td><td>顯示資訊，搭配 <code>rules</code>、<code>nat</code>、<code>all</code> 等。</td></tr>
+            <tr><td><code>-f</code></td><td>載入指定設定檔（覆蓋所有現有規則）。</td></tr>
+            <tr><td><code>-e</code></td><td>啟用封包過濾。</td></tr>
+            <tr><td><code>-d</code></td><td>停用封包過濾。</td></tr>
+            <tr><td><code>-N</code></td><td>不載入 NAT 規則（與 <code>-f</code> 搭配）。</td></tr>
+            <tr><td><code>-a</code></td><td>指定 anchor。</td></tr>
+            <tr><td><code>-t</code></td><td>操作 table，搭配 <code>-T</code> 子命令。</td></tr>
+            <tr><td><code>-v</code></td><td>詳細輸出。</td></tr>
+          </tbody>
+        </table>
+
+        <h2>3. 常用命令速查</h2>
+        <h3>3.1 查看狀態與規則</h3>
+        <pre><code>pfctl -s rules -v
+pfctl -s nat
+pfctl -s all
+pfctl -s rules -a myanchor
+pfctl -s queue</code></pre>
+
+        <h3>3.2 啟用 / 停用</h3>
+        <pre><code>sudo pfctl -e
+sudo pfctl -d
+sudo pfctl -f /etc/pf.conf
+sudo pfctl -nf /etc/pf.conf</code></pre>
+
+        <h3>3.3 管理 Tables</h3>
+        <pre><code>pfctl -s tables
+pfctl -t blacklist -T show
+pfctl -t blacklist -T add 10.0.0.1
+pfctl -t blacklist -T delete 10.0.0.1
+pfctl -t whitelist -T load -f /etc/whitelist.txt
+pfctl -t blacklist -T test 10.0.0.1</code></pre>
+
+        <h3>3.4 查看連接狀態</h3>
+        <pre><code>pfctl -s state
+pfctl -s state -v
+pfctl -s info</code></pre>
+
+        <h2>4. pf.conf 語法速查</h2>
+        <p><code>action [direction] [log] [quick] [on interface] [proto protocol] [from src] [to dst] [port ...]</code></p>
+
+        <h3>4.1 基本放行與阻斷</h3>
+        <pre><code>pass in quick on lo0 all
+block in quick from 10.0.0.0/8 to any
+pass in proto tcp from 192.168.1.0/24 to any port 22
+block in all</code></pre>
+
+        <h3>4.2 狀態追蹤</h3>
+        <pre><code>pass out proto tcp all keep state
+pass in proto tcp all modulate state
+pass in proto tcp to any port { 80, 443 } keep state</code></pre>
+
+        <h3>4.3 NAT / 端口轉發</h3>
+        <pre><code>nat on en0 from 192.168.0.0/24 to any -> (en0)
+rdr pass on en0 proto tcp to any port 2222 -> 10.0.0.10 port 22
+rdr pass on lo0 proto tcp to any port 80 -> 127.0.0.1 port 8080</code></pre>
+
+        <h3>4.4 Table 整合</h3>
+        <pre><code>table &lt;blacklist&gt; persist
+block drop in quick from &lt;blacklist&gt; to any</code></pre>
+
+        <h3>4.5 LOG 記錄</h3>
+        <pre><code>block in log all
+pass in log proto tcp to any port 22</code></pre>
+
+        <h2>5. 場景示例</h2>
+        <h3>場景 A：僅允許特定網段 SSH</h3>
+        <pre><code># /etc/pf.conf
+block in all
+pass out all keep state
+pass in quick on lo0 all
+pass in proto tcp from 192.168.1.0/24 to any port 22 keep state</code></pre>
+
+        <h3>場景 B：macOS 共享 Internet（NAT）</h3>
+        <pre><code># /etc/pf.conf
+nat on en0 from 192.168.2.0/24 to any -> (en0)
+pass in on en1 from 192.168.2.0/24 to any keep state
+pass out on en0 from 192.168.2.0/24 to any keep state</code></pre>
+
+        <h2>6. 故障排查建議</h2>
+        <ol>
+          <li>所有 pfctl 操作需 <code>sudo</code>，確認使用者有 sudo 權限。</li>
+          <li>使用 <code>pfctl -nf /etc/pf.conf</code> 預檢語法。</li>
+          <li>規則按順序匹配，<code>quick</code> 關鍵字可中斷後續規則評估。</li>
+          <li>macOS 升級後 <code>/etc/pf.conf</code> 可能被覆寫，請備份。</li>
+          <li><code>tcpdump -r /var/log/pflog</code> 查看 pf 日誌。</li>
+        </ol>
+
+        <h2>7. 進階閱讀</h2>
+        <ul>
+          <li><code>man pfctl</code> / <code>man pf.conf</code></li>
+          <li>macOS 預設 <code>/etc/pf.conf</code></li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

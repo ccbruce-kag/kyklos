@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>pfctl コマンドリファレンス</title>
+    <style>
+      :root { --bg: #f7f9fc; --card: #ffffff; --primary: #0d6efd; --text: #2b2b2b; --muted: #5f6673; --border: #e3e7ef; --code-bg: #0f172a; --code-text: #e2e8f0; }
+      * { box-sizing: border-box; }
+      body { font-family: "Segoe UI","Hiragino Sans","Yu Gothic",sans-serif; margin: 0; padding: 30px 0; background: var(--bg); color: var(--text); line-height: 1.7; }
+      .container { max-width: 900px; margin: auto; padding: 0 20px 40px; }
+      h1, h2, h3 { color: var(--primary); margin-top: 32px; }
+      h1 { margin-top: 0; font-size: 2.2rem; } h2 { font-size: 1.6rem; } h3 { font-size: 1.2rem; }
+      p, li { color: var(--muted); } ul { padding-left: 20px; }
+      code { font-family: "JetBrains Mono","Fira Code",Consolas,monospace; background: rgba(13,110,253,0.08); padding: 0 4px; border-radius: 4px; color: var(--primary); }
+      pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: 10px; overflow: auto; box-shadow: 0 10px 30px rgba(15,23,42,0.35); }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+      th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; }
+      th { background: rgba(13,110,253,0.08); color: var(--primary); }
+      tr:last-child td { border-bottom: none; }
+      .card { background: var(--card); padding: 24px; border-radius: 16px; margin-bottom: 24px; box-shadow: 0 20px 40px rgba(15,23,42,0.12); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>pfctl コマンドリファレンス</h1>
+        <p>このドキュメントでは、macOS における <code>pfctl</code>（Packet Filter）の一般的なコマンド、パラメータの説明、および代表的なユースケースを網羅的に解説します。</p>
+
+        <h2>1. 基本概念</h2>
+        <ul>
+          <li><strong>Anchor（アンカー）</strong>：pf ルールを論理的にグループ化する仕組み。iptables のテーブル＋チェーンに相当します。</li>
+          <li><strong>Table（テーブル）</strong>：pf における効率的なアドレス集合で、ホワイトリスト／ブラックリスト管理に広く使われます。</li>
+          <li><strong>Rule（ルール）</strong>：マッチ条件とアクションから構成され、<code>/etc/pf.conf</code> の記述順に評価されます。</li>
+          <li><strong>アクション</strong>：<code>pass</code>（許可）、<code>block</code>（拒否）、<code>match</code>、<code>scrub</code>。</li>
+          <li><strong>方向</strong>：<code>in</code>（受信）、<code>out</code>（送信）。</li>
+        </ul>
+        <p>macOS の pf は行番号によるルールの挿入・削除をサポートしていません。設定ファイルを編集してから再読み込みを行う必要があります。</p>
+
+        <h2>2. コマンド構造</h2>
+        <pre><code>pfctl [パラメータ] [オプション]</code></pre>
+        <table>
+          <thead><tr><th>パラメータ</th><th>説明</th></tr></thead>
+          <tbody>
+            <tr><td><code>-s</code></td><td>情報を表示します。<code>rules</code>、<code>nat</code>、<code>all</code> などと組み合わせて使います。</td></tr>
+            <tr><td><code>-f</code></td><td>指定した設定ファイルを読み込みます（既存の全ルールを上書き）。</td></tr>
+            <tr><td><code>-e</code></td><td>パケットフィルタリングを有効にします。</td></tr>
+            <tr><td><code>-d</code></td><td>パケットフィルタリングを無効にします。</td></tr>
+            <tr><td><code>-N</code></td><td>NAT ルールを読み込みません（<code>-f</code> と組み合わせて使用）。</td></tr>
+            <tr><td><code>-a</code></td><td>アンカーを指定します。</td></tr>
+            <tr><td><code>-t</code></td><td>テーブルを操作します。<code>-T</code> サブコマンドと組み合わせて使用。</td></tr>
+            <tr><td><code>-v</code></td><td>詳細な出力を行います。</td></tr>
+          </tbody>
+        </table>
+
+        <h2>3. よく使うコマンド一覧</h2>
+        <h3>3.1 状態とルールの確認</h3>
+        <pre><code>pfctl -s rules -v
+pfctl -s nat
+pfctl -s all
+pfctl -s rules -a myanchor
+pfctl -s queue</code></pre>
+
+        <h3>3.2 有効化 / 無効化</h3>
+        <pre><code>sudo pfctl -e
+sudo pfctl -d
+sudo pfctl -f /etc/pf.conf
+sudo pfctl -nf /etc/pf.conf</code></pre>
+
+        <h3>3.3 テーブルの管理</h3>
+        <pre><code>pfctl -s tables
+pfctl -t blacklist -T show
+pfctl -t blacklist -T add 10.0.0.1
+pfctl -t blacklist -T delete 10.0.0.1
+pfctl -t whitelist -T load -f /etc/whitelist.txt
+pfctl -t blacklist -T test 10.0.0.1</code></pre>
+
+        <h3>3.4 コネクション状態の確認</h3>
+        <pre><code>pfctl -s state
+pfctl -s state -v
+pfctl -s info</code></pre>
+
+        <h2>4. pf.conf 構文クイックリファレンス</h2>
+        <p><code>action [direction] [log] [quick] [on interface] [proto protocol] [from src] [to dst] [port ...]</code></p>
+
+        <h3>4.1 基本許可とブロック</h3>
+        <pre><code>pass in quick on lo0 all
+block in quick from 10.0.0.0/8 to any
+pass in proto tcp from 192.168.1.0/24 to any port 22
+block in all</code></pre>
+
+        <h3>4.2 ステートトラッキング</h3>
+        <pre><code>pass out proto tcp all keep state
+pass in proto tcp all modulate state
+pass in proto tcp to any port { 80, 443 } keep state</code></pre>
+
+        <h3>4.3 NAT / ポートフォワーディング</h3>
+        <pre><code>nat on en0 from 192.168.0.0/24 to any -> (en0)
+rdr pass on en0 proto tcp to any port 2222 -> 10.0.0.10 port 22
+rdr pass on lo0 proto tcp to any port 80 -> 127.0.0.1 port 8080</code></pre>
+
+        <h3>4.4 テーブル連携</h3>
+        <pre><code>table &lt;blacklist&gt; persist
+block drop in quick from &lt;blacklist&gt; to any</code></pre>
+
+        <h3>4.5 ログ記録</h3>
+        <pre><code>block in log all
+pass in log proto tcp to any port 22</code></pre>
+
+        <h2>5. シナリオ例</h2>
+        <h3>シナリオ A：特定サブネットからの SSH のみ許可</h3>
+        <pre><code># /etc/pf.conf
+block in all
+pass out all keep state
+pass in quick on lo0 all
+pass in proto tcp from 192.168.1.0/24 to any port 22 keep state</code></pre>
+
+        <h3>シナリオ B：macOS インターネット共有（NAT）</h3>
+        <pre><code># /etc/pf.conf
+nat on en0 from 192.168.2.0/24 to any -> (en0)
+pass in on en1 from 192.168.2.0/24 to any keep state
+pass out on en0 from 192.168.2.0/24 to any keep state</code></pre>
+
+        <h2>6. トラブルシューティングのヒント</h2>
+        <ol>
+          <li>すべての pfctl 操作には <code>sudo</code> が必要です。ユーザーが sudo 権限を持っていることを確認してください。</li>
+          <li>設定を読み込む前に <code>pfctl -nf /etc/pf.conf</code> で構文チェックを行いましょう。</li>
+          <li>ルールは上から順にマッチします。<code>quick</code> キーワードを使うと、以降のルール評価をスキップできます。</li>
+          <li>macOS のアップデート後、<code>/etc/pf.conf</code> が上書きされる可能性があるので、必ずバックアップを取ってください。</li>
+          <li><code>tcpdump -r /var/log/pflog</code> で pf のログを確認できます。</li>
+        </ol>
+
+        <h2>7. 参考情報</h2>
+        <ul>
+          <li><code>man pfctl</code> / <code>man pf.conf</code></li>
+          <li>macOS デフォルトの <code>/etc/pf.conf</code></li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Windows Firewall Command Reference</title>
+    <style>
+      :root { --bg: #f7f9fc; --card: #ffffff; --primary: #0d6efd; --text: #2b2b2b; --muted: #5f6673; --border: #e3e7ef; --code-bg: #0f172a; --code-text: #e2e8f0; }
+      * { box-sizing: border-box; }
+      body { font-family: "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; margin: 0; padding: 30px 0; background: var(--bg); color: var(--text); line-height: 1.7; }
+      .container { max-width: 900px; margin: auto; padding: 0 20px 40px; }
+      h1, h2, h3 { color: var(--primary); margin-top: 32px; }
+      h1 { margin-top: 0; font-size: 2.2rem; } h2 { font-size: 1.6rem; } h3 { font-size: 1.2rem; }
+      p, li { color: var(--muted); } ul { padding-left: 20px; }
+      code { font-family: "JetBrains Mono","Fira Code",Consolas,monospace; background: rgba(13,110,253,0.08); padding: 0 4px; border-radius: 4px; color: var(--primary); }
+      pre { background: var(--code-bg); color: var(--code-text); padding: 16px; border-radius: 10px; overflow: auto; box-shadow: 0 10px 30px rgba(15,23,42,0.35); }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+      th, td { padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; }
+      th { background: rgba(13,110,253,0.08); color: var(--primary); }
+      tr:last-child td { border-bottom: none; }
+      .card { background: var(--card); padding: 24px; border-radius: 16px; margin-bottom: 24px; box-shadow: 0 20px 40px rgba(15,23,42,0.12); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>Windows Firewall Command Reference</h1>
+        <p>This document covers common PowerShell NetSecurity module commands for managing Windows Firewall, including parameter descriptions and typical usage scenarios.</p>
+
+        <h2>1. Basic Concepts</h2>
+        <ul>
+          <li><strong>Rule</strong>: A firewall rule comprises a name, direction, action, protocol, port number, IP address, and other properties.</li>
+          <li><strong>Direction</strong>: <code>Inbound</code> or <code>Outbound</code>.</li>
+          <li><strong>Action</strong>: <code>Allow</code> or <code>Block</code>.</li>
+          <li><strong>Profile</strong>: <code>Domain</code>, <code>Private</code>, <code>Public</code>.</li>
+        </ul>
+        <p>Administration is performed using the PowerShell <code>NetSecurity</code> module, which provides cmdlets such as <code>Get-/New-/Remove-/Set-/Copy-NetFirewallRule</code>.</p>
+
+        <h2>2. Command Syntax</h2>
+        <pre><code>Get-NetFirewallRule [[-Name] &lt;string[]&gt;] [-Direction] [-Action] [-Enabled] [-Profile]
+New-NetFirewallRule -DisplayName &lt;string&gt; -Direction &lt;Direction&gt; -Action &lt;Action&gt; [-LocalPort &lt;port&gt;] [-Protocol &lt;protocol&gt;]
+Remove-NetFirewallRule [-DisplayName &lt;string&gt;] [-Name &lt;string&gt;]
+Set-NetFirewallRule [-DisplayName &lt;string&gt;] [-Action &lt;Action&gt;] [-LocalPort &lt;port&gt;]</code></pre>
+
+        <h2>3. Common Commands Quick Reference</h2>
+        <h3>3.1 Viewing Existing Rules</h3>
+        <pre><code>Get-NetFirewallRule | Format-Table -AutoSize
+Get-NetFirewallRule -Direction Inbound -Action Allow | Format-Table DisplayName,Direction,Action,Enabled
+Get-NetFirewallRule -Action Block | Format-Table DisplayName,Direction,Enabled
+Get-NetFirewallRule -DisplayName "SSH" | Get-NetFirewallPortFilter
+Get-NetFirewallRule -Enabled True</code></pre>
+
+        <h3>3.2 Creating New Rules</h3>
+        <pre><code>New-NetFirewallRule -DisplayName "SSH" -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
+New-NetFirewallRule -DisplayName "Web HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
+New-NetFirewallRule -DisplayName "RDP Restricted" -Direction Inbound -Protocol TCP -LocalPort 3389 -RemoteAddress 192.168.1.0/24 -Action Allow
+New-NetFirewallRule -DisplayName "Block Malicious IP" -Direction Inbound -RemoteAddress 203.0.113.55 -Action Block
+New-NetFirewallRule -DisplayName "ICMPv4 Allow" -Direction Inbound -Protocol ICMPv4 -IcmpType 8 -Action Allow</code></pre>
+
+        <h3>3.3 Removing and Modifying Rules</h3>
+        <pre><code>Remove-NetFirewallRule -DisplayName "SSH"
+Disable-NetFirewallRule -DisplayName "SSH"
+Enable-NetFirewallRule -DisplayName "SSH"
+Set-NetFirewallRule -DisplayName "Web HTTP" -LocalPort 8080
+Set-NetFirewallRule -DisplayName "RDP Restricted" -RemoteAddress 10.0.0.0/8</code></pre>
+
+        <h3>3.4 Exporting and Importing</h3>
+        <pre><code>Export-NetFirewallRule -PolicyFilePath "C:\fw-backup.wfw"
+Import-NetFirewallRule -PolicyFilePath "C:\fw-backup.wfw"
+Get-NetFirewallRule | Format-List > C:\fw-rules.txt</code></pre>
+
+        <h2>4. Parameter Reference</h2>
+        <table>
+          <thead><tr><th>Parameter</th><th>Description</th><th>Common Values</th></tr></thead>
+          <tbody>
+            <tr><td><code>-DisplayName</code></td><td>Display name of the rule</td><td>Any string</td></tr>
+            <tr><td><code>-Direction</code></td><td>Traffic direction</td><td><code>Inbound</code> / <code>Outbound</code></td></tr>
+            <tr><td><code>-Action</code></td><td>Action to take</td><td><code>Allow</code> / <code>Block</code></td></tr>
+            <tr><td><code>-Enabled</code></td><td>Enabled state</td><td><code>True</code> / <code>False</code></td></tr>
+            <tr><td><code>-Profile</code></td><td>Network profile</td><td><code>Domain</code> / <code>Private</code> / <code>Public</code></td></tr>
+            <tr><td><code>-Protocol</code></td><td>Communication protocol</td><td><code>TCP</code> / <code>UDP</code> / <code>ICMPv4</code></td></tr>
+            <tr><td><code>-LocalPort</code></td><td>Local port number</td><td>Single port or array <code>80,443</code></td></tr>
+            <tr><td><code>-RemoteAddress</code></td><td>Remote IP address</td><td><code>192.168.0.0/16</code></td></tr>
+            <tr><td><code>-Program</code></td><td>Full program path</td><td><code>C:\Program Files\...</code></td></tr>
+          </tbody>
+        </table>
+
+        <h2>5. Scenario Examples</h2>
+        <h3>Opening Web Services (80/443)</h3>
+        <pre><code>New-NetFirewallRule -DisplayName "Web HTTP" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
+New-NetFirewallRule -DisplayName "Web HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow</code></pre>
+
+        <h3>Restricting Administrative Access</h3>
+        <pre><code>Set-NetFirewallRule -DisplayName "Remote Desktop (TCP-In)" -RemoteAddress 10.0.0.0/8</code></pre>
+
+        <h3>Block All Except Specific Ports (Whitelist)</h3>
+        <pre><code>Set-NetFirewallRule -DisplayName "Outbound Default" -Action Block
+New-NetFirewallRule -DisplayName "Allow DNS" -Direction Outbound -Protocol UDP -RemotePort 53 -Action Allow
+New-NetFirewallRule -DisplayName "Allow Web" -Direction Outbound -Protocol TCP -RemotePort 80,443 -Action Allow</code></pre>
+
+        <h2>6. Troubleshooting Tips</h2>
+        <ol>
+          <li>Run PowerShell as Administrator.</li>
+          <li>Allow rules take precedence over Block rules; be aware of rule conflicts.</li>
+          <li><code>DisplayName</code> can be duplicated but <code>Name</code> (GUID) is unique.</li>
+          <li>Hyper-V / Docker / WSL virtual adapters may require additional configuration.</li>
+          <li>In Active Directory environments, Group Policy may override local rules.</li>
+          <li><code>netsh advfirewall reset</code> resets to installation defaults.</li>
+        </ol>
+
+        <h2>7. Further Reading</h2>
+        <ul>
+          <li><code>Get-Help about_NetSecurity</code></li>
+          <li><code>Get-Command -Module NetSecurity</code></li>
+          <li>Microsoft Docs: Windows Firewall with Advanced Security</li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>

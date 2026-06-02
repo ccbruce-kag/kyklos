@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en" class="layout-menu-fixed layout-compact" data-assets-path="./sneat/">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+  <title class="ipc-title">防火牆管理平臺</title>
+  <link rel="icon" type="image/x-icon" href="/web/sneat/assets/img/favicon/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/web/sneat/assets/vendor/fonts/iconify-icons.css" />
+  <link rel="stylesheet" href="/web/sneat/assets/vendor/css/core.css" />
+  <link rel="stylesheet" href="/web/sneat/assets/css/demo.css" />
+  <link rel="stylesheet" href="/web/sneat/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css" />
+  <script src="/web/sneat/assets/vendor/js/helpers.js"></script>
+  <script src="/web/sneat/assets/js/config.js"></script>
+  <style>
+    .rule-table th { white-space: nowrap; font-size: .75rem; }
+    .rule-table td { font-size: .8125rem; vertical-align: middle; }
+    .rule-table .num-cell { color: var(--bs-primary); cursor: pointer; text-decoration: underline; }
+    .chain-actions .btn { padding: .25rem .5rem; font-size: .75rem; }
+    .kpi-card { cursor: default; }
+    .protocol-switch { text-align: center; margin-bottom: 1rem; }
+    .protocol-switch label { margin: 0 .75rem; cursor: pointer; }
+    .action-buttons { position: fixed; z-index: 999; right: 0; top: 20%; padding-right: .5rem; }
+    .action-buttons .btn { margin-bottom: .5rem; width: 130px; text-align: left; font-size: .75rem; }
+    #table-body { padding-right: 145px; }
+    .doc-dropdown-menu { min-width: 320px; padding: .75rem 1rem; font-size: .8125rem; }
+    .doc-dropdown-menu .doc-section { margin-bottom: .5rem; }
+    .doc-dropdown-menu .doc-section-title { font-weight: 600; font-size: .6875rem; color: var(--bs-secondary-color); margin-bottom: .25rem; text-transform: uppercase; letter-spacing: .03em; }
+    .doc-dropdown-menu .doc-code { display: block; background: var(--bs-dark); color: var(--bs-light); padding: .25rem .5rem; border-radius: var(--bs-border-radius-sm); font-family: monospace; font-size: .6875rem; margin-bottom: .25rem; white-space: pre-wrap; word-break: break-all; }
+    .doc-dropdown-menu .doc-inline { color: var(--bs-body-color); line-height: 1.6; }
+    .doc-dropdown-menu .doc-inline code { font-size: .6875rem; background: var(--bs-tertiary-bg); padding: .05rem .3rem; border-radius: 3px; }
+    .doc-dropdown-menu .doc-divider { border: 0; border-top: 1px solid var(--bs-border-color); margin: .5rem 0; }
+    #table-body h5 { margin-top: 1rem; }
+    .dash-kpi { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+    .dash-kpi-label { font-size: .75rem; color: var(--bs-secondary-color); margin-bottom: .25rem; }
+    .dash-kpi-unit { font-size: .75rem; font-weight: 400; color: var(--bs-secondary-color); }
+    .dash-card { height: 100%; }
+    .dash-card .card-body { padding: 1rem; }
+    .dash-bar { display: flex; align-items: center; margin-bottom: .25rem; gap: .5rem; }
+    .dash-bar-label { font-size: .6875rem; min-width: 90px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dash-bar-track { flex: 1; height: 18px; background: var(--bs-tertiary-bg); border-radius: 4px; overflow: hidden; }
+    .dash-bar-fill { height: 100%; border-radius: 4px; transition: width .5s ease; min-width: 2px; }
+    .dash-bar-val { font-size: .6875rem; min-width: 60px; font-family: monospace; }
+    .dash-donut { width: 120px; height: 120px; border-radius: 50%; margin: 0 auto; position: relative; }
+    .dash-donut-center { position: absolute; inset: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 600; background: var(--bs-body-bg); }
+    .dash-donut-legend { font-size: .6875rem; }
+    .dash-donut-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .375rem; }
+    .dash-top-table { font-size: .75rem; }
+    .dash-top-table td, .dash-top-table th { padding: .25rem .5rem; }
+    .dash-top-table .num { font-family: monospace; text-align: right; }
+    .dash-updated { font-size: .6875rem; color: var(--bs-secondary-color); text-align: center; padding: .5rem; }
+    .log-panel { border-top: 2px solid var(--bs-border-color); background: #1e1e2e; color: #cdd6f4; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: .75rem; }
+    .log-toolbar { display: flex; align-items: center; gap: .5rem; padding: .375rem 1rem; background: #181825; border-bottom: 1px solid #313244; }
+    .log-toolbar .log-title { font-weight: 600; font-size: .75rem; color: #a6adc8; cursor: pointer; user-select: none; }
+    .log-toolbar .log-title:hover { color: #cdd6f4; }
+    .log-toolbar .log-badge { font-size: .625rem; background: #45475a; color: #a6adc8; padding: .05rem .45rem; border-radius: 10px; }
+    .log-toolbar .log-clear-btn { margin-left: auto; font-size: .6875rem; padding: .1rem .5rem; cursor: pointer; background: #45475a; border: none; color: #a6adc8; border-radius: 4px; }
+    .log-toolbar .log-clear-btn:hover { background: #585b70; color: #cdd6f4; }
+    #logContainer { height: 0; overflow-y: auto; transition: height .2s ease; }
+    #logContainer.open { height: 200px; }
+    #logContent { padding: .5rem 1rem; }
+    .log-entry { padding: .125rem 0; line-height: 1.5; word-break: break-all; border-bottom: 1px solid #3132441a; }
+    .log-entry:last-child { border-bottom: none; }
+    .log-entry .log-time { color: #6c7086; margin-right: .5rem; }
+    .log-entry.log-debug .log-msg { color: #a6adc8; }
+    .log-entry.log-info .log-msg { color: #89b4fa; }
+    .log-entry.log-warn .log-msg { color: #f9e2af; }
+    .log-entry.log-error .log-msg { color: #f38ba8; }
+    .log-entry .log-cmd { display: block; color: #a6e3a1; padding: .125rem 0 .125rem 1.5rem; font-size: .6875rem; }
+    .ipc-version { font-size: .75rem; opacity: .7; margin-left: .5rem; }
+    .modal-pre { max-height: 300px; overflow-y: auto; background: var(--bs-dark); color: var(--bs-light); padding: 1rem; border-radius: var(--bs-border-radius); font-size: .8125rem; }
+    .sys-card-val { font-size: 1.25rem; font-weight: 600; line-height: 1.2; }
+    .sys-card-label { font-size: .6875rem; color: var(--bs-secondary-color); }
+    .sys-mem-bar { height: 12px; border-radius: 6px; background: var(--bs-tertiary-bg); overflow: hidden; margin: .25rem 0; }
+    .sys-mem-fill { height: 100%; border-radius: 6px; transition: width .5s ease; }
+    .sys-disk-table { font-size: .75rem; }
+    .sys-disk-table th, .sys-disk-table td { padding: .25rem .5rem; }
+    .sys-disk-bar { height: 8px; border-radius: 4px; background: var(--bs-tertiary-bg); overflow: hidden; display: inline-block; width: 80px; vertical-align: middle; }
+    .sys-disk-fill { height: 100%; border-radius: 4px; }
+    .sys-proc-table { font-size: .75rem; }
+    .sys-proc-table th { white-space: nowrap; cursor: pointer; user-select: none; }
+    .sys-proc-table th:hover { color: var(--bs-primary); }
+    .sys-proc-table th .sort-icon { font-size: .625rem; margin-left: .25rem; opacity: .4; }
+    .sys-proc-table th.active .sort-icon { opacity: 1; color: var(--bs-primary); }
+    .sys-proc-table td, .sys-proc-table th { padding: .2rem .4rem; }
+  </style>
+</head>
+<body>
+  <div class="layout-wrapper layout-content-navbar">
+    <div class="layout-container">
+      <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
+        <div class="app-brand demo">
+          <a href="#" class="app-brand-link">
+            <span class="app-brand-logo demo">
+              <svg width="25" viewBox="0 0 25 42" version="1.1"><defs><path d="M13.7918663,0.358365126 L3.39788168,7.44174259 C0.566865006,9.69408886 -0.379795268,12.4788597 0.557900856,15.7960551 C0.68998853,16.2305145 1.09562888,17.7872135 3.12357076,19.2293357 C3.8146334,19.7207684 5.32369333,20.3834223 7.65075054,21.2172976 L7.59773219,21.2525164 L2.63468769,24.5493413 C0.445452254,26.3002124 0.0884951797,28.5083815 1.56381646,31.1738486 C2.83770406,32.8170431 5.20850219,33.2640127 7.09180128,32.5391577 C8.347334,32.0559211 11.4559176,30.0011079 16.4175519,26.3747182 C18.0338572,24.4997857 18.6973423,22.4544883 18.4080071,20.2388261 C17.963753,17.5346866 16.1776345,15.5799961 13.0496516,14.3747546 L10.9194936,13.4715819 L18.6192054,7.984237 L13.7918663,0.358365126 Z" id="path-1"></path><path d="M5.47320593,6.00457225 C4.05321814,8.216144 4.36334763,10.0722806 6.40359441,11.5729822 C8.61520715,12.571656 10.0999176,13.2171421 10.8577257,13.5094407 L15.5088241,14.433041 L18.6192054,7.984237 C15.5364148,3.11535317 13.9273018,0.573395879 13.7918663,0.358365126 C13.5790555,0.511491653 10.8061687,2.3935607 5.47320593,6.00457225Z" id="path-3"></path><path d="M7.50063644,21.2294429 L12.3234468,23.3159332 C14.1688022,24.7579751 14.397098,26.4880487 13.008334,28.506154 C11.6195701,30.5242593 10.3099883,31.790241 9.07958868,32.3040991 C5.78142938,33.4346997 4.13234973,34 4.13234973,34 C4.13234973,34 2.75489982,33.0538207 2.37032616e-14,31.1614621 C-0.55822714,27.8186216 -0.55822714,26.0572515 -4.05231404e-15,25.8773518 C0.83734071,25.6075023 2.77988457,22.8248993 3.3049379,22.52991 C3.65497346,22.3332504 5.05353963,21.8997614 7.50063644,21.2294429Z" id="path-4"></path><path d="M20.6,7.13333333 L25.6,13.8 C26.2627417,14.6836556 26.0836556,15.9372583 25.2,16.6 C24.8538077,16.8596443 24.4327404,17 24,17 L14,17 C12.8954305,17 12,16.1045695 12,15 C12,14.5672596 12.1403557,14.1461923 12.4,13.8 L17.4,7.13333333 C18.0627417,6.24967773 19.3163444,6.07059163 20.2,6.73333333 C20.3516113,6.84704183 20.4862915,6.981722 20.6,7.13333333Z" id="path-5"></path></defs><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g transform="translate(-27,-15)"><g transform="translate(27,15)"><g transform="translate(0,8)"><mask id="mask-2" fill="white"><use href="#path-1"></use></mask><use fill="currentColor" href="#path-1"></use><g mask="url(#mask-2)"><use fill="currentColor" href="#path-3"></use><use fill-opacity="0.2" fill="#FFF" href="#path-3"></use></g><g mask="url(#mask-2)"><use fill="currentColor" href="#path-4"></use><use fill-opacity="0.2" fill="#FFF" href="#path-4"></use></g></g><g transform="translate(19,11) rotate(-300) translate(-19,-11)"><use fill="currentColor" href="#path-5"></use><use fill-opacity="0.2" fill="#FFF" href="#path-5"></use></g></g></g></g></svg>
+            </span>
+            <span class="app-brand-text demo menu-text fw-bold ms-2">MiCopa FW</span>
+          </a>
+        </div>
+        <div class="menu-divider mt-0"></div>
+        <div class="menu-inner-shadow"></div>
+        <ul class="menu-inner py-1">
+          <li class="menu-item" id="menuDash">
+            <a href="#" class="menu-link" id="menuDashLink">
+              <i class="menu-icon tf-icons bx bx-bar-chart-alt-2"></i>
+              <div class="text-truncate" id="menuDashLabel">Dashboard</div>
+            </a>
+          </li>
+          <li class="menu-item active" id="menuTables">
+            <a href="#" class="menu-link" id="menuTablesLink">
+              <i class="menu-icon tf-icons bx bx-shield-quarter"></i>
+              <div class="text-truncate" id="menuTablesLabel">防火牆管理</div>
+            </a>
+          </li>
+          <li class="menu-item" id="menuSys">
+            <a href="#" class="menu-link" id="menuSysLink">
+              <i class="menu-icon tf-icons bx bx-desktop"></i>
+              <div class="text-truncate" id="menuSysLabel">系統現況</div>
+            </a>
+          </li>
+          <li class="menu-divider my-2"></li>
+          <li class="menu-item" id="menuDoc">
+            <a href="#" class="menu-link" id="menuDocLink">
+              <i class="menu-icon tf-icons bx bx-book-open"></i>
+              <div class="text-truncate" id="menuDocLabel">命令文件</div>
+            </a>
+          </li>
+        </ul>
+      </aside>
+
+      <div class="layout-page">
+        <nav class="layout-navbar container-xxl navbar-detached navbar navbar-expand-xl align-items-center bg-navbar-theme" id="layout-navbar">
+          <div class="layout-menu-toggle navbar-nav align-items-xl-center me-4 me-xl-0 d-xl-none">
+            <a class="nav-item nav-link px-0 me-xl-6" href="javascript:void(0)">
+              <i class="icon-base bx bx-menu icon-md"></i>
+            </a>
+          </div>
+          <div class="navbar-nav-right d-flex align-items-center justify-content-end w-100" id="navbar-collapse">
+            <div class="navbar-nav align-items-center me-auto">
+              <div class="nav-item d-flex align-items-center">
+                <span class="ipc-title fw-semibold fs-5">防火牆管理平臺</span>
+                <span class="ipc-version badge bg-label-info rounded-pill ms-2"></span>
+              </div>
+            </div>
+            <ul class="navbar-nav flex-row align-items-center ms-md-auto">
+              <li class="nav-item dropdown me-3">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="docDropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                  <i class="bx bx-book me-1"></i><span id="docDropdownLabel">文件協助</span>
+                </button>
+                <div class="dropdown-menu dropdown-menu-end doc-dropdown-menu" id="docDropdownMenu" aria-labelledby="docDropdown"></div>
+              </li>
+              <li class="nav-item me-3">
+                <button id="language-toggle" class="btn btn-sm btn-outline-primary">English</button>
+              </li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="content-wrapper">
+          <div class="container-xxl flex-grow-1 container-p-y">
+            <div class="row mb-3">
+              <div class="col-12 d-flex align-items-center gap-3">
+                <div class="protocol-switch" id="protocolSwitch">
+                  <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="protocol" id="proto4" value="ipv4" checked>
+                    <label class="btn btn-outline-primary" for="proto4">IPv4</label>
+                    <input type="radio" class="btn-check" name="protocol" id="proto6" value="ipv6">
+                    <label class="btn btn-outline-primary" for="proto6">IPv6</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dashboard -->
+            <div id="dashboardView" style="display:none">
+              <div class="row mb-3" id="dashKpiRow"></div>
+              <div class="row mb-3">
+                <div class="col-12"><div class="card dash-card"><div class="card-body"><h6 class="card-subtitle mb-2 text-muted" style="font-size:.75rem" id="dashTrendLabel">Traffic Trend (5s interval)</h6><canvas id="dashTrendChart" width="800" height="200" style="width:100%;height:200px;display:block"></canvas></div></div></div>
+              </div>
+              <div class="row mb-3">
+                <div class="col-md-6 mb-3"><div class="card dash-card"><div class="card-body" id="dashPortInOut"><h6 class="card-subtitle mb-2 text-muted" style="font-size:.75rem">Port Traffic In/Out</h6></div></div></div>
+                <div class="col-md-6 mb-3"><div class="card dash-card"><div class="card-body" id="dashProtocolDist"><h6 class="card-subtitle mb-2 text-muted" style="font-size:.75rem">Protocol Distribution</h6></div></div></div>
+              </div>
+              <div class="row mb-3">
+                <div class="col-md-6 mb-3"><div class="card dash-card"><div class="card-body" id="dashTopSrc"><h6 class="card-subtitle mb-2 text-muted" style="font-size:.75rem">Top Source IPs</h6></div></div></div>
+                <div class="col-md-6 mb-3"><div class="card dash-card"><div class="card-body" id="dashTopDst"><h6 class="card-subtitle mb-2 text-muted" style="font-size:.75rem">Top Destination IPs</h6></div></div></div>
+              </div>
+              <div class="row mb-3">
+                <div class="col-md-6 mb-3"><div class="card dash-card"><div class="card-body" id="dashTargetDist"><h6 class="card-subtitle mb-2 text-muted" style="font-size:.75rem">Target Distribution</h6></div></div></div>
+                <div class="col-md-6 mb-3"><div class="card dash-card"><div class="card-body" id="dashTopPorts"><h6 class="card-subtitle mb-2 text-muted" style="font-size:.75rem">Top Ports</h6></div></div></div>
+              </div>
+              <div class="dash-updated" id="dashUpdated"></div>
+            </div>
+
+            <div id="tablesView">
+              <div class="row">
+                <div class="col-12">
+                  <ul class="nav nav-tabs nav-fill mb-3 iptables-table" id="tableTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link" id="tab-raw" data-bs-toggle="tab" data-bs-target="#tabContent" type="button" role="tab">raw</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link" id="tab-mangle" data-bs-toggle="tab" data-bs-target="#tabContent" type="button" role="tab">mangle</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link" id="tab-nat" data-bs-toggle="tab" data-bs-target="#tabContent" type="button" role="tab">nat</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link active" id="tab-filter" data-bs-toggle="tab" data-bs-target="#tabContent" type="button" role="tab">filter</button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div id="table-body"></div>
+
+              <div class="action-buttons" id="actionButtons">
+              <button id="clear-all-rule" class="btn btn-outline-danger btn-sm"><i class="bx bx-trash me-1"></i>清空所有表規則</button><br>
+              <button id="clear-current-table-rule" class="btn btn-outline-warning btn-sm"><i class="bx bx-trash me-1"></i>清空當前表規則</button><br>
+              <button id="clear-all-empty-chain" class="btn btn-outline-secondary btn-sm"><i class="bx bx-x-circle me-1"></i>清空自定義空鏈</button><br>
+              <button id="clear-all-metrics" class="btn btn-outline-info btn-sm"><i class="bx bx-reset me-1"></i>清零所有表計數</button><br>
+              <button id="clear-current-table-metrics" class="btn btn-outline-info btn-sm"><i class="bx bx-reset me-1"></i>清零當前表計數</button><br>
+              <button id="self-iptables" class="btn btn-outline-primary btn-sm"><i class="bx bx-list-ul me-1"></i>查看當前表規則</button><br>
+              <button id="exec-iptables" class="btn btn-outline-dark btn-sm"><i class="bx bx-terminal me-1"></i>執行命令</button><br>
+              <button id="export-all-rule" class="btn btn-outline-success btn-sm"><i class="bx bx-export me-1"></i>導出規則</button><br>
+              <button id="import-all-rule" class="btn btn-outline-success btn-sm"><i class="bx bx-import me-1"></i>導入規則</button><br>
+              <button id="open-iptables-doc" class="btn btn-outline-primary btn-sm"><i class="bx bx-book me-1"></i>命令文件</button>
+            </div>
+            </div><!-- /tablesView -->
+
+            <!-- System View -->
+            <div id="systemView" style="display:none">
+              <div class="row mb-3">
+                <div class="col-md-12 mb-3">
+                  <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center py-2">
+                      <strong style="font-size:.8125rem" id="sysInfoTitle">系統資訊</strong>
+                      <button class="btn btn-sm btn-outline-secondary" id="sysRefreshBtn"><i class="bx bx-refresh me-1"></i><span id="sysRefreshLabel">重新整理</span></button>
+                    </div>
+                    <div class="card-body" id="sysInfoBody"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="row mb-3" id="sysDiskRow">
+                <div class="col-md-12">
+                  <div class="card">
+                    <div class="card-header py-2"><strong style="font-size:.8125rem" id="sysDiskTitle">磁碟</strong></div>
+                    <div class="card-body p-2" id="sysDiskBody"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="row mb-3" id="sysProcRow">
+                <div class="col-md-12">
+                  <div class="card">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                      <strong style="font-size:.8125rem" id="sysProcTitle">處理程序</strong>
+                      <div>
+                        <select class="form-select form-select-sm" id="sysProcSort" style="width:auto;display:inline-block;font-size:.75rem">
+                          <option value="mem">MEM%</option>
+                          <option value="cpu">CPU%</option>
+                          <option value="pid">PID</option>
+                          <option value="rss">RSS</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="card-body p-2" id="sysProcBody"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Logger -->
+          <div class="log-panel" id="logPanel">
+            <div class="log-toolbar">
+              <span class="log-title" id="logToggle">&#9654; Logger</span>
+              <span class="log-badge" id="logBadge">0</span>
+              <button class="log-clear-btn" id="logClear">&#10005; clear</button>
+            </div>
+            <div id="logContainer">
+              <div id="logContent"></div>
+            </div>
+          </div>
+
+          <footer class="content-footer footer bg-footer-theme">
+            <div class="container-xxl">
+              <div class="footer-container d-flex align-items-center justify-content-between py-3 flex-md-row flex-column">
+                <div class="mb-2 mb-md-0">
+                  <small>MiCopa 防火牆管理平臺 &copy; <script>document.write(new Date().getFullYear())</script></small>
+                </div>
+              </div>
+            </div>
+          </footer>
+          <div class="content-backdrop fade"></div>
+        </div>
+      </div>
+    </div>
+    <div class="layout-overlay layout-menu-toggle"></div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal fade" id="commonModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="commonModalTitle">Title</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="commonModalBody"></div>
+        <div class="modal-footer" id="commonModalFooter">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="commonModalCancel">取消</button>
+          <button type="button" class="btn btn-primary" id="commonModalConfirm">確認</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
+
+  <textarea id="copy" style="display:none"></textarea>
+
+  <script src="/web/sneat/assets/vendor/libs/jquery/jquery.js"></script>
+  <script src="/web/sneat/assets/vendor/libs/popper/popper.js"></script>
+  <script src="/web/sneat/assets/vendor/js/bootstrap.js"></script>
+  <script src="/web/sneat/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.js"></script>
+  <script src="/web/sneat/assets/vendor/js/menu.js"></script>
+  <script src="/web/sneat/assets/js/main.js"></script>
+
+  <script>
+    // ─── layer polyfill (layui.layer → Bootstrap) ───
+    let modalInstance = null;
+    let toastIdx = 0;
+    const layer = {
+      msg(text, opts) {
+        const idx = ++toastIdx;
+        const icon = (opts && opts.icon === 1) ? 'bx-check-circle text-success' : 'bx-info-circle text-primary';
+        const html = `<div id="t${idx}" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="2000">
+          <div class="toast-body"><i class="bx ${icon} me-2"></i>${text}</div></div>`;
+        $('#toastContainer').append(html);
+        const t = new bootstrap.Toast(document.getElementById('t' + idx));
+        t.show();
+        setTimeout(() => { $(`#t${idx}`).remove(); }, 2500);
+      },
+      alert(content, opts) {
+        const title = (typeof opts === 'object' && opts.title) ? opts.title : '提示';
+        const btnText = i18n ? i18n[currentLang || 'zh'].confirm : 'OK';
+        $('#commonModalTitle').text(title);
+        $('#commonModalBody').html(typeof content === 'string' ? content : content.join ? content.join('') : String(content));
+        $('#commonModalFooter').html(`<button type="button" class="btn btn-primary" data-bs-dismiss="modal">${btnText}</button>`);
+        _showModal();
+      },
+      confirm(content, yesCallback, noCallback) {
+        const lang = i18n ? i18n[currentLang || 'zh'] : { confirm: 'OK', cancel: 'Cancel', warning: 'Warning' };
+        $('#commonModalTitle').text(lang.warning || '提示');
+        $('#commonModalBody').text(content);
+        $('#commonModalFooter').html(`<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${lang.cancel}</button><button type="button" class="btn btn-primary" id="confirmYes">${lang.confirm}</button>`);
+        _showModal();
+        $('#confirmYes').off('click').on('click', function () { _hideModal(); if (yesCallback) yesCallback(); });
+      },
+      open(opts) {
+        $('#commonModalTitle').text(opts.title || '');
+        $('#commonModalBody').html(opts.content || '');
+        if (opts.btn && opts.btn.length) {
+          let html = '';
+          const actions = ['confirm', 'download', 'cancel'];
+          opts.btn.forEach((text, i) => {
+            const cls = i === 0 ? 'btn-primary' : i === opts.btn.length - 1 ? 'btn-secondary' : 'btn-outline-primary';
+            html += `<button type="button" class="btn ${cls} me-2" data-idx="${i}">${text}</button>`;
+          });
+          $('#commonModalFooter').html(html);
+          $('#commonModalFooter button').off('click').on('click', function () {
+            const idx = parseInt($(this).data('idx'));
+            if (opts['btn' + (idx + 1)]) opts['btn' + (idx + 1)]();
+            if (idx === opts.btn.length - 1) _hideModal();
+          });
+        } else {
+          $('#commonModalFooter').html('');
+        }
+        if (opts.area) {
+          const w = opts.area[0] === 'auto' ? 'auto' : opts.area[0];
+          const h = opts.area[1] || 'auto';
+          $('.modal-dialog').css({ maxWidth: w, width: w });
+        }
+        _showModal();
+      },
+      close() { _hideModal(); },
+      prompt(opts, callback) {
+        const lang = i18n ? i18n[currentLang || 'zh'] : { confirm: 'OK', cancel: 'Cancel' };
+        const title = opts.title || '';
+        const val = opts.value || '';
+        const placeholder = '';
+        $('#commonModalTitle').text(title);
+        $('#commonModalBody').html(`<textarea class="form-control" style="min-height:200px;font-family:monospace">${val}</textarea>`);
+        $('#commonModalFooter').html(`<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${lang.cancel}</button><button type="button" class="btn btn-primary" id="promptConfirm">${lang.confirm}</button>`);
+        _showModal();
+        $('#promptConfirm').off('click').on('click', function () {
+          const v = $('#commonModalBody textarea').val();
+          _hideModal();
+          if (callback) callback(v, 0, null);
+        });
+      }
+    };
+    function _showModal() {
+      const el = document.getElementById('commonModal');
+      modalInstance = new bootstrap.Modal(el);
+      modalInstance.show();
+    }
+    function _hideModal() { if (modalInstance) { modalInstance.hide(); modalInstance = null; } }
+  </script>
+
+  <script>
+    // ─── Application Logic ───
+    let currentProtocol = "ipv4";
+    let currentPlatform = "linux";
+    const languageKey = "iptables_lang";
+    const storedLang = localStorage.getItem(languageKey);
+    const browserLang = (function () { var l = (navigator.language || "en").toLowerCase(); if (l.startsWith("zh")) return "zh"; if (l.startsWith("ja")) return "ja"; return "en"; })();
+    const langOrder = ['zh', 'en', 'ja'];
+    const langLabels = { zh: 'English', en: '日本語', ja: '中文' };
+    if (!langOrder.includes(currentLang)) currentLang = 'zh';
+
+    const i18n = {
+      zh: {
+        title: "{cmd} 管理平臺", docAssistTitle: "文件協助", chainLabel: "鏈", defaultPolicy: "默認策略",
+        packets: "經過的包數量", bytes: "字節數", references: "被引用數量", tableLabel: "表", tableWord: "表", chainWord: "鏈",
+        clearAllRule: "清空所有表規則", clearCurrentRule: "清空當前表規則", clearEmptyChain: "清空自定義空鏈",
+        clearAllMetrics: "清零所有表計數", clearCurrentMetrics: "清零當前表計數", clearChain: "清空規則",
+        viewTable: "查看當前表規則", execCmd: "執行命令", exportRule: "導出規則", importRule: "導入規則", doc: "命令文件",
+        protocolLabel: "協議", tabRaw: "raw", tabMangle: "mangle", tabNat: "nat", tabFilter: "filter",
+        nativeChain: "原生鏈", customChain: "自定義鏈", insert: "插入", append: "添加", zero: "清零",
+        zeroCounters: "清零計數", delete: "刪除", refresh: "刷新", refreshSuccess: "刷新成功", viewCmd: "查看命令",
+        warning: "提示", confirm: "確認", cancel: "取消", insertRuleTitle: "插入規則", appendRuleTitle: "添加規則",
+        rulePlaceholder: "請輸入規則", execCommandTitleTpl: "執行 {cmd} 命令", inputCommand: "輸入命令",
+        commandSuccess: "命令執行成功", importPromptTpl: "粘貼 {cmd} 規則", importSuccess: "導入規則成功！",
+        flushRuleSuccess: "清除規則成功！", flushMetricsSuccess: "清除統計數據成功！", clearEmptySuccess: "清空自定義空鏈成功！",
+        insertSuccess: "插入規則成功！", appendSuccess: "添加規則成功！", updateSuccess: "修改規則成功！",
+        copySuccess: "複製成功，可直接粘貼至文件！", exportDialogTitle: "全部規則命令",
+        btnCopy: "複製", btnDownload: "導出", btnOk: "確定",
+        clearConfirmPrefix: "確認清除", allRulesSuffix: "所有規則？", chainRulesSuffix: " 鏈的所有規則？",
+        allMetricsSuffix: "所有統計數據？", ruleMetricsPrefix: "第 ", ruleMetricsSuffix: " 條規則的統計數據？",
+        ruleNumberPrefix: "第", ruleNumberSuffix: "條規則", clearEmptyPrompt: "確認清除用戶自定義的所有空鏈？",
+        dashLabel: "儀表板", tablesLabel: "防火牆管理", systemLabel: "系統現況", docLabel: "命令文件",
+        dashTotalRules: "規則總數", dashTotalChains: "鏈總數", dashTotalPkts: "封包總計", dashTotalBytes: "位元組總計",
+        dashNoData: "無資料", dashUpdated: "更新時間",
+        sysHostname: "主機名稱", sysUptime: "運作時間", sysOS: "作業系統", sysIP: "IP 位址",
+        sysMemory: "記憶體", sysSwap: "Swap", sysUsed: "已用", sysFree: "可用", sysTotal: "總計",
+        sysDisk: "磁碟", sysMount: "掛載點", sysFilesystem: "檔案系統", sysUsePct: "使用率",
+        sysProcess: "處理程序", sysPID: "PID", sysName: "名稱", sysCPU: "CPU%", sysMEM: "MEM%", sysRSS: "RSS", sysState: "狀態",
+        sysRefresh: "重新整理", sysSortBy: "排序",
+      },
+      en: {
+        title: "{cmd} Web Console", docAssistTitle: "Quick Help", chainLabel: "Chain", defaultPolicy: "Default policy",
+        packets: "Packets", bytes: "Bytes", references: "References", tableLabel: "Table", tableWord: "table", chainWord: "chain",
+        clearAllRule: "Flush All Tables", clearCurrentRule: "Flush Current Table", clearEmptyChain: "Drop Empty Custom Chains",
+        clearAllMetrics: "Zero All Counters", clearCurrentMetrics: "Zero Current Table", clearChain: "Flush Rules",
+        viewTable: "View Current Table", execCmd: "Run Command", exportRule: "Export Rules", importRule: "Import Rules", doc: "Command Reference",
+        protocolLabel: "Protocol", tabRaw: "raw", tabMangle: "mangle", tabNat: "nat", tabFilter: "filter",
+        nativeChain: "System Chains", customChain: "Custom Chains", insert: "Insert", append: "Append", zero: "Zero",
+        zeroCounters: "Zero Counters", delete: "Delete", refresh: "Refresh", refreshSuccess: "Refreshed", viewCmd: "View Command",
+        warning: "Warning", confirm: "OK", cancel: "Cancel", insertRuleTitle: "Insert Rule", appendRuleTitle: "Append Rule",
+        rulePlaceholder: "Enter rule arguments", execCommandTitleTpl: "Run {cmd} command", inputCommand: "Command",
+        commandSuccess: "Command executed successfully", importPromptTpl: "Paste {cmd} rules",
+        importSuccess: "Rules imported successfully!", flushRuleSuccess: "Rules cleared successfully!",
+        flushMetricsSuccess: "Counters reset successfully!", clearEmptySuccess: "Empty custom chains removed!",
+        insertSuccess: "Rule inserted successfully!", appendSuccess: "Rule appended successfully!",
+        updateSuccess: "Rule updated successfully!", copySuccess: "Copied! You can paste it into a file.",
+        exportDialogTitle: "All rules", btnCopy: "Copy", btnDownload: "Download", btnOk: "OK",
+        clearConfirmPrefix: "Confirm to clear", allRulesSuffix: "all rules?", chainRulesSuffix: " chain rules?",
+        allMetricsSuffix: "all counters?", ruleMetricsPrefix: "Rule #", ruleMetricsSuffix: " counters?",
+        ruleNumberPrefix: "Rule #", ruleNumberSuffix: "", clearEmptyPrompt: "Clear all empty custom chains?",
+        dashLabel: "Dashboard", tablesLabel: "Tables", systemLabel: "System", docLabel: "Command Reference",
+        dashTotalRules: "Total Rules", dashTotalChains: "Chains", dashTotalPkts: "Packets", dashTotalBytes: "Bytes",
+        dashNoData: "No data", dashUpdated: "Updated",
+        sysHostname: "Hostname", sysUptime: "Uptime", sysOS: "OS", sysIP: "IP Address",
+        sysMemory: "Memory", sysSwap: "Swap", sysUsed: "Used", sysFree: "Free", sysTotal: "Total",
+        sysDisk: "Disk", sysMount: "Mount", sysFilesystem: "Filesystem", sysUsePct: "Use%",
+        sysProcess: "Processes", sysPID: "PID", sysName: "Name", sysCPU: "CPU%", sysMEM: "MEM%", sysRSS: "RSS", sysState: "State",
+        sysRefresh: "Refresh", sysSortBy: "Sort",
+      },
+      ja: {
+        title: "{cmd} 管理コンソール", docAssistTitle: "クイックヘルプ", chainLabel: "チェイン", defaultPolicy: "デフォルトポリシー",
+        packets: "パケット数", bytes: "バイト数", references: "参照数", tableLabel: "テーブル", tableWord: "テーブル", chainWord: "チェイン",
+        clearAllRule: "全テーブルをフラッシュ", clearCurrentRule: "現在のテーブルをフラッシュ", clearEmptyChain: "空のカスタムチェインを削除",
+        clearAllMetrics: "全カウンタをゼロ", clearCurrentMetrics: "現在のテーブルカウンタをゼロ", clearChain: "ルールをクリア",
+        viewTable: "現在のテーブルを表示", execCmd: "コマンドを実行", exportRule: "ルールをエクスポート", importRule: "ルールをインポート", doc: "コマンドリファレンス",
+        protocolLabel: "プロトコル", tabRaw: "raw", tabMangle: "mangle", tabNat: "nat", tabFilter: "filter",
+        nativeChain: "システムチェイン", customChain: "カスタムチェイン", insert: "挿入", append: "追加", zero: "ゼロ",
+        zeroCounters: "カウンタをゼロ", delete: "削除", refresh: "更新", refreshSuccess: "更新完了", viewCmd: "コマンドを表示",
+        warning: "確認", confirm: "OK", cancel: "キャンセル", insertRuleTitle: "ルールを挿入", appendRuleTitle: "ルールを追加",
+        rulePlaceholder: "ルールを入力", execCommandTitleTpl: "{cmd} コマンドを実行", inputCommand: "コマンドを入力",
+        commandSuccess: "コマンドが正常に実行されました", importPromptTpl: "{cmd} ルールを貼り付け", importSuccess: "ルールのインポートが完了しました！",
+        flushRuleSuccess: "ルールのクリアが完了しました！", flushMetricsSuccess: "統計データのクリアが完了しました！", clearEmptySuccess: "空のカスタムチェインを削除しました！",
+        insertSuccess: "ルールを挿入しました！", appendSuccess: "ルールを追加しました！", updateSuccess: "ルールを更新しました！",
+        copySuccess: "コピーしました！ファイルに貼り付けてください。", exportDialogTitle: "全ルールコマンド",
+        btnCopy: "コピー", btnDownload: "ダウンロード", btnOk: "OK",
+        clearConfirmPrefix: "確認", allRulesSuffix: "すべてのルールをクリアしますか？", chainRulesSuffix: " チェインの全ルールをクリアしますか？",
+        allMetricsSuffix: "すべての統計データをクリアしますか？", ruleMetricsPrefix: "ルール #", ruleMetricsSuffix: " の統計データをクリアしますか？",
+        ruleNumberPrefix: "ルール #", ruleNumberSuffix: "", clearEmptyPrompt: "空のカスタムチェインをすべて削除しますか？",
+        dashLabel: "ダッシュボード", tablesLabel: "ファイアウォール管理", systemLabel: "システム情報", docLabel: "コマンドリファレンス",
+        dashTotalRules: "ルール総数", dashTotalChains: "チェイン数", dashTotalPkts: "パケット総数", dashTotalBytes: "バイト総数",
+        dashNoData: "データなし", dashUpdated: "更新時間",
+        sysHostname: "ホスト名", sysUptime: "稼働時間", sysOS: "OS", sysIP: "IP アドレス",
+        sysMemory: "メモリ", sysSwap: "スワップ", sysUsed: "使用中", sysFree: "空き", sysTotal: "合計",
+        sysDisk: "ディスク", sysMount: "マウント", sysFilesystem: "ファイルシステム", sysUsePct: "使用率",
+        sysProcess: "プロセス", sysPID: "PID", sysName: "名前", sysCPU: "CPU%", sysMEM: "MEM%", sysRSS: "RSS", sysState: "状態",
+        sysRefresh: "更新", sysSortBy: "並び替え",
+      }
+    };
+
+    function t(key) {
+      let s = i18n[currentLang][key];
+      if (typeof s === "string" && s.indexOf("{cmd}") !== -1) s = s.replace("{cmd}", fwDisplayName());
+      return s;
+    }
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      localStorage.setItem(languageKey, lang);
+      $(".ipc-title").text(t("title"));
+      $("#docDropdownLabel").text(t("docAssistTitle"));
+      var lng = i18n[currentLang];
+      $('#menuDashLabel').text(lng.dashLabel || 'Dashboard');
+      $('#menuTablesLabel').text(lng.tablesLabel || 'Tables');
+      $('#menuSysLabel').text(lng.systemLabel || 'System');
+      $('#menuDocLabel').text(lng.docLabel || 'Command Reference');
+      const labels = [
+        ["#clear-all-rule", "clearAllRule"], ["#clear-current-table-rule", "clearCurrentRule"],
+        ["#clear-all-empty-chain", "clearEmptyChain"], ["#clear-all-metrics", "clearAllMetrics"],
+        ["#clear-current-table-metrics", "clearCurrentMetrics"], ["#self-iptables", "viewTable"],
+        ["#exec-iptables", "execCmd"], ["#export-all-rule", "exportRule"],
+        ["#import-all-rule", "importRule"], ["#open-iptables-doc", "doc"],
+      ];
+      labels.forEach(([sel, k]) => { const el = $(sel); if (el.length) el.html(el.html().replace(/(<\/i>)\s*.*/, '$1 ' + t(k))); });
+      const tabs = ["tabRaw", "tabMangle", "tabNat", "tabFilter"];
+      $(".iptables-table .nav-link").each((i, el) => { if (tabs[i]) $(el).text(t(tabs[i])); });
+      $("#language-toggle").text(langLabels[lang] || 'English');
+    }
+
+    // ─── Logger ───
+    let logCount = 0;
+    const LOG_LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+    const logger = {
+      _append(level, msg, cmd) {
+        logCount++;
+        const time = new Date().toLocaleTimeString();
+        const cls = Object.keys(LOG_LEVELS).find(k => LOG_LEVELS[k] === level) || 'DEBUG';
+        const entry = document.createElement('div');
+        entry.className = 'log-entry log-' + cls.toLowerCase();
+        let html = `<span class="log-time">[${time}]</span><span class="log-msg">${msg}</span>`;
+        if (cmd) html += `<span class="log-cmd">&#8594; ${cmd}</span>`;
+        entry.innerHTML = html;
+        document.getElementById('logContent').appendChild(entry);
+        document.getElementById('logBadge').textContent = logCount;
+        const c = document.getElementById('logContainer');
+        if (c.classList.contains('open')) c.scrollTop = c.scrollHeight;
+      },
+      debug(msg, cmd) { this._append(LOG_LEVELS.DEBUG, msg, cmd); },
+      info(msg, cmd) { this._append(LOG_LEVELS.INFO, msg, cmd); },
+      warn(msg, cmd) { this._append(LOG_LEVELS.WARN, msg, cmd); },
+      error(msg, cmd) { this._append(LOG_LEVELS.ERROR, msg, cmd); },
+      clear() {
+        document.getElementById('logContent').innerHTML = '';
+        logCount = 0;
+        document.getElementById('logBadge').textContent = '0';
+      }
+    };
+
+    // ─── Dashboard ───
+    let dashTimer = null;
+    function parseCounter(val) {
+      if (!val) return 0;
+      val = val.trim();
+      const m = val.toUpperCase().match(/^([\d.]+)([KMG]?)$/);
+      if (!m) return parseInt(val) || 0;
+      const n = parseFloat(m[1]);
+      switch (m[2]) { case 'K': return n * 1e3; case 'M': return n * 1e6; case 'G': return n * 1e9; default: return n; }
+    }
+    function fmtNum(n) {
+      if (n >= 1e9) return (n / 1e9).toFixed(1) + 'G';
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+      return n.toString();
+    }
+    function extractPortIn(action) { var m = action.match(/dpt[:=](\d+)/); return m ? m[1] : null; }
+    function extractPortOut(action) { var m = action.match(/spt[:=](\d+)/); return m ? m[1] : null; }
+    function isInboundChain(name) { return name === 'INPUT' || name === 'FORWARD'; }
+    function isOutboundChain(name) { return name === 'OUTPUT'; }
+    var dashTrend = [];
+    function aggregateRules(data) {
+      var stats = { totalRules: 0, totalChains: 0, totalPkts: 0, totalBytes: 0,
+        chainTraffic: {}, protocols: {}, targets: {}, srcIPs: {}, dstIPs: {},
+        portsIn: {}, portsOut: {}, ports: {}, inPkts: 0, outPkts: 0, inBytes: 0, outBytes: 0 };
+      ['system', 'custom'].forEach(function (type) {
+        (data[type] || []).forEach(function (chain) {
+          stats.totalChains++;
+          var cname = chain.title.chain;
+          var inbound = isInboundChain(cname);
+          var outbound = isOutboundChain(cname);
+          var chainPkts = chain.title.packets ? parseCounter(chain.title.packets) : 0;
+          var chainBytes = chain.title.bytes ? parseCounter(chain.title.bytes) : 0;
+          (chain.list || []).forEach(function (r) {
+            stats.totalRules++;
+            var pkts = parseCounter(r.pkts);
+            var bytes = parseCounter(r.bytes);
+            stats.totalPkts += pkts;
+            stats.totalBytes += bytes;
+            stats.chainTraffic[cname] = stats.chainTraffic[cname] || { pkts: 0, bytes: 0 };
+            stats.chainTraffic[cname].pkts += pkts;
+            stats.chainTraffic[cname].bytes += bytes;
+            stats.protocols[r.prot] = (stats.protocols[r.prot] || 0) + 1;
+            stats.targets[r.target] = (stats.targets[r.target] || 0) + pkts;
+            var src = r.source.replace(/^!/, '');
+            if (src && src !== '0.0.0.0/0' && src !== '::/0') { stats.srcIPs[src] = (stats.srcIPs[src] || 0) + pkts; }
+            var dst = r.destination.replace(/^!/, '');
+            if (dst && dst !== '0.0.0.0/0' && dst !== '::/0') { stats.dstIPs[dst] = (stats.dstIPs[dst] || 0) + pkts; }
+            // Port in/out by chain direction
+            var pIn = inbound ? extractPortIn(r.action) : null;
+            var pOut = outbound ? extractPortOut(r.action) : null;
+            // Also match dpt in OUTPUT for replies or spt in INPUT
+            if (inbound && !pIn) pIn = extractPortIn(r.action);
+            if (outbound && !pOut) pOut = extractPortOut(r.action);
+            // Also check FORWARD for both directions
+            if (cname === 'FORWARD') {
+              var fp = extractPortIn(r.action);
+              if (fp) { stats.portsIn[fp] = (stats.portsIn[fp] || 0) + pkts; }
+              var fp2 = extractPortOut(r.action);
+              if (fp2) { stats.portsOut[fp2] = (stats.portsOut[fp2] || 0) + pkts; }
+            } else {
+              if (pIn) { stats.portsIn[pIn] = (stats.portsIn[pIn] || 0) + pkts; }
+              if (pOut) { stats.portsOut[pOut] = (stats.portsOut[pOut] || 0) + pkts; }
+            }
+            // Legacy ports aggregate
+            var port = extractPortIn(r.action) || extractPortOut(r.action);
+            if (port) stats.ports[port] = (stats.ports[port] || 0) + pkts;
+            // Direction totals
+            if (inbound) { stats.inPkts += pkts; stats.inBytes += bytes; }
+            if (outbound) { stats.outPkts += pkts; stats.outBytes += bytes; }
+          });
+          if (chain.list && chain.list.length === 0) {
+            stats.chainTraffic[cname] = { pkts: chainPkts, bytes: chainBytes };
+          }
+        });
+      });
+      return stats;
+    }
+    function topN(obj, n) {
+      return Object.keys(obj).sort(function (a, b) { return obj[b] - obj[a]; }).slice(0, n).map(function (k) { return { key: k, val: obj[k] }; });
+    }
+    function donutGradient(items, total, colors) {
+      if (total === 0) return 'conic-gradient(#eee 0deg 360deg)';
+      let pct = 0, stops = [];
+      items.forEach(function (item, i) {
+        const v = (item.val / total) * 360;
+        stops.push((colors[i % colors.length]) + ' ' + pct + 'deg ' + (pct + v) + 'deg');
+        pct += v;
+      });
+      if (pct < 360) stops.push('#eee ' + pct + 'deg 360deg');
+      return 'conic-gradient(' + stops.join(', ') + ')';
+    }
+
+    var KNOWN_PORTS = { '22':'SSH','80':'HTTP','443':'HTTPS','53':'DNS','25':'SMTP','3306':'MySQL','5432':'PostgreSQL','6379':'Redis','8080':'HTTP-Alt','8443':'HTTPS-Alt','993':'IMAPS','587':'SMTP-Submit','3389':'RDP','27017':'MongoDB' };
+    var TREND_MAX = 120;
+    var prevCumulative = null;
+
+    function drawTrend(animate) {
+      var canvas = document.getElementById('dashTrendChart');
+      if (!canvas || dashTrend.length < 2) return;
+      var ctx = canvas.getContext('2d');
+      var W = canvas.width, H = canvas.height;
+      var pad = { top: 20, right: 20, bottom: 25, left: 50 };
+      var plotW = W - pad.left - pad.right, plotH = H - pad.top - pad.bottom;
+      var maxVal = 1, i;
+      for (i = 0; i < dashTrend.length; i++) {
+        maxVal = Math.max(maxVal, dashTrend[i].inPkts || 0, dashTrend[i].outPkts || 0);
+      }
+      if (maxVal < 1) maxVal = 1;
+      var step = plotW / (dashTrend.length - 1);
+      var frames = animate ? 30 : 1, frame = 0;
+      function doDraw(f) {
+        var progress = f / frames;
+        var drawLen = Math.max(2, Math.floor(progress * dashTrend.length));
+        ctx.clearRect(0, 0, W, H);
+        // Grid lines
+        ctx.strokeStyle = '#313244';
+        ctx.lineWidth = 0.5;
+        for (i = 0; i < 4; i++) {
+          var gy = pad.top + (plotH / 4) * i;
+          ctx.beginPath(); ctx.moveTo(pad.left, gy); ctx.lineTo(W - pad.right, gy); ctx.stroke();
+          ctx.fillStyle = '#6c7086'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+          ctx.fillText(fmtNum(maxVal * (1 - i / 4)), pad.left - 5, gy + 4);
+        }
+        // Axes labels
+        ctx.fillStyle = '#6c7086'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+        var labelStep = Math.max(1, Math.floor(dashTrend.length / 6));
+        var timeLabels = [];
+        for (i = 0; i < dashTrend.length; i += labelStep) {
+          var t = new Date(dashTrend[i].ts);
+          timeLabels.push({ idx: i, label: t.getHours() + ':' + String(t.getMinutes()).padStart(2,'0') + ':' + String(t.getSeconds()).padStart(2,'0') });
+        }
+        timeLabels.forEach(function (tl) {
+          var lx = pad.left + (tl.idx / (dashTrend.length - 1)) * plotW;
+          ctx.fillText(tl.label, lx, H - 5);
+        });
+        function drawLine(data, color, offset) {
+          ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+          var startIdx = 0;
+          for (i = 0; i < dashTrend.length; i++) {
+            var val = data[i];
+            if (val === undefined || val === null) continue;
+            if (!startIdx) { startIdx = 1; ctx.moveTo(pad.left, pad.top + plotH - (val / maxVal) * plotH); continue; }
+            var lx = pad.left + (i / (dashTrend.length - 1)) * plotW;
+            var ly = pad.top + plotH - (val / maxVal) * plotH;
+            ctx.lineTo(lx, ly);
+          }
+          ctx.stroke();
+          // Fill under
+          ctx.lineTo(W - pad.right, pad.top + plotH); ctx.lineTo(pad.left, pad.top + plotH); ctx.closePath();
+          ctx.fillStyle = color.replace(')', ',0.15)').replace('rgb', 'rgba');
+          if (ctx.fillStyle === color) ctx.fillStyle = color.slice(0, 7) + '26';
+          ctx.fill();
+        }
+        var inData = [], outData = [];
+        for (i = 0; i < dashTrend.length; i++) { inData.push(dashTrend[i].inPkts || 0); outData.push(dashTrend[i].outPkts || 0); }
+        drawLine(outData, '#89b4fa', 0);
+        drawLine(inData, '#a6e3a1', 1);
+        // Legend
+        ctx.font = '10px monospace'; ctx.textAlign = 'left';
+        ctx.fillStyle = '#a6e3a1'; ctx.fillRect(pad.left, pad.top - 14, 10, 10); ctx.fillText('In', pad.left + 14, pad.top - 5);
+        ctx.fillStyle = '#89b4fa'; ctx.fillRect(pad.left + 50, pad.top - 14, 10, 10); ctx.fillText('Out', pad.left + 64, pad.top - 5);
+        if (frame < frames) { frame++; requestAnimationFrame(function () { doDraw(frame); }); }
+      }
+      doDraw(0);
+    }
+
+    function renderDash(res) {
+      var data = res.data || { system: [], custom: [] };
+      var stats = aggregateRules(data);
+      var lang = i18n[currentLang];
+      // KPI row
+      $('#dashKpiRow').html(
+        '<div class="col-md-3 mb-2"><div class="card dash-card"><div class="card-body text-center"><div class="dash-kpi-label">' + (lang.dashTotalRules || 'Total Rules') + '</div><div class="dash-kpi">' + stats.totalRules + '</div></div></div></div>' +
+        '<div class="col-md-3 mb-2"><div class="card dash-card"><div class="card-body text-center"><div class="dash-kpi-label">' + (lang.dashTotalChains || 'Chains') + '</div><div class="dash-kpi">' + stats.totalChains + '</div></div></div></div>' +
+        '<div class="col-md-3 mb-2"><div class="card dash-card"><div class="card-body text-center"><div class="dash-kpi-label">' + (lang.dashTotalPkts || 'Packets') + '</div><div class="dash-kpi">' + fmtNum(stats.totalPkts) + ' <span class="dash-kpi-unit">pkt</span></div></div></div></div>' +
+        '<div class="col-md-3 mb-2"><div class="card dash-card"><div class="card-body text-center"><div class="dash-kpi-label">' + (lang.dashTotalBytes || 'Bytes') + '</div><div class="dash-kpi">' + fmtNum(stats.totalBytes) + ' <span class="dash-kpi-unit">B</span></div></div></div></div>'
+      );
+      // Trend data (compute rate from cumulative counters)
+      if (prevCumulative) {
+        var dt = (Date.now() - prevCumulative.ts) / 1000;
+        if (dt > 0) {
+          var rateIn = Math.round((stats.inPkts - prevCumulative.inPkts) / dt);
+          var rateOut = Math.round((stats.outPkts - prevCumulative.outPkts) / dt);
+          dashTrend.push({ ts: Date.now(), inPkts: Math.max(0, rateIn), outPkts: Math.max(0, rateOut) });
+          if (dashTrend.length > TREND_MAX) dashTrend.shift();
+        }
+      } else {
+        // Seed with zero on first sample
+        dashTrend.push({ ts: Date.now(), inPkts: 0, outPkts: 0 });
+      }
+      prevCumulative = { ts: Date.now(), inPkts: stats.inPkts, outPkts: stats.outPkts };
+      drawTrend(true);
+      // Port Traffic In/Out
+      var allPorts = new Set();
+      Object.keys(stats.portsIn).forEach(function (p) { allPorts.add(p); });
+      Object.keys(stats.portsOut).forEach(function (p) { allPorts.add(p); });
+      var portList = [];
+      allPorts.forEach(function (p) {
+        portList.push({ port: p, inPkts: stats.portsIn[p] || 0, outPkts: stats.portsOut[p] || 0, total: (stats.portsIn[p] || 0) + (stats.portsOut[p] || 0) });
+      });
+      portList.sort(function (a, b) { return b.total - a.total; });
+      var pioHtml = '<table class="table table-sm dash-top-table mb-0"><thead><tr><th>Port</th><th class="num">In (pkts)</th><th class="num">Out (pkts)</th><th class="num">Total</th></tr></thead><tbody>';
+      portList.slice(0, 10).forEach(function (p) {
+        var name = KNOWN_PORTS[p.port] ? '<span class="text-muted">(' + KNOWN_PORTS[p.port] + ')</span>' : '';
+        pioHtml += '<tr><td>' + p.port + ' ' + name + '</td><td class="num" style="color:#a6e3a1">' + fmtNum(p.inPkts) + '</td><td class="num" style="color:#89b4fa">' + fmtNum(p.outPkts) + '</td><td class="num">' + fmtNum(p.total) + '</td></tr>';
+      });
+      pioHtml += '</tbody></table>';
+      if (!portList.length) pioHtml = '<div class="text-muted" style="font-size:.75rem">' + (lang.dashNoData || 'No data') + '</div>';
+      $('#dashPortInOut .card-body').append('<div>' + pioHtml + '</div>');
+      // Protocol distribution (donut)
+      var protItems = topN(stats.protocols, 6);
+      var protTotal = protItems.reduce(function (s, i) { return s + i.val; }, 0);
+      var colors = ['#0d6efd','#198754','#dc3545','#ffc107','#6f42c1','#fd7e14','#20c997','#d63384'];
+      var protGrad = donutGradient(protItems, protTotal, colors);
+      var protHtml = '<div class="dash-donut" style="background:' + protGrad + '"><div class="dash-donut-center">' + protTotal + '</div></div><div class="mt-2 dash-donut-legend text-center">';
+      protItems.forEach(function (p, i) { protHtml += '<span class="me-2"><span class="dot" style="background:' + colors[i % colors.length] + '"></span>' + p.key + ' (' + p.val + ')</span>'; });
+      protHtml += '</div>';
+      if (!protItems.length) protHtml = '<div class="text-muted" style="font-size:.75rem">' + (lang.dashNoData || 'No data') + '</div>';
+      $('#dashProtocolDist .card-body').append('<div>' + protHtml + '</div>');
+      // Top source IPs
+      var srcItems = topN(stats.srcIPs, 8);
+      var srcHtml = '<table class="table table-sm dash-top-table mb-0"><thead><tr><th>#</th><th>Source IP</th><th class="num">Packets</th></tr></thead><tbody>';
+      srcItems.forEach(function (s, i) { srcHtml += '<tr><td>' + (i + 1) + '</td><td>' + s.key + '</td><td class="num">' + fmtNum(s.val) + '</td></tr>'; });
+      srcHtml += '</tbody></table>';
+      if (!srcItems.length) srcHtml = '<div class="text-muted" style="font-size:.75rem">' + (lang.dashNoData || 'No data') + '</div>';
+      $('#dashTopSrc .card-body').append('<div>' + srcHtml + '</div>');
+      // Top destination IPs
+      var dstItems = topN(stats.dstIPs, 8);
+      var dstHtml = '<table class="table table-sm dash-top-table mb-0"><thead><tr><th>#</th><th>Destination IP</th><th class="num">Packets</th></tr></thead><tbody>';
+      dstItems.forEach(function (s, i) { dstHtml += '<tr><td>' + (i + 1) + '</td><td>' + s.key + '</td><td class="num">' + fmtNum(s.val) + '</td></tr>'; });
+      dstHtml += '</tbody></table>';
+      if (!dstItems.length) dstHtml = '<div class="text-muted" style="font-size:.75rem">' + (lang.dashNoData || 'No data') + '</div>';
+      $('#dashTopDst .card-body').append('<div>' + dstHtml + '</div>');
+      // Target distribution (donut)
+      var tgtItems = topN(stats.targets, 6);
+      var tgtTotal = tgtItems.reduce(function (s, i) { return s + i.val; }, 0);
+      var tgtGrad = donutGradient(tgtItems, tgtTotal, colors);
+      var tgtHtml = '<div class="dash-donut" style="background:' + tgtGrad + '"><div class="dash-donut-center">' + fmtNum(tgtTotal) + '</div></div><div class="mt-2 dash-donut-legend text-center">';
+      tgtItems.forEach(function (t, i) { tgtHtml += '<span class="me-2"><span class="dot" style="background:' + colors[i % colors.length] + '"></span>' + t.key + ' (' + fmtNum(t.val) + ')</span>'; });
+      tgtHtml += '</div>';
+      if (!tgtItems.length) tgtHtml = '<div class="text-muted" style="font-size:.75rem">' + (lang.dashNoData || 'No data') + '</div>';
+      $('#dashTargetDist .card-body').append('<div>' + tgtHtml + '</div>');
+      // Top ports (legacy)
+      var portItems = topN(stats.ports, 8);
+      var portHtml = '<table class="table table-sm dash-top-table mb-0"><thead><tr><th>#</th><th>Port</th><th class="num">Packets</th></tr></thead><tbody>';
+      portItems.forEach(function (p, i) {
+        portHtml += '<tr><td>' + (i + 1) + '</td><td>' + p.key + ' ' + (KNOWN_PORTS[p.key] ? '<span class="text-muted">(' + KNOWN_PORTS[p.key] + ')</span>' : '') + '</td><td class="num">' + fmtNum(p.val) + '</td></tr>';
+      });
+      portHtml += '</tbody></table>';
+      if (!portItems.length) portHtml = '<div class="text-muted" style="font-size:.75rem">' + (lang.dashNoData || 'No data') + '</div>';
+      $('#dashTopPorts .card-body').append('<div>' + portHtml + '</div>');
+      // Timestamp
+      $('#dashUpdated').text((lang.dashUpdated || 'Updated') + ': ' + new Date().toLocaleTimeString());
+    }
+
+    let dashLoading = false;
+    function loadDash() {
+      if (dashLoading) return;
+      dashLoading = true;
+      const tn = currentTableName();
+      const protocol = currentPlatform === 'linux' ? currentProtocol : 'ipv4';
+      $.post('/listRule', { table: tn, chain: '', protocol: protocol }, function (res) {
+        dashLoading = false;
+        if (res.code === 0) {
+          $('#dashKpiRow,#dashPortInOut .card-body > div,#dashProtocolDist .card-body > div,#dashTopSrc .card-body > div,#dashTopDst .card-body > div,#dashTargetDist .card-body > div,#dashTopPorts .card-body > div').empty();
+          renderDash(res);
+          logger.debug('Dashboard 更新', tn);
+        }
+      }, 'json');
+    }
+
+    // ─── System Info ───
+    var sysProcData = [];
+    var sysSortField = 'mem';
+    function fmtSize(n) {
+      if (n >= 1073741824) return (n / 1073741824).toFixed(1) + 'G';
+      if (n >= 1048576) return (n / 1048576).toFixed(1) + 'M';
+      if (n >= 1024) return (n / 1024).toFixed(1) + 'K';
+      return n + 'B';
+    }
+    function fmtPct(n) { return parseFloat(n).toFixed(1) + '%'; }
+    function renderSysInfo(data) {
+      var lang = i18n[currentLang];
+      var ips = (data.ip_addresses || []).join(', ') || 'N/A';
+      var memTotal = data.memory ? data.memory.total : 0;
+      var memUsed = data.memory ? data.memory.used : 0;
+      var memFree = data.memory ? data.memory.free : 0;
+      var memPct = memTotal > 0 ? ((memUsed / memTotal) * 100).toFixed(1) : 0;
+      var swapTotal = data.swap ? data.swap.total : 0;
+      var swapUsed = data.swap ? data.swap.used : 0;
+      var swapPct = swapTotal > 0 ? ((swapUsed / swapTotal) * 100).toFixed(1) : 0;
+      var memColor = memPct > 80 ? '#dc3545' : memPct > 50 ? '#ffc107' : '#198754';
+      var swapColor = swapPct > 80 ? '#dc3545' : swapPct > 50 ? '#ffc107' : '#198754';
+      $('#sysInfoBody').html(
+        '<div class="row">' +
+          '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.sysHostname + '</div><div class="sys-card-val">' + (data.hostname || 'N/A') + '</div></div>' +
+          '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.sysOS + '</div><div class="sys-card-val" style="font-size:1rem">' + (data.os || 'N/A') + '</div></div>' +
+          '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.sysUptime + '</div><div class="sys-card-val" style="font-size:1rem">' + (data.uptime || 'N/A') + '</div></div>' +
+          '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.sysIP + '</div><div class="sys-card-val" style="font-size:.875rem">' + ips + '</div></div>' +
+        '</div>' +
+        '<div class="row mt-2">' +
+          '<div class="col-md-6 mb-3">' +
+            '<div class="sys-card-label">' + lang.sysMemory + '</div>' +
+            '<div class="d-flex justify-content-between" style="font-size:.75rem"><span>' + lang.sysUsed + ': ' + memUsed + ' MB</span><span>' + lang.sysFree + ': ' + memFree + ' MB</span><span>' + lang.sysTotal + ': ' + memTotal + ' MB</span></div>' +
+            '<div class="sys-mem-bar"><div class="sys-mem-fill" style="width:' + memPct + '%;background:' + memColor + '"></div></div>' +
+            '<div style="font-size:.6875rem;color:var(--bs-secondary-color);text-align:right">' + memPct + '%</div>' +
+          '</div>' +
+          '<div class="col-md-6 mb-3">' +
+            '<div class="sys-card-label">' + lang.sysSwap + '</div>' +
+            '<div class="d-flex justify-content-between" style="font-size:.75rem"><span>' + lang.sysUsed + ': ' + swapUsed + ' MB</span><span>' + lang.sysFree + ': ' + (swapTotal - swapUsed) + ' MB</span><span>' + lang.sysTotal + ': ' + swapTotal + ' MB</span></div>' +
+            '<div class="sys-mem-bar"><div class="sys-mem-fill" style="width:' + swapPct + '%;background:' + swapColor + '"></div></div>' +
+            '<div style="font-size:.6875rem;color:var(--bs-secondary-color);text-align:right">' + swapPct + '%</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }
+    function renderSysDisks(data) {
+      var lang = i18n[currentLang];
+      var disks = data.disks || [];
+      if (!disks.length) { $('#sysDiskBody').html('<div class="text-muted" style="font-size:.75rem;padding:.5rem">' + (lang.dashNoData || 'No data') + '</div>'); return; }
+      var html = '<table class="table table-sm sys-disk-table mb-0"><thead><tr><th>' + lang.sysFilesystem + '</th><th>' + lang.sysMount + '</th><th>' + lang.sysTotal + '</th><th>' + lang.sysUsed + '</th><th>' + lang.sysFree + '</th><th>' + lang.sysUsePct + '</th><th></th></tr></thead><tbody>';
+      disks.forEach(function (d) {
+        var pct = parseInt(d.use_pct) || 0;
+        var color = pct > 80 ? '#dc3545' : pct > 50 ? '#ffc107' : '#198754';
+        html += '<tr><td>' + d.filesystem + '</td><td>' + d.mount + '</td><td>' + d.total + '</td><td>' + d.used + '</td><td>' + d.available + '</td><td>' + d.use_pct + '</td><td><div class="sys-disk-bar"><div class="sys-disk-fill" style="width:' + pct + '%;background:' + color + '"></div></div></td></tr>';
+      });
+      html += '</tbody></table>';
+      $('#sysDiskBody').html(html);
+    }
+    function sortProcs(data, field) {
+      var order = { mem: -1, cpu: -1, pid: 1, rss: -1 };
+      return data.sort(function (a, b) {
+        var va = parseFloat(a[field]) || 0;
+        var vb = parseFloat(b[field]) || 0;
+        return (va - vb) * (order[field] || -1);
+      });
+    }
+    function renderSysProcs(data) {
+      var lang = i18n[currentLang];
+      sysProcData = data;
+      var sorted = sortProcs(data.slice(), sysSortField);
+      if (!sorted.length) { $('#sysProcBody').html('<div class="text-muted" style="font-size:.75rem;padding:.5rem">' + (lang.dashNoData || 'No data') + '</div>'); return; }
+      var html = '<div style="max-height:500px;overflow-y:auto"><table class="table table-sm sys-proc-table mb-0" id="sysProcTable"><thead><tr>' +
+        '<th data-field="pid">' + lang.sysPID + ' <span class="sort-icon">&#9650;</span></th>' +
+        '<th data-field="name">' + lang.sysName + '</th>' +
+        '<th data-field="cpu" class="active">' + lang.sysCPU + ' <span class="sort-icon">&#9660;</span></th>' +
+        '<th data-field="mem" class="active">' + lang.sysMEM + ' <span class="sort-icon">&#9660;</span></th>' +
+        '<th data-field="rss">' + lang.sysRSS + ' <span class="sort-icon">&#9660;</span></th>' +
+        '<th data-field="state">' + lang.sysState + '</th>' +
+        '<th>Path</th></tr></thead><tbody>';
+      sorted.forEach(function (p) {
+        html += '<tr><td>' + p.pid + '</td><td>' + p.name + '</td><td>' + fmtPct(p.cpu) + '</td><td>' + fmtPct(p.mem) + '</td><td>' + fmtSize(parseInt(p.rss) * 1024) + '</td><td>' + p.state + '</td><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + p.path + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+      $('#sysProcBody').html(html);
+    }
+    function loadSystemInfo() {
+      logger.debug('Loading system info…');
+      $.get('/system/info', function (res) {
+        if (res.code === 0 && res.data) {
+          renderSysInfo(res.data);
+          renderSysDisks(res.data);
+          logger.debug('System info loaded');
+        }
+      }, 'json');
+      $.get('/system/processes', function (res) {
+        if (res.code === 0 && res.data) {
+          renderSysProcs(res.data);
+          logger.debug('Process list loaded (' + res.data.length + ' procs)');
+        }
+      }, 'json');
+    }
+    $(document).on('click', '#sysProcTable th', function () {
+      var field = $(this).data('field');
+      if (!field) return;
+      sysSortField = field;
+      renderSysProcs(sysProcData);
+    });
+    $(document).on('change', '#sysProcSort', function () {
+      sysSortField = $(this).val();
+      renderSysProcs(sysProcData);
+    });
+    $(document).on('click', '#sysRefreshBtn', function () {
+      loadSystemInfo();
+      logger.info('System info refreshed');
+    });
+
+    function currentCommandBinary() {
+      if (currentPlatform === "macos") return "pfctl";
+      if (currentPlatform === "windows") return "powershell";
+      return currentProtocol === "ipv6" ? "ip6tables" : "iptables";
+    }
+    function fwDisplayName() {
+      if (currentPlatform === "macos") return "pfctl";
+      if (currentPlatform === "windows") return "PowerShell";
+      return currentCommandBinary();
+    }
+    function currentTableName() {
+      return $(".iptables-table .nav-link.active").attr("id").replace("tab-", "") || "filter";
+    }
+
+    function chainCommandPrefix(tableName, chainName, flag) {
+      if (currentPlatform !== "linux") return fwDisplayName();
+      return fwDisplayName() + " -t " + tableName + " " + flag + " " + chainName;
+    }
+    function chainExecArgsStr(tableName, chainName, flag, val) {
+      if (currentPlatform !== "linux") return val;
+      return "-t " + tableName + " " + flag + " " + chainName + " " + val;
+    }
+
+    $(function () {
+      // ─── Init ───
+      logger.info('頁面初始化', 'Loading version info…');
+      $.get("/version", function (res) {
+        $(".ipc-version").text(res.data || "");
+        logger.debug('版本資訊已取得', res.data);
+      });
+      $.get("/platform", function (res) {
+        if (res.code === 0 && res.data) {
+          currentPlatform = res.data;
+          logger.info('平台偵測完成', currentPlatform);
+          if (currentPlatform !== "linux") { $("#protocolSwitch, .iptables-table").hide(); }
+          setLanguage(currentLang);
+          renderDocContent();
+        }
+      });
+
+      $('input[name="protocol"]').on("change", function () {
+        currentProtocol = this.value;
+        logger.info('切換協定', currentProtocol);
+        loadListRule(currentTableName());
+      });
+
+      setLanguage(currentLang);
+
+      // ─── Logger toggle ───
+      $('#logToggle').on('click', function () {
+        $('#logContainer').toggleClass('open');
+        const c = document.getElementById('logContainer');
+        if (c.classList.contains('open')) c.scrollTop = c.scrollHeight;
+      });
+      $('#logClear').on('click', function () { logger.clear(); });
+
+      // ─── Dashboard view toggle & timer ───
+      function switchView(mode) {
+        if (mode === 'dashboard') {
+          $('#dashboardView').show();
+          $('#tablesView').hide();
+          $('#systemView').hide();
+          $('.action-buttons').hide();
+          $('#menuDash').addClass('active');
+          $('#menuTables').removeClass('active');
+          $('#menuSys').removeClass('active');
+          loadDash();
+          if (dashTimer) clearInterval(dashTimer);
+          dashTimer = setInterval(loadDash, 5000);
+          logger.info('切換至 Dashboard');
+        } else if (mode === 'system') {
+          $('#dashboardView').hide();
+          $('#tablesView').hide();
+          $('#systemView').show();
+          $('.action-buttons').hide();
+          $('#menuSys').addClass('active');
+          $('#menuDash').removeClass('active');
+          $('#menuTables').removeClass('active');
+          if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
+          loadSystemInfo();
+          logger.info('切換至 System');
+        } else {
+          $('#dashboardView').hide();
+          $('#tablesView').show();
+          $('#systemView').hide();
+          $('.action-buttons').show();
+          $('#menuTables').addClass('active');
+          $('#menuDash').removeClass('active');
+          $('#menuSys').removeClass('active');
+          if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
+          logger.info('切換至 Tables');
+        }
+      }
+      $('#menuDashLink').on('click', function (e) { e.preventDefault(); switchView('dashboard'); });
+      $('#menuTablesLink').on('click', function (e) { e.preventDefault(); switchView('tables'); });
+      $('#menuSysLink').on('click', function (e) { e.preventDefault(); switchView('system'); });
+      $('#menuDocLink').on('click', function (e) {
+        e.preventDefault();
+        var docMap = { linux: "iptables-command-reference", macos: "pfctl-command-reference", windows: "windows-firewall-command-reference" };
+        var base = docMap[currentPlatform] || "iptables-command-reference";
+        var f = base + '.' + currentLang + '.html';
+        logger.debug('載入命令文件', f);
+        $.get('/docs/' + f, function (html) {
+          layer.open({
+            title: i18n[currentLang].docLabel || 'Command Reference',
+            content: '<div style="max-height:70vh;overflow-y:auto;padding:.5rem">' + html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<link[\s\S]*?>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '') + '</div>',
+            area: ['860px', '80vh'],
+            btn: [i18n[currentLang].btnOk || 'OK']
+          });
+          logger.debug('命令文件已載入', f);
+        }).fail(function () {
+          // fallback to default language (zh)
+          $.get('/docs/' + base + '.zh.html', function (html) {
+            layer.open({
+              title: i18n[currentLang].docLabel || 'Command Reference',
+              content: '<div style="max-height:70vh;overflow-y:auto;padding:.5rem">' + html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<link[\s\S]*?>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '') + '</div>',
+              area: ['860px', '80vh'],
+              btn: [i18n[currentLang].btnOk || 'OK']
+            });
+          });
+        });
+      });
+
+      // ─── API object ───
+      const ipt = {
+        listRule(t, c, done) { $.post("/listRule", { table: t, chain: c, protocol: currentProtocol }, r => { logger.debug('規則列表已收到', (r.data ? (r.data.system ? r.data.system.length + ' 系統鏈' : '') + (r.data.custom ? ', ' + r.data.custom.length + ' 自定義鏈' : '') : '')); done(r); }, "json"); },
+        flushRule(t, c, done) {
+          const lang = i18n[currentLang];
+          const msg = lang.clearConfirmPrefix + (t ? ' ' + t + ' ' + lang.tableWord : '') + (!c ? lang.allRulesSuffix : ' ' + c + lang.chainRulesSuffix);
+          layer.confirm(msg, function () {
+            $.post("/flushRule", { table: t, chain: c, protocol: currentProtocol }, function (r) {
+              if (r.code === 0) { layer.msg(lang.flushRuleSuccess); if (done) done(); return false; }
+              layer.alert(r.msg);
+            }, "json");
+          });
+        },
+        flushMetrics(t, c, id, done) {
+          const lang = i18n[currentLang];
+          const msg = lang.clearConfirmPrefix + (t ? ' ' + t + ' ' + lang.tableWord : '') + (c ? ' ' + c + ' ' + lang.chainWord : '') + (!id ? lang.allMetricsSuffix : lang.ruleMetricsPrefix + id + lang.ruleMetricsSuffix);
+          layer.confirm(msg, function () {
+            $.post("/flushMetrics", { table: t, chain: c, id: id, protocol: currentProtocol }, function (r) {
+              if (r.code === 0) { layer.msg(lang.flushMetricsSuccess); if (done) done(); return false; }
+              layer.alert(r.msg);
+            }, "json");
+          });
+        },
+        deleteRule(t, c, id, done) {
+          const lang = i18n[currentLang];
+          const msg = currentLang === "zh" ? `確認清除 ${t} 表 ${c} 鏈的第 ${id} 條規則？` : currentLang === "ja" ? `${t} テーブル ${c} チェインのルール #${id} を削除しますか？` : `Confirm to clear ${t} table ${c} chain rule #${id}?`;
+          layer.confirm(msg, function () {
+            $.post("/deleteRule", { table: t, chain: c, id: id, protocol: currentProtocol }, function (r) {
+              if (r.code === 0) { layer.msg(lang.flushRuleSuccess); if (done) done(); return false; }
+              layer.alert(r.msg);
+            }, "json");
+          });
+        },
+        getRuleInfo(t, c, id, done) {
+          $.post("/getRuleInfo", { table: t, chain: c, id: id, protocol: currentProtocol }, function (r) {
+            if (r.code !== 0) { layer.alert(r.msg); return false; }
+            done(r.data);
+          }, "json");
+        },
+        exec(args, done) {
+          $.post("/exec", { args: args, protocol: currentProtocol }, function (r) {
+            if (r.code !== 0) { layer.alert(r.msg); return false; }
+            if (done) done(r);
+          }, "json");
+        },
+        listExec(t, c, done) { $.post("/listExec", { table: t, chain: c, protocol: currentProtocol }, r => done(r), "json"); },
+        exportRules(t, c, done) {
+          $.post("/export", { table: t, chain: c, protocol: currentProtocol }, function (r) {
+            if (r.code !== 0) { layer.alert(r.msg); return; }
+            done(r.data);
+          }, "json");
+        },
+        importRules(rl, done) {
+          $.post("/import", { rule: rl, protocol: currentProtocol }, function (r) {
+            if (r.code === 0) { layer.msg(i18n[currentLang].importSuccess); if (done) done(); return false; }
+            layer.alert(r.msg);
+          }, "json");
+        },
+        flushEmptyCustomChain(done) {
+          layer.confirm(i18n[currentLang].clearEmptyPrompt, function () {
+            $.post("/flushEmptyCustomChain", { protocol: currentProtocol }, function (r) {
+              if (r.code === 0) { layer.msg(i18n[currentLang].clearEmptySuccess); if (done) done(); return false; }
+              layer.alert(r.msg);
+            }, "json");
+          });
+        },
+      };
+
+      // ─── Load rules ───
+      function loadListRule(tableName, chainName) {
+        const lang = i18n[currentLang];
+        logger.debug('載入規則列表', (chainName || '全部鏈') + '@' + tableName);
+        ipt.listRule(tableName, chainName || "", function (res) {
+          if (res.code !== 0) { layer.alert(res.msg); return false; }
+          if (!chainName) {
+            const body = $("#table-body").empty();
+            if (res.data.system && res.data.system.length > 0) {
+              body.append(`<h5 class="text-primary mt-0 mb-3"><i class="bx bx-server me-1"></i>${lang.nativeChain}</h5>`);
+              res.data.system.forEach(function (s) { body.append(tableHTML("system", tableName, s)); });
+            }
+            if (res.data.custom && res.data.custom.length > 0) {
+              body.append(`<hr><h5 class="text-primary mb-3"><i class="bx bx-git-branch me-1"></i>${lang.customChain}</h5>`);
+              res.data.custom.forEach(function (c) { body.append(tableHTML("custom", tableName, c)); });
+            }
+            renderDocContent();
+          } else {
+            const el = $("#" + chainName.replace(/\s/g, '_'));
+            if (res.data[el.data("type")] && res.data[el.data("type")].length > 0) {
+              el.html($(buildTableHTML(chainName, tableName, res.data[el.data("type")][0], el.data("type"))).html());
+            }
+          }
+        });
+      }
+
+      // ─── Load initial ───
+      const initialTable = currentTableName();
+      loadListRule(initialTable);
+      renderDocContent();
+
+      // ─── Tab switch ───
+      $(document).on("shown.bs.tab", ".iptables-table .nav-link", function () {
+        const t = $(this).attr("id").replace("tab-", "");
+        logger.debug('切換表格', t);
+        loadListRule(t);
+      });
+
+      // ─── Chain action handlers ───
+      $(document).on("click", ".chain-reload", function () {
+        const t = $(this).data("table"), c = $(this).data("chain");
+        logger.debug('重新載入鏈', c + '@' + t);
+        loadListRule(t, c);
+      });
+      $(document).on("click", ".chain-insert", function () {
+        const t = $(this).data("table"), c = $(this).data("chain");
+        const prefix = chainCommandPrefix(t, c, "-I");
+        execView(t("insertRuleTitle"), prefix, i18n[currentLang].rulePlaceholder, "", function (val) {
+          const cmd = chainExecArgsStr(t, c, "-I", val);
+          logger.info('插入規則', c + '@' + t, prefix + ' ' + val);
+          ipt.exec(cmd, function () { loadListRule(t, c, false); layer.msg(i18n[currentLang].insertSuccess); logger.debug('插入規則完成'); });
+        });
+      });
+      $(document).on("click", ".chain-append", function () {
+        const t = $(this).data("table"), c = $(this).data("chain");
+        const prefix = chainCommandPrefix(t, c, "-A");
+        execView(t("appendRuleTitle"), prefix, i18n[currentLang].rulePlaceholder, "", function (val) {
+          const cmd = chainExecArgsStr(t, c, "-A", val);
+          logger.info('追加規則', c + '@' + t, prefix + ' ' + val);
+          ipt.exec(cmd, function () { loadListRule(t, c, false); layer.msg(i18n[currentLang].appendSuccess); logger.debug('追加規則完成'); });
+        });
+      });
+      $(document).on("click", ".chain-flush", function () {
+        const t = $(this).data("table"), c = $(this).data("chain");
+        logger.info('清空鏈規則', c + '@' + t);
+        ipt.flushRule(t, c, function () { loadListRule(t, c); logger.debug('清空鏈規則完成', c + '@' + t); });
+      });
+      $(document).on("click", ".chain-flush-metrics", function () {
+        const t = $(this).data("table"), c = $(this).data("chain");
+        logger.info('清空鏈計數', c + '@' + t);
+        ipt.flushMetrics(t, c, "", function () { loadListRule(t, c); logger.debug('清空鏈計數完成', c + '@' + t); });
+      });
+      $(document).on("click", ".flush-metrics", function () {
+        const t = $(this).data("table"), c = $(this).data("chain"), id = $(this).data("id");
+        logger.info('清零規則計數', c + '@' + t + '#' + id);
+        ipt.flushMetrics(t, c, id, function () { loadListRule(t, c); logger.debug('清零規則計數完成', '#' + id); });
+      });
+      $(document).on("click", ".chain-exec", function () {
+        const t = $(this).data("table"), c = $(this).data("chain");
+        logger.debug('檢視鏈命令', c + '@' + t);
+        ipt.listExec(t, c, function (res) {
+          layer.open({ title: t + " · " + c, content: `<pre class="modal-pre">${res.data || ''}</pre>`, btn: [i18n[currentLang].btnOk], area: ["auto", "400px"] });
+        });
+      });
+      $(document).on("click", "tbody>tr>td:first-child", function () {
+        const btn = $(this).parent().find(".delete-rule");
+        const t = btn.data("table"), c = btn.data("chain"), id = btn.data("id");
+        logger.debug('編輯規則請求', c + '@' + t + '#' + id);
+        ipt.getRuleInfo(t, c, id, function (info) {
+          info = info.replace("-A ", "-R ").replace(c, c + " " + id + " ");
+          const editTitle = currentLang === "zh" ? `修改 ${t}表, ${c}鏈, 第${id}條規則` : currentLang === "ja" ? `${t} テーブル, ${c} チェイン, ルール #${id} を編集` : `Edit ${t} table, ${c} chain, rule #${id}`;
+          execView(editTitle, currentCommandBinary() + " -t " + t, "", info, function (val) {
+            const cmd = currentPlatform !== "linux" ? val : "-t " + t + " " + val;
+            logger.info('修改規則', c + '@' + t + '#' + id, currentCommandBinary() + ' ' + cmd);
+            ipt.exec(cmd, function () { loadListRule(t, c); layer.msg(i18n[currentLang].updateSuccess); logger.debug('修改規則完成'); });
+          });
+        });
+      });
+      $(document).on("click", ".delete-rule", function () {
+        const t = $(this).data("table"), c = $(this).data("chain"), id = $(this).data("id");
+        logger.info('刪除規則', c + '@' + t + '#' + id);
+        ipt.deleteRule(t, c, id, function () { loadListRule(t, c); logger.debug('刪除規則完成', '#' + id); });
+      });
+
+      // ─── Global action buttons ───
+      $("#clear-all-rule").click(function () {
+        logger.info('清空所有表規則');
+        ipt.flushRule("", "", function () { loadListRule(currentTableName()); logger.debug('清空所有表規則完成'); });
+      });
+      $("#clear-current-table-rule").click(function () {
+        const tn = currentTableName();
+        logger.info('清空當前表規則', tn);
+        ipt.flushRule(tn, "", function () { loadListRule(tn); logger.debug('清空當前表規則完成', tn); });
+      });
+      $("#export-all-rule").click(function () {
+        const lang = i18n[currentLang];
+        logger.info('導出規則');
+        ipt.exportRules("", "", function (data) {
+          layer.open({
+            title: lang.exportDialogTitle, content: `<pre class="modal-pre">${data || ''}</pre>`,
+            btn: [lang.btnCopy, lang.btnDownload, lang.btnOk], area: ["auto", "500px"],
+            btn1() { copyText($, data); layer.msg(lang.copySuccess, { icon: 1 }); logger.debug('規則已複製'); },
+            btn2() {
+              $("#createInvote").attr("href", "data:text/plain;charset=utf-8," + encodeURIComponent(data)).attr("download", "fw-rules.txt").get(0).click();
+              logger.debug('規則已下載');
+            },
+            btn3(i) { _hideModal(); }
+          });
+          logger.debug('導出規則完成');
+        });
+      });
+      $("#import-all-rule").click(function () {
+        logger.info('導入規則');
+        layer.prompt({ title: t("importPromptTpl"), value: "" }, function (value) {
+          logger.debug('正在導入規則…');
+          ipt.importRules(value, function () { loadListRule(currentTableName()); logger.debug('導入規則完成'); });
+        });
+      });
+      $("#clear-all-metrics").click(function () {
+        logger.info('清零所有表計數');
+        ipt.flushMetrics("", "", "", function () { loadListRule(currentTableName()); logger.debug('清零所有表計數完成'); });
+      });
+      $("#clear-current-table-metrics").click(function () {
+        const tn = currentTableName();
+        logger.info('清零當前表計數', tn);
+        ipt.flushMetrics(tn, "", "", function () { loadListRule(tn); logger.debug('清零當前表計數完成', tn); });
+      });
+      $("#clear-all-empty-chain").click(function () {
+        logger.info('清空自定義空鏈');
+        ipt.flushEmptyCustomChain(function () { loadListRule(currentTableName()); logger.debug('清空自定義空鏈完成'); });
+      });
+      $("#exec-iptables").click(function () {
+        execView(t("execCommandTitleTpl"), fwDisplayName(), i18n[currentLang].inputCommand, "", function (val) {
+          logger.info('執行命令', val);
+          ipt.exec(val, function (res) {
+            if (res.data) {
+              layer.open({ title: i18n[currentLang].commandSuccess, content: `<pre class="modal-pre">${res.data}</pre>`, btn: [i18n[currentLang].btnOk] });
+            } else { layer.msg(i18n[currentLang].commandSuccess); }
+            logger.debug('命令執行完成');
+          });
+        });
+      });
+      $("#self-iptables").click(function () {
+        const t = currentTableName();
+        logger.debug('檢視當前表命令', t);
+        ipt.listExec(t, "", function (res) {
+          layer.open({ title: fwDisplayName() + " " + i18n[currentLang].tableLabel + ": " + t, content: `<pre class="modal-pre">${res.data || ''}</pre>`, btn: [i18n[currentLang].btnOk] });
+        });
+      });
+      $("#open-iptables-doc").click(function () {
+        var docMap = { linux: "iptables-command-reference", macos: "pfctl-command-reference", windows: "windows-firewall-command-reference" };
+        var base = docMap[currentPlatform] || "iptables-command-reference";
+        var f = base + '.' + currentLang + '.html';
+        $.get('/docs/' + f, function (html) {
+          layer.open({
+            title: i18n[currentLang].doc || 'Command Reference',
+            content: '<div style="max-height:70vh;overflow-y:auto;padding:.5rem">' + html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<link[\s\S]*?>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '') + '</div>',
+            area: ['860px', '80vh'],
+            btn: [i18n[currentLang].btnOk || 'OK']
+          });
+        }).fail(function () {
+          $.get('/docs/' + base + '.zh.html', function (html) {
+            layer.open({
+              title: i18n[currentLang].doc || 'Command Reference',
+              content: '<div style="max-height:70vh;overflow-y:auto;padding:.5rem">' + html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<link[\s\S]*?>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '') + '</div>',
+              area: ['860px', '80vh'],
+              btn: [i18n[currentLang].btnOk || 'OK']
+            });
+          });
+        });
+      });
+      $("#language-toggle").click(function () {
+        var idx = langOrder.indexOf(currentLang);
+        var next = langOrder[(idx + 1) % langOrder.length];
+        logger.debug('切換語言', next);
+        setLanguage(next);
+      });
+    });
+
+    // ─── Helpers ───
+    function tableHTML(type, tableName, data) {
+      const lang = i18n[currentLang];
+      const chainId = (data.title && data.title.chain || '').replace(/\s/g, '_');
+      const title = type === "system"
+        ? `${lang.chainLabel}: ${data.title.chain} &nbsp; ${lang.defaultPolicy}: ${data.title.policy} &nbsp; ${lang.packets}: ${data.title.packets} &nbsp; ${lang.bytes}: ${data.title.bytes}`
+        : `${lang.chainLabel}: ${data.title.chain} &nbsp; ${lang.references}: ${data.title.references}`;
+      let rows = '';
+      (data.list || []).forEach(function (r) {
+        rows += `<tr>
+          <td class="num-cell" data-table="${tableName}" data-chain="${data.title.chain}" data-id="${r.num}">${r.num}</td>
+          <td>${r.pkts}</td><td>${r.bytes}</td><td>${r.target}</td><td>${r.prot}</td><td>${r.opt}</td>
+          <td>${r.in || ''}</td><td>${r.out || ''}</td><td>${r.source}</td><td>${r.destination}</td><td class="text-truncate" style="max-width:200px">${r.action}</td>
+          <td><div class="btn-group btn-group-xs chain-actions">
+            <button class="btn btn-outline-info flush-metrics" data-table="${tableName}" data-chain="${data.title.chain}" data-id="${r.num}">${lang.zero}</button>
+            <button class="btn btn-outline-danger delete-rule" data-table="${tableName}" data-chain="${data.title.chain}" data-id="${r.num}">${lang.delete}</button>
+          </div></td></tr>`;
+      });
+      return `<div class="card mb-4 chain-block" id="${chainId}" data-type="${type}">
+        <div class="card-header py-2"><strong>${title}</strong></div>
+        <div class="card-body p-2">
+          <div class="mb-2 chain-actions" data-table="${tableName}" data-chain="${data.title.chain}">
+            <button class="btn btn-primary btn-sm chain-insert">${lang.insert}</button>
+            <button class="btn btn-outline-primary btn-sm chain-append">${lang.append}</button>
+            <button class="btn btn-outline-warning btn-sm chain-flush-metrics">${lang.zeroCounters}</button>
+            <button class="btn btn-outline-danger btn-sm chain-flush">${lang.clearChain}</button>
+            <button class="btn btn-outline-secondary btn-sm chain-reload">${lang.refresh}</button>
+            <button class="btn btn-outline-info btn-sm chain-exec">${lang.viewCmd}</button>
+          </div>
+          <div class="table-responsive"><table class="table table-sm table-bordered table-hover rule-table mb-0">
+            <thead class="table-light"><tr>
+              <th>num</th><th>pkts</th><th>bytes</th><th>target</th><th>prot</th><th>opt</th>
+              <th>in</th><th>out</th><th>source</th><th>destination</th><th>action</th><th></th>
+            </tr></thead><tbody>${rows}</tbody></table></div>
+        </div></div>`;
+    }
+
+    function renderDocContent() {
+      const isLinux = currentPlatform === 'linux';
+      const isMac = currentPlatform === 'macos';
+      const isWin = currentPlatform === 'windows';
+      const cmd = fwDisplayName();
+      let html = '';
+      if (isLinux) {
+        html += `<div class="doc-section">
+          <div class="doc-section-title">語法</div>
+          <div class="doc-inline"><code>${cmd} -t TABLE -[A|I|D|F|L] CHAIN [match] -j TARGET</code></div>
+        </div>
+        <hr class="doc-divider">
+        <div class="doc-section">
+          <div class="doc-section-title">常用命令</div>
+          <span class="doc-code">${cmd} -L -n -v --line-numbers</span>
+          <span class="doc-code">${cmd} -A INPUT -p tcp --dport 22 -j ACCEPT</span>
+          <span class="doc-code">${cmd} -I INPUT 5 -s 10.0.0.0/8 -j DROP</span>
+          <span class="doc-code">${cmd} -D INPUT 3</span>
+          <span class="doc-code">${cmd} -F INPUT</span>
+          <span class="doc-code">${cmd} -t nat -L -n -v</span>
+        </div>
+        <hr class="doc-divider">
+        <div class="doc-section">
+          <div class="doc-section-title">參數速查</div>
+          <div class="doc-inline">
+            <code>-t</code> 表名(raw|mangle|nat|filter)<br>
+            <code>-A</code> 追加 <code>-I</code> 插入 <code>-D</code> 刪除<br>
+            <code>-F</code> 清空 <code>-Z</code> 歸零 <code>-P</code> 默認策略<br>
+            <code>-p</code> 協議 <code>--dport</code> 目標埠<br>
+            <code>-s</code> 來源IP <code>-d</code> 目標IP<br>
+            <code>-j</code> 動作(ACCEPT|DROP|REJECT|LOG)
+          </div>
+        </div>`;
+      } else if (isMac) {
+        html += `<div class="doc-section">
+          <div class="doc-section-title">語法</div>
+          <div class="doc-inline"><code>pfctl -[s|a|f] [options]</code></div>
+        </div>
+        <hr class="doc-divider">
+        <div class="doc-section">
+          <div class="doc-section-title">常用命令</div>
+          <span class="doc-code">pfctl -s rules -v</span>
+          <span class="doc-code">pfctl -s all</span>
+          <span class="doc-code">pfctl -f /etc/pf.conf</span>
+          <span class="doc-code">pfctl -e</span>
+          <span class="doc-code">pfctl -d</span>
+        </div>
+        <hr class="doc-divider">
+        <div class="doc-section">
+          <div class="doc-section-title">注意</div>
+          <div class="doc-inline">macOS pfctl 不支援按行號刪除規則，僅能透過編輯設定檔重新載入。</div>
+        </div>`;
+      } else if (isWin) {
+        html += `<div class="doc-section">
+          <div class="doc-section-title">語法</div>
+          <div class="doc-inline"><code>PowerShell NetSecurity Cmdlet</code></div>
+        </div>
+        <hr class="doc-divider">
+        <div class="doc-section">
+          <div class="doc-section-title">常用命令</div>
+          <span class="doc-code">Get-NetFirewallRule</span>
+          <span class="doc-code">New-NetFirewallRule -DisplayName "Name" -Direction Inbound -Action Allow</span>
+          <span class="doc-code">Remove-NetFirewallRule -DisplayName "Name"</span>
+        </div>`;
+      }
+      $('#docDropdownMenu').html(html);
+    }
+
+    function execView(title, prefix, placeholder, val, confirmCb) {
+      const lang = i18n[currentLang];
+      layer.open({
+        title: title, area: ["auto", "auto"],
+        content: `<div class="row"><div class="mb-3"><label class="form-label fw-semibold">${prefix}</label><input type="text" class="form-control font-monospace" placeholder="${placeholder}" value="${val.replace(/"/g,'&quot;')}"></div></div>`,
+        btn: [lang.confirm, lang.cancel],
+        btn1(idx, layero) { confirmCb($(layero).find("input").val()); _hideModal(); },
+        btn2() { _hideModal(); }
+      });
+    }
+
+    function copyText($, str) {
+      $("#copy").text(str).show();
+      document.getElementById("copy").select();
+      document.execCommand("copy", false, null);
+      $("#copy").hide();
+    }
+
+    // Re-init menu after DOM ready
+    document.addEventListener('DOMContentLoaded', function () {
+      if (typeof Menu !== 'undefined') {
+        const el = document.querySelector('#layout-menu');
+        if (el) new Menu(el, { orientation: 'vertical', closeChildren: false });
+      }
+    });
+  </script>
+</body>
+</html>

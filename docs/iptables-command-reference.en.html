@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>iptables Command Reference</title>
+    <style>
+      :root {
+        --bg: #f7f9fc;
+        --card: #ffffff;
+        --primary: #1e9fff;
+        --text: #2b2b2b;
+        --muted: #5f6673;
+        --border: #e3e7ef;
+        --code-bg: #0f172a;
+        --code-text: #e2e8f0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        margin: 0;
+        padding: 30px 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.7;
+      }
+      .container {
+        max-width: 900px;
+        margin: auto;
+        padding: 0 20px 40px;
+      }
+      h1,
+      h2,
+      h3 {
+        color: var(--primary);
+        margin-top: 32px;
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 2.2rem;
+      }
+      h2 {
+        font-size: 1.6rem;
+      }
+      h3 {
+        font-size: 1.2rem;
+      }
+      p,
+      li {
+        color: var(--muted);
+      }
+      ul {
+        padding-left: 20px;
+      }
+      code {
+        font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+        background: rgba(30, 159, 255, 0.08);
+        padding: 0 4px;
+        border-radius: 4px;
+        color: var(--primary);
+      }
+      pre {
+        background: var(--code-bg);
+        color: var(--code-text);
+        padding: 16px;
+        border-radius: 10px;
+        overflow: auto;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+      th,
+      td {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+      }
+      th {
+        background: rgba(30, 159, 255, 0.08);
+        color: var(--primary);
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      .card {
+        background: var(--card);
+        padding: 24px;
+        border-radius: 16px;
+        margin-bottom: 24px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>iptables Command Reference</h1>
+        <p>
+          This document covers common <code>iptables</code>/<code>ip6tables</code> commands,
+          parameter explanations, and typical usage scenarios on Linux,
+          making it easy for beginners to look up and practice.
+        </p>
+        <h2>1. Basic Concepts</h2>
+        <ul>
+          <li>
+            <strong>Table</strong>: Categorized by function. Common tables include
+            <code>raw</code> (before connection tracking), <code>mangle</code>
+            (packet modification), <code>nat</code> (address translation), and
+            <code>filter</code> (packet filtering).
+          </li>
+          <li>
+            <strong>Chain</strong>: The processing path for packets within each table,
+            e.g. <code>INPUT</code>, <code>OUTPUT</code>, <code>FORWARD</code>,
+            <code>PREROUTING</code>, <code>POSTROUTING</code>.
+            User-defined chains can be created.
+          </li>
+          <li>
+            <strong>Rule</strong>: Consists of matching conditions and a target action.
+            Rules are evaluated top-down.
+          </li>
+          <li>
+            <strong>Target</strong>: The action, e.g. <code>ACCEPT</code>, <code>DROP</code>,
+            <code>REJECT</code>, <code>LOG</code>, <code>SNAT</code>, <code>DNAT</code>, etc.
+          </li>
+        </ul>
+        <p>
+          IPv6 uses the <code>ip6tables</code> command; its syntax is nearly identical
+          to IPv4, with only differences in address/module support.
+        </p>
+        <h2>2. Command Structure</h2>
+        <pre><code>iptables [-t table] COMMAND [chain] [match-conditions] [-j target]</code></pre>
+        <p>Common global options:</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Option</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>-t</code></td>
+              <td>Specify the table; defaults to <code>filter</code>.</td>
+            </tr>
+            <tr>
+              <td><code>-L</code></td>
+              <td>List chain rules. Use with <code>-n</code>, <code>-v</code>, <code>--line-numbers</code>.</td>
+            </tr>
+            <tr>
+              <td><code>-A</code> / <code>-I</code> / <code>-D</code> / <code>-R</code></td>
+              <td>Append, insert, delete, replace.</td>
+            </tr>
+            <tr>
+              <td><code>-F</code> / <code>-Z</code> / <code>-X</code></td>
+              <td>Flush rules, zero counters, delete user-defined chains.</td>
+            </tr>
+            <tr>
+              <td><code>-P</code></td>
+              <td>Set the default policy for a chain (built-in chains only).</td>
+            </tr>
+            <tr>
+              <td><code>-j</code></td>
+              <td>Specify the target action.</td>
+            </tr>
+            <tr>
+              <td><code>-m</code></td>
+              <td>Enable match modules, e.g. <code>state</code>/<code>conntrack</code>/<code>limit</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+        <h2>3. Common Commands Quick Reference</h2>
+        <h3>3.1 View Existing Rules</h3>
+        <pre><code>iptables -L -n -v --line-numbers
+iptables -t nat -L -n -v
+ip6tables -t filter -L INPUT -n</code></pre>
+        <h3>3.2 Set Default Policy</h3>
+        <pre><code>iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT</code></pre>
+        <h3>3.3 Allow SSH / Web Ports</h3>
+        <pre><code>iptables -A INPUT -p tcp --dport 22 -s 10.0.0.0/24 -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p tcp --sport 22 -m state --state ESTABLISHED -j ACCEPT
+iptables -A INPUT -p tcp --dport 80 -m state --state NEW -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -m state --state NEW -j ACCEPT</code></pre>
+        <h3>3.4 Reject or Rate-Limit Traffic</h3>
+        <pre><code>iptables -A INPUT -p tcp --dport 25 -j REJECT --reject-with icmp-port-unreachable
+iptables -A INPUT -p tcp --dport 22 -m state --state NEW -m recent --set --name SSH
+iptables -A INPUT -p tcp --dport 22 -m state --state NEW -m recent --update --seconds 60 --hitcount 5 --name SSH -j DROP</code></pre>
+        <h3>3.5 NAT / Port Forwarding</h3>
+        <pre><code># LAN access to Internet via SNAT
+iptables -t nat -A POSTROUTING -s 192.168.0.0/24 -o eth0 -j SNAT --to-source 203.0.113.10
+# Dynamic address (e.g. PPPoE) can use MASQUERADE
+iptables -t nat -A POSTROUTING -s 10.10.0.0/16 -o ppp0 -j MASQUERADE
+
+# DNAT: forward external traffic to an internal host
+iptables -t nat -A PREROUTING -d 203.0.113.10/32 -p tcp --dport 2222 -j DNAT --to-destination 192.168.0.10:22
+iptables -A FORWARD -p tcp -d 192.168.0.10 --dport 22 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -p tcp -s 192.168.0.10 --sport 22 -m state --state ESTABLISHED -j ACCEPT</code></pre>
+        <h3>3.6 Transparent Proxy / Port Redirection</h3>
+        <pre><code># Redirect traffic on port 80 to local port 8080 (e.g. HTTP proxy)
+iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-ports 8080</code></pre>
+        <h3>3.7 Logging and Rate Limiting</h3>
+        <pre><code>iptables -A INPUT -p tcp --dport 22 -m limit --limit 3/min -j LOG --log-prefix "SSH attempt: "
+iptables -A INPUT -p icmp -m limit --limit 1/s --limit-burst 5 -j ACCEPT
+iptables -A INPUT -p icmp -j DROP</code></pre>
+        <h3>3.8 Save and Restore</h3>
+        <pre><code>iptables-save > /etc/iptables/rules.v4
+ip6tables-save > /etc/iptables/rules.v6
+iptables-restore < /etc/iptables/rules.v4
+ip6tables-restore < /etc/iptables/rules.v6</code></pre>
+        <h2>4. Scenario Examples</h2>
+        <h3>Scenario A: Allow SSH Only from a Specific Subnet</h3>
+        <pre><code>iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -p tcp --dport 22 -s 192.168.1.0/24 -m state --state NEW -j ACCEPT
+iptables -A INPUT -j LOG --log-prefix "DROP INPUT: "</code></pre>
+        <h3>Scenario B: Dual-NIC Gateway SNAT and Firewall</h3>
+        <pre><code># Enable kernel IP forwarding
+sysctl -w net.ipv4.ip_forward=1
+
+# NAT on the public interface
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
+# Forward policy
+iptables -A FORWARD -i eth1 -o eth0 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -i eth0 -o eth1 -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Block external-initiated access to internal network
+iptables -A FORWARD -i eth0 -o eth1 -j DROP</code></pre>
+        <h3>Scenario C: IPv6 Inbound Only Allow Ports 80/443</h3>
+        <pre><code>ip6tables -P INPUT DROP
+ip6tables -P FORWARD DROP
+ip6tables -P OUTPUT ACCEPT
+ip6tables -A INPUT -i lo -j ACCEPT
+ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
+ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT</code></pre>
+        <h3>Scenario D: Limit Concurrent Connections per IP</h3>
+        <pre><code>iptables -A INPUT -p tcp --syn --dport 80 -m connlimit --connlimit-above 50 --connlimit-mask 32 -j REJECT</code></pre>
+        <h2>5. Troubleshooting Tips</h2>
+        <ol>
+          <li>
+            <strong>Conflict with nftables</strong>: Check whether <code>iptables-nft</code>
+            is in use; install <code>iptables-legacy</code> if needed.
+          </li>
+          <li>
+            <strong>Missing kernel modules</strong>: For errors like <code>-m conntrack</code>,
+            load the <code>nf_conntrack</code> module or install the corresponding package.
+          </li>
+          <li>
+            <strong>Rule ordering</strong>: Rules are matched top-down. Use
+            <code>--line-numbers</code> to view ordering and adjust with
+            <code>-I</code>/<code>-R</code>.
+          </li>
+          <li>
+            <strong>Debugging</strong>: Use the <code>LOG</code> target to output messages
+            to <code>dmesg</code>/<code>/var/log/messages</code>.
+          </li>
+          <li>
+            <strong>Persistence</strong>: Use <code>iptables-save</code> together with
+            <code>systemd</code>/<code>/etc/rc.local</code> or your distribution's tools.
+          </li>
+        </ol>
+        <h2>6. Further Reading</h2>
+        <ul>
+          <li><code>man iptables</code> / <code>man ip6tables</code></li>
+          <li><code>man iptables-extensions</code></li>
+          <li>Netfilter.org official documentation</li>
+        </ul>
+        <p>
+          Combined with iptables-web, you can execute the above commands in a GUI,
+          observe their effects, and quickly export/import rules, lowering the learning curve.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

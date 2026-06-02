@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>iptables コマンドリファレンス</title>
+    <style>
+      :root {
+        --bg: #f7f9fc;
+        --card: #ffffff;
+        --primary: #1e9fff;
+        --text: #2b2b2b;
+        --muted: #5f6673;
+        --border: #e3e7ef;
+        --code-bg: #0f172a;
+        --code-text: #e2e8f0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        margin: 0;
+        padding: 30px 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.7;
+      }
+      .container {
+        max-width: 900px;
+        margin: auto;
+        padding: 0 20px 40px;
+      }
+      h1,
+      h2,
+      h3 {
+        color: var(--primary);
+        margin-top: 32px;
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 2.2rem;
+      }
+      h2 {
+        font-size: 1.6rem;
+      }
+      h3 {
+        font-size: 1.2rem;
+      }
+      p,
+      li {
+        color: var(--muted);
+      }
+      ul {
+        padding-left: 20px;
+      }
+      code {
+        font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+        background: rgba(30, 159, 255, 0.08);
+        padding: 0 4px;
+        border-radius: 4px;
+        color: var(--primary);
+      }
+      pre {
+        background: var(--code-bg);
+        color: var(--code-text);
+        padding: 16px;
+        border-radius: 10px;
+        overflow: auto;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+      th,
+      td {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+      }
+      th {
+        background: rgba(30, 159, 255, 0.08);
+        color: var(--primary);
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      .card {
+        background: var(--card);
+        padding: 24px;
+        border-radius: 16px;
+        margin-bottom: 24px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>iptables コマンドリファレンス</h1>
+        <p>
+          Linux 環境における <code>iptables</code>/<code>ip6tables</code>
+          の一般的なコマンド、パラメーターの説明、および典型的な使用シナリオをまとめました。
+          初心者でもすぐに調べて実践できることを目的としています。
+        </p>
+        <h2>1. 基本概念</h2>
+        <ul>
+          <li>
+            <strong>テーブル（Table）</strong>：機能ごとに分類されます。
+            代表的なテーブルとして <code>raw</code>（コネクショントラッキング前）、
+            <code>mangle</code>（パケット変更）、<code>nat</code>（アドレス変換）、
+            <code>filter</code>（パケットフィルタリング）があります。
+          </li>
+          <li>
+            <strong>チェイン（Chain）</strong>：各テーブル内でのパケット処理経路です。
+            <code>INPUT</code>、<code>OUTPUT</code>、<code>FORWARD</code>、
+            <code>PREROUTING</code>、<code>POSTROUTING</code> などがあります。
+            ユーザー定義チェインを作成することも可能です。
+          </li>
+          <li>
+            <strong>ルール（Rule）</strong>：マッチ条件とターゲットアクションから構成され、
+            上から順に評価されます。
+          </li>
+          <li>
+            <strong>ターゲット（Target）</strong>：アクションのことです。
+            <code>ACCEPT</code>、<code>DROP</code>、<code>REJECT</code>、
+            <code>LOG</code>、<code>SNAT</code>、<code>DNAT</code> などがあります。
+          </li>
+        </ul>
+        <p>
+          IPv6 では <code>ip6tables</code> コマンドを使用します。構文は
+          IPv4 とほぼ同じですが、アドレスやモジュールのサポートに一部差異があります。
+        </p>
+        <h2>2. コマンド構造</h2>
+        <pre><code>iptables [-t テーブル] COMMAND [チェイン] [マッチ条件] [-j ターゲット]</code></pre>
+        <p>主なグローバルオプション：</p>
+        <table>
+          <thead>
+            <tr>
+              <th>オプション</th>
+              <th>説明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>-t</code></td>
+              <td>テーブルを指定します。デフォルトは <code>filter</code>。</td>
+            </tr>
+            <tr>
+              <td><code>-L</code></td>
+              <td>チェインのルール一覧を表示。<code>-n</code>、<code>-v</code>、<code>--line-numbers</code> と併用。</td>
+            </tr>
+            <tr>
+              <td><code>-A</code> / <code>-I</code> / <code>-D</code> / <code>-R</code></td>
+              <td>追加、挿入、削除、置換。</td>
+            </tr>
+            <tr>
+              <td><code>-F</code> / <code>-Z</code> / <code>-X</code></td>
+              <td>ルールのフラッシュ、カウンターのゼロクリア、ユーザー定義チェインの削除。</td>
+            </tr>
+            <tr>
+              <td><code>-P</code></td>
+              <td>チェインのデフォルトポリシーを設定（ビルトインチェインのみ）。</td>
+            </tr>
+            <tr>
+              <td><code>-j</code></td>
+              <td>ターゲットアクションを指定。</td>
+            </tr>
+            <tr>
+              <td><code>-m</code></td>
+              <td>マッチモジュールを有効化。例：<code>state</code>/<code>conntrack</code>/<code>limit</code>。</td>
+            </tr>
+          </tbody>
+        </table>
+        <h2>3. コマンド早見表</h2>
+        <h3>3.1 既存ルールの確認</h3>
+        <pre><code>iptables -L -n -v --line-numbers
+iptables -t nat -L -n -v
+ip6tables -t filter -L INPUT -n</code></pre>
+        <h3>3.2 デフォルトポリシーの設定</h3>
+        <pre><code>iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT</code></pre>
+        <h3>3.3 SSH / Web ポートの許可</h3>
+        <pre><code>iptables -A INPUT -p tcp --dport 22 -s 10.0.0.0/24 -m state --state NEW,ESTABLISHED -j ACCEPT
+iptables -A OUTPUT -p tcp --sport 22 -m state --state ESTABLISHED -j ACCEPT
+iptables -A INPUT -p tcp --dport 80 -m state --state NEW -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -m state --state NEW -j ACCEPT</code></pre>
+        <h3>3.4 トラフィックの拒否／レート制限</h3>
+        <pre><code>iptables -A INPUT -p tcp --dport 25 -j REJECT --reject-with icmp-port-unreachable
+iptables -A INPUT -p tcp --dport 22 -m state --state NEW -m recent --set --name SSH
+iptables -A INPUT -p tcp --dport 22 -m state --state NEW -m recent --update --seconds 60 --hitcount 5 --name SSH -j DROP</code></pre>
+        <h3>3.5 NAT / ポートフォワーディング</h3>
+        <pre><code># 内部ネットワークからインターネットアクセス（SNAT）
+iptables -t nat -A POSTROUTING -s 192.168.0.0/24 -o eth0 -j SNAT --to-source 203.0.113.10
+# 動的アドレス環境（PPPoE 等）では MASQUERADE を使用
+iptables -t nat -A POSTROUTING -s 10.10.0.0/16 -o ppp0 -j MASQUERADE
+
+# DNAT：外部トラフィックを内部ホストに転送
+iptables -t nat -A PREROUTING -d 203.0.113.10/32 -p tcp --dport 2222 -j DNAT --to-destination 192.168.0.10:22
+iptables -A FORWARD -p tcp -d 192.168.0.10 --dport 22 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -p tcp -s 192.168.0.10 --sport 22 -m state --state ESTABLISHED -j ACCEPT</code></pre>
+        <h3>3.6 透過プロキシ／ポートリダイレクト</h3>
+        <pre><code># ポート 80 へのトラフィックをローカルのポート 8080 にリダイレクト（HTTP プロキシ等）
+iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-ports 8080</code></pre>
+        <h3>3.7 ログ記録とレート制限</h3>
+        <pre><code>iptables -A INPUT -p tcp --dport 22 -m limit --limit 3/min -j LOG --log-prefix "SSH attempt: "
+iptables -A INPUT -p icmp -m limit --limit 1/s --limit-burst 5 -j ACCEPT
+iptables -A INPUT -p icmp -j DROP</code></pre>
+        <h3>3.8 保存と復元</h3>
+        <pre><code>iptables-save > /etc/iptables/rules.v4
+ip6tables-save > /etc/iptables/rules.v6
+iptables-restore < /etc/iptables/rules.v4
+ip6tables-restore < /etc/iptables/rules.v6</code></pre>
+        <h2>4. シナリオ例</h2>
+        <h3>シナリオ A：特定サブネットのみ SSH を許可</h3>
+        <pre><code>iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -p tcp --dport 22 -s 192.168.1.0/24 -m state --state NEW -j ACCEPT
+iptables -A INPUT -j LOG --log-prefix "DROP INPUT: "</code></pre>
+        <h3>シナリオ B：デュアル NIC ゲートウェイの SNAT とファイアウォール</h3>
+        <pre><code># カーネル IP フォワーディングを有効化
+sysctl -w net.ipv4.ip_forward=1
+
+# 外部インターフェースで NAT
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
+# フォワードポリシー
+iptables -A FORWARD -i eth1 -o eth0 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -i eth0 -o eth1 -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# 外部からの内部ネットワークへのアクセスをブロック
+iptables -A FORWARD -i eth0 -o eth1 -j DROP</code></pre>
+        <h3>シナリオ C：IPv6 で 80/443 のみ許可</h3>
+        <pre><code>ip6tables -P INPUT DROP
+ip6tables -P FORWARD DROP
+ip6tables -P OUTPUT ACCEPT
+ip6tables -A INPUT -i lo -j ACCEPT
+ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
+ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT</code></pre>
+        <h3>シナリオ D：IP 単位の同時接続数制限</h3>
+        <pre><code>iptables -A INPUT -p tcp --syn --dport 80 -m connlimit --connlimit-above 50 --connlimit-mask 32 -j REJECT</code></pre>
+        <h2>5. トラブルシューティング</h2>
+        <ol>
+          <li>
+            <strong>nftables との競合</strong>：<code>iptables-nft</code>
+            が使用されているか確認し、必要に応じて
+            <code>iptables-legacy</code> をインストールしてください。
+          </li>
+          <li>
+            <strong>カーネルモジュールの欠落</strong>：<code>-m conntrack</code>
+            等のエラーが出る場合、<code>nf_conntrack</code> モジュールを
+            ロードするか、対応するパッケージをインストールしてください。
+          </li>
+          <li>
+            <strong>ルールの順序</strong>：ルールは上から順にマッチします。
+            <code>--line-numbers</code> で順序を確認し、<code>-I</code>/<code>-R</code>
+            で調整してください。
+          </li>
+          <li>
+            <strong>デバッグ</strong>：<code>LOG</code> ターゲットを使用して
+            <code>dmesg</code>/<code>/var/log/messages</code> に出力します。
+          </li>
+          <li>
+            <strong>永続化</strong>：<code>iptables-save</code> と
+            <code>systemd</code>/<code>/etc/rc.local</code> または
+            ディストリビューションのツールを組み合わせて保存します。
+          </li>
+        </ol>
+        <h2>6. 参考資料</h2>
+        <ul>
+          <li><code>man iptables</code> / <code>man ip6tables</code></li>
+          <li><code>man iptables-extensions</code></li>
+          <li>Netfilter.org 公式ドキュメント</li>
+        </ul>
+        <p>
+          iptables-web と組み合わせることで、上記のコマンドを GUI 上で実行し、
+          効果を確認しながらルールのエクスポート／インポートを素早く行え、
+          学習コストを下げることができます。
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

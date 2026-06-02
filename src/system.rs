@@ -165,15 +165,44 @@ pub async fn get_system_info(platform: &str) -> Value {
 }
 
 pub async fn get_interfaces(platform: &str) -> Value {
+    tracing::info!("get_interfaces[windows] called");
     let output = match platform {
-        "macos" => run("ifconfig", &["-l"]).await.unwrap_or_default(),
-        "windows" => run("powershell", &["-Command", "Get-NetAdapter | Select-Object -ExpandProperty Name"]).await.unwrap_or_default(),
-        _ => run("ls", &["/sys/class/net"]).await.unwrap_or_default(),
+        "macos" => {
+            let out = run("ifconfig", &["-l"]).await;
+            match &out {
+                Ok(s) => tracing::info!("get_interfaces[macos]: ifconfig -l → {}", s.trim()),
+                Err(e) => tracing::warn!("get_interfaces[macos] failed: {}", e),
+            }
+            out.unwrap_or_default()
+        }
+        "windows" => {
+            let out = run("powershell", &["-Command", "Get-NetAdapter | Select-Object -ExpandProperty Name"]).await;
+            match &out {
+                Ok(s) => tracing::info!("get_interfaces[windows]: {}", s.trim()),
+                Err(e) => tracing::warn!("get_interfaces[windows] failed: {}", e),
+            }
+            out.unwrap_or_default()
+        }
+        _ => {
+            let mut out = run("ls", &["/sys/class/net"]).await;
+            match &out {
+                Ok(s) => tracing::info!("get_interfaces[linux] /sys/class/net → {}", s.trim()),
+                Err(e) => {
+                    tracing::warn!("get_interfaces[linux] /sys/class/net failed: {}", e);
+                    out = run("ip", &["-o", "link", "show"]).await;
+                    tracing::info!("get_interfaces[linux] ip link → {}", out.as_deref().unwrap_or("(failed)").trim());
+                }
+            }
+            out.unwrap_or_default()
+        }
     };
     let names: Vec<Value> = output.split_whitespace()
         .filter(|s| !s.is_empty())
         .map(|s| Value::String(s.trim().to_string()))
         .collect();
+    if names.is_empty() {
+        tracing::info!("get_interfaces: no interfaces found");
+    }
     Value::Array(names)
 }
 

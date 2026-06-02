@@ -20,9 +20,9 @@
     .kpi-card { cursor: default; }
     .protocol-switch { text-align: center; margin-bottom: 1rem; }
     .protocol-switch label { margin: 0 .75rem; cursor: pointer; }
-    .action-buttons { /*position: fixed; z-index: 999; right: 0; top: 20%; padding-right: .5rem;*/ }
+    .action-buttons { position: fixed; z-index: 999; right: 0; top: 20%; padding-right: .5rem; }
     .action-buttons .btn { margin-bottom: .5rem; width: 130px; text-align: left; font-size: .75rem; }
-    #table-body { padding-right: 7px; }
+    #table-body { padding-right: 145px; }
     .doc-dropdown-menu { min-width: 320px; padding: .75rem 1rem; font-size: .8125rem; }
     .doc-dropdown-menu .doc-section { margin-bottom: .5rem; }
     .doc-dropdown-menu .doc-section-title { font-weight: 600; font-size: .6875rem; color: var(--bs-secondary-color); margin-bottom: .25rem; text-transform: uppercase; letter-spacing: .03em; }
@@ -311,7 +311,7 @@
             </div>
 
             <div id="tablesView">
-              <div class="row" style="padding-right:13px">
+              <div class="row" style="padding-right:145px">
                 <div class="col-12">
                   <ul class="nav nav-tabs nav-fill mb-3 iptables-table" id="tableTabs" role="tablist">
                     <li class="nav-item" role="presentation">
@@ -329,10 +329,10 @@
                   </ul>
                 </div>
               </div>
-              <div style="display: table; width: 100%; table-layout: fixed; position: relative;">
-                <div style="display:table-row">
-                  <div id="table-body" style="display: table-column; vertical-align: top;"></div>
-                  <div class="action-buttons" id="actionButtons" style="display: table-column; width: 145px; padding-left: 1rem; position: absolute; top: 0; right: 0;">
+
+                <div id="table-body"></div>
+
+                <div class="action-buttons" id="actionButtons">
                     <button id="clear-all-rule" class="btn btn-outline-danger btn-sm"><i class="bx bx-trash me-1"></i>清空所有表規則</button><br>
                     <button id="clear-current-table-rule" class="btn btn-outline-warning btn-sm"><i class="bx bx-trash me-1"></i>清空當前表規則</button><br>
                     <button id="clear-all-empty-chain" class="btn btn-outline-secondary btn-sm"><i class="bx bx-x-circle me-1"></i>清空自定義空鏈</button><br>
@@ -343,8 +343,6 @@
                     <button id="export-all-rule" class="btn btn-outline-success btn-sm"><i class="bx bx-export me-1"></i>導出規則</button><br>
                     <button id="import-all-rule" class="btn btn-outline-success btn-sm"><i class="bx bx-import me-1"></i>導入規則</button><br>
                     <button id="open-iptables-doc" class="btn btn-outline-primary btn-sm"><i class="bx bx-book me-1"></i>命令文件</button>
-                  </div>
-                </div>
               </div>
             </div><!-- /tablesView -->
 
@@ -2233,13 +2231,14 @@
       const { title, prefix, val, confirmCb } = opts;
 
       function parseRuleTxt(txt) {
-        const f = { target: '', protocol: '', source: '', destination: '', inIf: '', outIf: '', match: '', dport: '', sport: '', ctstate: [], icmpType: '', rChain: '', rNum: '' };
+        const f = { target: '', protocol: '', source: '', destination: '', inIf: '', outIf: '', match: '', dport: '', sport: '', ctstate: [], icmpType: '', rChain: '', rNum: '', aChain: '' };
         if (!txt) return f;
         const toks = txt.split(/\s+/);
         for (let i = 0; i < toks.length; i++) {
           const t = toks[i];
           if (t === '-R') { f.rChain = toks[i + 1] || ''; f.rNum = toks[i + 2] || '1'; i += 2; continue; }
-          if (t === '-I' || t === '-A') { while (i + 1 < toks.length && !toks[i + 1].startsWith('-')) i++; continue; }
+          if (t === '-A') { f.aChain = toks[i + 1] || ''; i++; continue; }
+          if (t === '-I') { while (i + 1 < toks.length && !toks[i + 1].startsWith('-')) i++; continue; }
           if (t === '-p' || t === '--protocol') { f.protocol = toks[++i] || ''; continue; }
           if (t === '-s' || t === '--source') { f.source = toks[++i] || ''; continue; }
           if (t === '-d' || t === '--destination') { f.destination = toks[++i] || ''; continue; }
@@ -2272,7 +2271,6 @@
       }
 
       const fields = parseRuleTxt(val || '');
-      const defIfOpts = '<option value="">-</option>';
       const ctStates = ['NEW','ESTABLISHED','RELATED','INVALID','SNAT','DNAT'];
       const rChainOpts = ['INPUT','FORWARD','OUTPUT','DOCKER','DOCKER-BRIDGE','DOCKER-CT','DOCKER-FORWARD','DOCKER-INTERNAL','DOCKER-USER',
         'ufw-after-forward','ufw-after-input','ufw-after-logging-forward','ufw-after-logging-input','ufw-after-logging-output','ufw-after-output',
@@ -2285,157 +2283,170 @@
 
       const origVal = val || '';
 
-      const html =
-        '<div style="min-width:560px">' +
-          '<div class="rule-editor-section">' +
-            '<label class="form-label fw-semibold">' + prefix + '</label>' +
-            '<textarea class="form-control rule-editor-preview rule-preview-input" rows="2" style="font-family:monospace">' + (val||'').replace(/"/g,'&quot;') + '</textarea>' +
-            '<div class="d-flex justify-content-end mt-1"><button class="btn btn-outline-info btn-sm rule-parse-btn">🔍 Parsing</button></div>' +
-          '</div>' +
-          '<div class="rule-editor-section">' +
-            '<div class="row g-2">' +
-              '<div class="col-md-6 rule-editor-field"><label>鏈 <code>-R</code></label><select class="form-select field-r-chain"><option value="">-</option>' + rChainOpts.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('') + '</select></div>' +
-              '<div class="col-md-3 rule-editor-field"><label>序號 <code>-R</code></label><input type="number" class="form-control field-r-num" value="1" min="1"></div>' +
-            '</div>' +
-            '<div class="row g-2">' +
-              '<div class="col-md-3 rule-editor-field"><label>協定 <code>-p</code></label><select class="form-select field-protocol"><option value="">-</option><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option><option value="all">all</option></select></div>' +
-              '<div class="col-md-3 rule-editor-field"><label>來源 <code>-s</code></label><input type="text" class="form-control field-source" placeholder="0.0.0.0/0" value="' + fields.source.replace(/"/g,'&quot;') + '"></div>' +
-              '<div class="col-md-3 rule-editor-field"><label>目的 <code>-d</code></label><input type="text" class="form-control field-dest" placeholder="172.18.0.2/32" value="' + fields.destination.replace(/"/g,'&quot;') + '"></div>' +
-              '<div class="col-md-3 rule-editor-field"><label>目標 <code>-j</code></label><select class="form-select field-target"><option value="">-</option><option value="ACCEPT">ACCEPT</option><option value="DROP">DROP</option><option value="REJECT">REJECT</option><option value="RETURN">RETURN</option><option value="LOG">LOG</option><option value="MASQUERADE">MASQUERADE</option><option value="DNAT">DNAT</option><option value="SNAT">SNAT</option><option value="REDIRECT">REDIRECT</option></select></div>' +
-            '</div>' +
-            '<div class="row g-2">' +
-              '<div class="col-md-3 rule-editor-field"><label>入介面 <code>-i</code></label><select class="form-select field-in-if">' + defIfOpts + '</select></div>' +
-              '<div class="col-md-3 rule-editor-field"><label>出介面 <code>-o</code></label><select class="form-select field-out-if">' + defIfOpts + '</select></div>' +
-              '<div class="col-md-3 rule-editor-field"><label>比對模組 <code>-m</code></label><select class="form-select field-match"><option value="">-</option><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option><option value="state">state</option><option value="conntrack">conntrack</option><option value="multiport">multiport</option><option value="mac">mac</option><option value="limit">limit</option><option value="comment">comment</option><option value="addrtype">addrtype</option></select></div>' +
-              '<div class="col-md-3 rule-editor-field"><label>目的埠 <code>--dport</code></label><input type="text" class="form-control field-dport" placeholder="22,80,443" value="' + fields.dport.replace(/"/g,'&quot;') + '"></div>' +
-            '</div>' +
-            '<div class="row g-2">' +
-              '<div class="col-md-6 rule-editor-field"><label>連線狀態 <code>--ctstate</code></label><div class="rule-editor-ctstate">' +
-                ctStates.map(function(s){ return '<label><input type="checkbox" class="field-ctstate" value="' + s + '"' + (fields.ctstate.indexOf(s)>=0?' checked':'') + '> ' + s + '</label>'; }).join('') +
-              '</div></div>' +
-              '<div class="col-md-3 rule-editor-field"><label>ICMP 類型 <code>--icmp-type</code></label><input type="text" class="form-control field-icmp-type" placeholder="echo-request" value="' + fields.icmpType.replace(/"/g,'&quot;') + '"></div>' +
-              '<div class="col-md-3 rule-editor-field"><label>來源埠 <code>--sport</code></label><input type="text" class="form-control field-sport" placeholder="1024:65535" value="' + fields.sport.replace(/"/g,'&quot;') + '"></div>' +
-            '</div>' +
-          '</div>' +
-          '<div class="rule-editor-section">' +
-            '<div class="d-flex align-items-center gap-2 mb-1">' +
-              '<label class="form-label fw-semibold mb-0" style="font-size:.75rem">產出命令</label>' +
-              '<button class="btn btn-outline-secondary btn-sm rule-copy-btn" title="複製命令">📋 複製</button>' +
-            '</div>' +
-            '<textarea class="form-control rule-full-cmd" rows="2" readonly style="font-family:monospace;font-size:.8125rem;resize:none;cursor:text;user-select:text;background:var(--bs-tertiary-bg);color:var(--bs-body-color)" onclick="this.select()"></textarea>' +
-          '</div>' +
-        '</div>';
-
-      layer.open({
-        title: title, area: ['700px', 'auto'],
-        content: html,
-        btn: [lang.confirm, lang.cancel],
-        success: function(layero) {
-          var $l = $(layero);
-          if (fields.protocol) $l.find('.field-protocol').val(fields.protocol);
-          if (fields.target) $l.find('.field-target').val(fields.target);
-          if (fields.match) $l.find('.field-match').val(fields.match);
-          if (fields.inIf) $l.find('.field-in-if').val(fields.inIf);
-          if (fields.outIf) $l.find('.field-out-if').val(fields.outIf);
-
-          $.get('/interfaces', function(r) {
-            if (r.code === 0 && r.data) {
-              var opts = '<option value="">-</option>';
-              r.data.forEach(function(v) { opts += '<option value="' + $('<span>').text(v).html() + '">' + $('<span>').text(v).html() + '</option>'; });
-              $l.find('.field-in-if').html(opts).val(fields.inIf || '');
-              $l.find('.field-out-if').html(opts).val(fields.outIf || '');
-            }
-          }, 'json');
-
-          // Initialize R chain/num fields from val prefix (e.g. "-R INPUT 3")
-          (function() {
-            var initChain = '', initNum = '1';
-            if (val) {
-              var toks = val.split(/\s+/);
-              if (toks[0] === '-R' && toks[1]) { initChain = toks[1]; initNum = toks[2] || '1'; }
-            }
-            if (initChain) $l.find('.field-r-chain').val(initChain);
-            $l.find('.field-r-num').val(initNum);
-          })();
-
-          function rebuildRToks() {
-            var chain = $l.find('.field-r-chain').val();
-            var num = $l.find('.field-r-num').val() || '1';
-            return chain ? ['-R', chain, num] : [];
+      // Fetch interfaces first, then open dialog with pre-populated data
+      var ifOpts = '<option value="">-</option>';
+      $.get('/interfaces', function(r) {
+        if (r.code === 0 && r.data) {
+          if (r.data.length === 0) {
+            ifOpts += '<option value="" disabled>（無可用介面）</option>';
+          } else {
+            r.data.forEach(function(v) { ifOpts += '<option value="' + $('<span>').text(v).html() + '">' + $('<span>').text(v).html() + '</option>'; });
           }
-
-          function syncFld() {
-            var p = {
-              protocol: $l.find('.field-protocol').val(),
-              source: $l.find('.field-source').val(),
-              destination: $l.find('.field-dest').val(),
-              target: $l.find('.field-target').val(),
-              match: $l.find('.field-match').val(),
-              inIf: $l.find('.field-in-if').val(),
-              outIf: $l.find('.field-out-if').val(),
-              dport: $l.find('.field-dport').val(),
-              sport: $l.find('.field-sport').val(),
-              ctstate: [],
-              icmpType: $l.find('.field-icmp-type').val()
-            };
-            $l.find('.field-ctstate:checked').each(function(){ p.ctstate.push($(this).val()); });
-            var prefixToks = rebuildRToks();
-            var cmd = buildCmd(p);
-            if (prefixToks.length) cmd = prefixToks.join(' ') + ' ' + cmd;
-            cmd = cmd.trim();
-            $l.find('.rule-preview-input').val(cmd);
-            $l.find('.rule-full-cmd').val((prefix ? prefix + ' ' : '') + cmd);
-          }
-
-          var timer;
-          $l.find('.field-r-chain,.field-r-num').on('change', syncFld);
-          $l.find('.field-protocol,.field-target,.field-match,.field-in-if,.field-out-if').on('change', syncFld);
-          $l.find('.field-source,.field-dest,.field-dport,.field-sport,.field-icmp-type').on('input', syncFld);
-          $l.find('.field-ctstate').on('change', syncFld);
-
-          function doParse() {
-            var txt = $l.find('.rule-preview-input').val() || '';
-            var p = parseRuleTxt(txt);
-            $l.find('.field-protocol').val(p.protocol);
-            $l.find('.field-source').val(p.source);
-            $l.find('.field-dest').val(p.destination);
-            $l.find('.field-target').val(p.target);
-            $l.find('.field-match').val(p.match);
-            $l.find('.field-in-if').val(p.inIf);
-            $l.find('.field-out-if').val(p.outIf);
-            $l.find('.field-dport').val(p.dport);
-            $l.find('.field-sport').val(p.sport);
-            $l.find('.field-icmp-type').val(p.icmpType);
-            $l.find('.field-ctstate').prop('checked', false);
-            (p.ctstate||[]).forEach(function(s){ $l.find('.field-ctstate[value="'+s+'"]').prop('checked',true); });
-            if (p.rChain) { $l.find('.field-r-chain').val(p.rChain); $l.find('.field-r-num').val(p.rNum || '1'); }
-          }
-
-          $l.find('.rule-parse-btn').on('click', doParse);
-
-          $l.find('.rule-copy-btn').on('click', function() {
-            var txt = $l.find('.rule-full-cmd').val();
-            if (!txt) return;
-            copyText($, txt);
-            layer.msg('已複製', { icon: 1, time: 1200 });
-          });
-
-          $l.find('.rule-preview-input').on('input', function(){
-            clearTimeout(timer);
-            timer = setTimeout(doParse, 300);
-          });
-
-          syncFld();
-        },
-        btn1: function(idx, layero) {
-          confirmCb($(layero).find('.rule-preview-input').val() || '');
-          _hideModal();
-        },
-        btn2: function(idx, layero) {
-          $(layero).find('.rule-preview-input').val(origVal);
-          _hideModal();
         }
-      });
+        openDialog(ifOpts);
+      }, 'json');
+
+      function openDialog(ifaceOpts) {
+        const html =
+          '<div style="min-width:560px">' +
+            '<div class="rule-editor-section">' +
+              '<label class="form-label fw-semibold">' + prefix + '</label>' +
+              '<textarea class="form-control rule-editor-preview rule-preview-input" rows="2" style="font-family:monospace">' + (val||'').replace(/"/g,'&quot;') + '</textarea>' +
+              '<div class="d-flex justify-content-end mt-1"><button class="btn btn-outline-primary btn-sm rule-gen-btn">產出</button> <button class="btn btn-outline-info btn-sm rule-parse-btn">🔍 Parsing</button></div>' +
+            '</div>' +
+            '<div class="rule-editor-section">' +
+              '<div class="row g-2">' +
+                '<div class="col-md-3 rule-editor-field"><label>鏈 <code>-A</code></label><select class="form-select field-a-chain"><option value="">-</option><option value="PREROUTING">PREROUTING</option><option value="POSTROUTING">POSTROUTING</option><option value="INPUT">INPUT</option><option value="FORWARD">FORWARD</option><option value="OUTPUT">OUTPUT</option></select></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>鏈 <code>-R</code></label><select class="form-select field-r-chain"><option value="">-</option>' + rChainOpts.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('') + '</select></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>序號 <code>-R</code></label><input type="number" class="form-control field-r-num" value="1" min="1"></div>' +
+              '</div>' +
+              '<div class="row g-2">' +
+                '<div class="col-md-3 rule-editor-field"><label>協定 <code>-p</code></label><select class="form-select field-protocol"><option value="">-</option><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option><option value="all">all</option></select></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>來源 <code>-s</code></label><input type="text" class="form-control field-source" placeholder="0.0.0.0/0" value="' + fields.source.replace(/"/g,'&quot;') + '"></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>目的 <code>-d</code></label><input type="text" class="form-control field-dest" placeholder="172.18.0.2/32" value="' + fields.destination.replace(/"/g,'&quot;') + '"></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>目標 <code>-j</code></label><select class="form-select field-target"><option value="">-</option><option value="ACCEPT">ACCEPT</option><option value="DROP">DROP</option><option value="REJECT">REJECT</option><option value="RETURN">RETURN</option><option value="LOG">LOG</option><option value="MASQUERADE">MASQUERADE</option><option value="DNAT">DNAT</option><option value="SNAT">SNAT</option><option value="REDIRECT">REDIRECT</option></select></div>' +
+              '</div>' +
+              '<div class="row g-2">' +
+                '<div class="col-md-3 rule-editor-field"><label>入介面 <code>-i</code></label><select class="form-select field-in-if">' + ifaceOpts + '</select></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>出介面 <code>-o</code></label><select class="form-select field-out-if">' + ifaceOpts + '</select></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>比對模組 <code>-m</code></label><select class="form-select field-match"><option value="">-</option><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option><option value="state">state</option><option value="conntrack">conntrack</option><option value="multiport">multiport</option><option value="mac">mac</option><option value="limit">limit</option><option value="comment">comment</option><option value="addrtype">addrtype</option></select></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>目的埠 <code>--dport</code></label><input type="text" class="form-control field-dport" placeholder="22,80,443" value="' + fields.dport.replace(/"/g,'&quot;') + '"></div>' +
+              '</div>' +
+              '<div class="row g-2">' +
+                '<div class="col-md-6 rule-editor-field"><label>連線狀態 <code>--ctstate</code></label><div class="rule-editor-ctstate">' +
+                  ctStates.map(function(s){ return '<label><input type="checkbox" class="field-ctstate" value="' + s + '"' + (fields.ctstate.indexOf(s)>=0?' checked':'') + '> ' + s + '</label>'; }).join('') +
+                '</div></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>ICMP 類型 <code>--icmp-type</code></label><input type="text" class="form-control field-icmp-type" placeholder="echo-request" value="' + fields.icmpType.replace(/"/g,'&quot;') + '"></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>來源埠 <code>--sport</code></label><input type="text" class="form-control field-sport" placeholder="1024:65535" value="' + fields.sport.replace(/"/g,'&quot;') + '"></div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="rule-editor-section">' +
+              '<div class="d-flex align-items-center gap-2 mb-1">' +
+                '<label class="form-label fw-semibold mb-0" style="font-size:.75rem">產出命令</label>' +
+                '<button class="btn btn-outline-secondary btn-sm rule-copy-btn" tabindex="-1" title="複製命令">📋 複製</button>' +
+              '</div>' +
+              '<textarea class="form-control rule-full-cmd" rows="2" readonly tabindex="-1" style="font-family:monospace;font-size:.8125rem;resize:none;cursor:text;user-select:text;background:var(--bs-tertiary-bg);color:var(--bs-body-color)" onclick="this.select()"></textarea>' +
+            '</div>' +
+          '</div>';
+
+        layer.open({
+          title: title, area: ['700px', 'auto'],
+          content: html,
+          btn: [lang.confirm, lang.cancel],
+          success: function(layero) {
+            var $l = $(layero);
+            if (fields.protocol) $l.find('.field-protocol').val(fields.protocol);
+            if (fields.target) $l.find('.field-target').val(fields.target);
+            if (fields.match) $l.find('.field-match').val(fields.match);
+            if (fields.inIf) $l.find('.field-in-if').val(fields.inIf);
+            if (fields.outIf) $l.find('.field-out-if').val(fields.outIf);
+
+            // Initialize R chain/num fields from val prefix (e.g. "-R INPUT 3")
+            (function() {
+              var initChain = '', initNum = '1';
+              if (val) {
+                var toks = val.split(/\s+/);
+                if (toks[0] === '-R' && toks[1]) { initChain = toks[1]; initNum = toks[2] || '1'; }
+              }
+              if (initChain) $l.find('.field-r-chain').val(initChain);
+              $l.find('.field-r-num').val(initNum);
+            })();
+
+            function rebuildPrefixToks() {
+              var parts = [];
+              var aChain = $l.find('.field-a-chain').val();
+              var rChain = $l.find('.field-r-chain').val();
+              var rNum = $l.find('.field-r-num').val() || '1';
+              if (aChain) parts.push('-A', aChain);
+              if (rChain) parts.push('-R', rChain, rNum);
+              return parts;
+            }
+
+            function syncFld() {
+              var p = {
+                protocol: $l.find('.field-protocol').val(),
+                source: $l.find('.field-source').val(),
+                destination: $l.find('.field-dest').val(),
+                target: $l.find('.field-target').val(),
+                match: $l.find('.field-match').val(),
+                inIf: $l.find('.field-in-if').val(),
+                outIf: $l.find('.field-out-if').val(),
+                dport: $l.find('.field-dport').val(),
+                sport: $l.find('.field-sport').val(),
+                ctstate: [],
+                icmpType: $l.find('.field-icmp-type').val()
+              };
+              $l.find('.field-ctstate:checked').each(function(){ p.ctstate.push($(this).val()); });
+              var prefixToks = rebuildPrefixToks();
+              var cmd = buildCmd(p);
+              if (prefixToks.length) cmd = prefixToks.join(' ') + ' ' + cmd;
+              cmd = cmd.trim();
+              $l.find('.rule-preview-input').val(cmd);
+              $l.find('.rule-full-cmd').val((prefix ? prefix + ' ' : '') + cmd);
+            }
+
+            var timer;
+            $l.find('.field-a-chain,.field-r-chain,.field-r-num').on('change', syncFld);
+            $l.find('.field-protocol,.field-target,.field-match,.field-in-if,.field-out-if').on('change', syncFld);
+            $l.find('.field-source,.field-dest,.field-dport,.field-sport,.field-icmp-type').on('input', syncFld);
+            $l.find('.field-ctstate').on('change', syncFld);
+
+            function doParse() {
+              var txt = $l.find('.rule-preview-input').val() || '';
+              var p = parseRuleTxt(txt);
+              $l.find('.field-protocol').val(p.protocol);
+              $l.find('.field-source').val(p.source);
+              $l.find('.field-dest').val(p.destination);
+              $l.find('.field-target').val(p.target);
+              $l.find('.field-match').val(p.match);
+              $l.find('.field-in-if').val(p.inIf);
+              $l.find('.field-out-if').val(p.outIf);
+              $l.find('.field-dport').val(p.dport);
+              $l.find('.field-sport').val(p.sport);
+              $l.find('.field-icmp-type').val(p.icmpType);
+              $l.find('.field-ctstate').prop('checked', false);
+              (p.ctstate||[]).forEach(function(s){ $l.find('.field-ctstate[value="'+s+'"]').prop('checked',true); });
+              if (p.rChain) { $l.find('.field-r-chain').val(p.rChain); $l.find('.field-r-num').val(p.rNum || '1'); }
+              if (p.aChain) { $l.find('.field-a-chain').val(p.aChain); }
+            }
+
+            $l.find('.rule-gen-btn').on('click', syncFld);
+            $l.find('.rule-parse-btn').on('click', doParse);
+
+            $l.find('.rule-copy-btn').on('click', function() {
+              var txt = $l.find('.rule-full-cmd').val();
+              if (!txt) return;
+              copyText($, txt);
+              layer.msg('已複製', { icon: 1, time: 1200 });
+            });
+
+            $l.find('.rule-preview-input').on('input', function(){
+              clearTimeout(timer);
+              timer = setTimeout(doParse, 300);
+            });
+
+            syncFld();
+          },
+          btn1: function(idx, layero) {
+            confirmCb($(layero).find('.rule-preview-input').val() || '');
+            _hideModal();
+          },
+          btn2: function(idx, layero) {
+            $(layero).find('.rule-preview-input').val(origVal);
+            _hideModal();
+          }
+        });
+      }
     }
 
     function copyText($, str) {

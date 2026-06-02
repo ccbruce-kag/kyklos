@@ -1911,21 +1911,21 @@
         loadListRule(t, c);
       });
       $(document).on("click", ".chain-insert", function () {
-        const t = $(this).data("table"), c = $(this).data("chain");
-        const prefix = chainCommandPrefix(t, c, "-I");
-        execView(t("insertRuleTitle"), prefix, i18n[currentLang].rulePlaceholder, "", function (val) {
-          const cmd = chainExecArgsStr(t, c, "-I", val);
-          logger.info('插入規則', c + '@' + t, prefix + ' ' + val);
-          ipt.exec(cmd, function () { loadListRule(t, c, false); layer.msg(i18n[currentLang].insertSuccess); logger.debug('插入規則完成'); });
+        const table = $(this).data("table"), c = $(this).data("chain");
+        const prefix = chainCommandPrefix(table, c, "-I");
+        execView(i18n[currentLang].insertRuleTitle, prefix, i18n[currentLang].rulePlaceholder, "", function (val) {
+          const cmd = chainExecArgsStr(table, c, "-I", val);
+          logger.info('插入規則', c + '@' + table, prefix + ' ' + val);
+          ipt.exec(cmd, function () { loadListRule(table, c, false); layer.msg(i18n[currentLang].insertSuccess); logger.debug('插入規則完成'); });
         });
       });
       $(document).on("click", ".chain-append", function () {
-        const t = $(this).data("table"), c = $(this).data("chain");
-        const prefix = chainCommandPrefix(t, c, "-A");
-        execView(t("appendRuleTitle"), prefix, i18n[currentLang].rulePlaceholder, "", function (val) {
-          const cmd = chainExecArgsStr(t, c, "-A", val);
-          logger.info('追加規則', c + '@' + t, prefix + ' ' + val);
-          ipt.exec(cmd, function () { loadListRule(t, c, false); layer.msg(i18n[currentLang].appendSuccess); logger.debug('追加規則完成'); });
+        const table = $(this).data("table"), c = $(this).data("chain");
+        const prefix = chainCommandPrefix(table, c, "-A");
+        execView(i18n[currentLang].appendRuleTitle, prefix, i18n[currentLang].rulePlaceholder, "", function (val) {
+          const cmd = chainExecArgsStr(table, c, "-A", val);
+          logger.info('追加規則', c + '@' + table, prefix + ' ' + val);
+          ipt.exec(cmd, function () { loadListRule(table, c, false); layer.msg(i18n[currentLang].appendSuccess); logger.debug('追加規則完成'); });
         });
       });
       $(document).on("click", ".chain-flush", function () {

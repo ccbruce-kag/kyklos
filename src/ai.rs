@@ -29,7 +29,9 @@ async fn run_ai(socket: WebSocket) {
 
     let prompt = prompt.trim();
     if prompt.is_empty() {
-        let _ = sender.send(Message::Text("ERROR: empty prompt".into())).await;
+        let _ = sender
+            .send(Message::Text("ERROR: empty prompt".into()))
+            .await;
         return;
     }
 
@@ -105,9 +107,7 @@ async fn run_ai(socket: WebSocket) {
                 .await;
         }
         Err(e) => {
-            let _ = sender
-                .send(Message::Text(format!("DONE:error:{e}")))
-                .await;
+            let _ = sender.send(Message::Text(format!("DONE:error:{e}"))).await;
         }
     }
 }

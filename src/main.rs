@@ -1,6 +1,8 @@
 mod ai;
+mod db;
 mod firewall;
 mod iptables;
+mod juniper;
 mod pfctl;
 mod server;
 mod shell;
@@ -8,10 +10,12 @@ mod system;
 mod utils;
 mod windows;
 
+use crate::db::AppDb;
 use crate::firewall::FirewallCmd;
 use crate::iptables::IptablesCmd;
+use crate::juniper::JuniperClient;
 use crate::pfctl::PfctlCmd;
-use crate::server::{AppState, build_router};
+use crate::server::{build_router, AppState};
 use crate::windows::WindowsCmd;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -89,6 +93,7 @@ fn main() {
     }
 
     let platform = detect_platform();
+    let db = AppDb::from_env().unwrap_or_else(|e| panic!("database initialization failed: {}", e));
     info!("detected platform: {:?}", platform);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -122,6 +127,7 @@ fn main() {
                     username,
                     password,
                     platform: "linux".to_string(),
+                    juniper: Arc::new(JuniperClient::new(db.clone())),
                 });
 
                 let app = build_router(state);
@@ -156,6 +162,7 @@ fn main() {
                     username,
                     password,
                     platform: "macos".to_string(),
+                    juniper: Arc::new(JuniperClient::new(db.clone())),
                 });
 
                 let app = build_router(state);
@@ -190,6 +197,7 @@ fn main() {
                     username,
                     password,
                     platform: "windows".to_string(),
+                    juniper: Arc::new(JuniperClient::new(db.clone())),
                 });
 
                 let app = build_router(state);

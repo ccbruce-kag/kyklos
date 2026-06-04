@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 
 use crate::firewall::FirewallCmd;
-use crate::iptables::{parse_column, parse_custom_title, parse_system_title, Protocol, TableListData, SystemTable, CustomTable};
+use crate::iptables::{
+    parse_column, parse_custom_title, parse_system_title, CustomTable, Protocol, SystemTable,
+    TableListData,
+};
 use crate::utils;
 use tokio::process::Command;
 
@@ -72,14 +75,7 @@ impl IptablesCmd {
             .args(args)
             .output()
             .await
-            .map_err(|e| {
-                format!(
-                    "exec: [{} {}] err: {}",
-                    self.save_binary,
-                    args.join(" "),
-                    e
-                )
-            })?;
+            .map_err(|e| format!("exec: [{} {}] err: {}", self.save_binary, args.join(" "), e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(format!(
@@ -97,12 +93,7 @@ impl IptablesCmd {
             .arg(file_name)
             .output()
             .await
-            .map_err(|e| {
-                format!(
-                    "exec: [{} {}] err: {}",
-                    self.restore_binary, file_name, e
-                )
-            })?;
+            .map_err(|e| format!("exec: [{} {}] err: {}", self.restore_binary, file_name, e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(format!(
@@ -198,8 +189,7 @@ impl IptablesCmd {
                     table, chain, id
                 ));
             }
-            self.run_iptables(&["-t", table, "-Z", chain, id])
-                .await?;
+            self.run_iptables(&["-t", table, "-Z", chain, id]).await?;
             return Ok(());
         }
 
@@ -234,8 +224,7 @@ impl IptablesCmd {
                 table, chain, id
             ));
         }
-        self.run_iptables(&["-t", table, "-D", chain, id])
-            .await?;
+        self.run_iptables(&["-t", table, "-D", chain, id]).await?;
         Ok(())
     }
 
@@ -267,7 +256,12 @@ impl IptablesCmd {
         self.run_iptables(&args).await
     }
 
-    pub async fn get_rule_info(&self, table: &str, chain: &str, id: &str) -> Result<String, String> {
+    pub async fn get_rule_info(
+        &self,
+        table: &str,
+        chain: &str,
+        id: &str,
+    ) -> Result<String, String> {
         if table.is_empty() || chain.is_empty() || id.is_empty() {
             return Err(format!(
                 "GetRuleInfo args error. table:{} chain:{} id:{}",

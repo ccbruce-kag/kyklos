@@ -198,7 +198,10 @@ impl FirewallCmd for PfctlCmd {
     }
 
     async fn flush_rule(&self, _table: &str, _chain: &str) -> Result<(), String> {
-        Err("flush rule is not supported on pfctl. Use pfctl -f to reload rules from file.".to_string())
+        Err(
+            "flush rule is not supported on pfctl. Use pfctl -f to reload rules from file."
+                .to_string(),
+        )
     }
 
     async fn delete_rule(&self, _table: &str, _chain: &str, _id: &str) -> Result<(), String> {

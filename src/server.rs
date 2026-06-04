@@ -1,5 +1,7 @@
 use crate::ai;
+use crate::db::JuniperDeviceUpdate;
 use crate::firewall::FirewallCmd;
+use crate::juniper::{self, JuniperClient};
 use crate::shell;
 use crate::system;
 use crate::utils;
@@ -8,7 +10,7 @@ use axum::extract::{Form, Path, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use base64::Engine;
 use once_cell::sync::Lazy;
@@ -18,8 +20,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 
-static ARGS_VERIFY: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[0-9A-z-_]+$").unwrap());
+static ARGS_VERIFY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[0-9A-z-_]+$").unwrap());
 
 #[derive(RustEmbed)]
 #[folder = "web"]
@@ -35,6 +36,7 @@ pub struct AppState {
     pub username: String,
     pub password: String,
     pub platform: String,
+    pub juniper: Arc<JuniperClient>,
 }
 
 #[derive(Deserialize)]
@@ -62,10 +64,48 @@ pub struct ImportForm {
     pub protocol: Option<String>,
 }
 
-fn pick_firewall(
-    state: &AppState,
-    protocol: Option<&str>,
-) -> Result<Arc<dyn FirewallCmd>, String> {
+#[derive(Deserialize)]
+pub struct JuniperVlanForm {
+    pub name: Option<String>,
+    pub vlan_id: Option<u16>,
+}
+
+#[derive(Deserialize)]
+pub struct JuniperAccessVlanForm {
+    pub vlan_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct JuniperTrunkVlanForm {
+    pub vlan_names: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct JuniperPortEnabledForm {
+    pub enabled: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct JuniperBulkPortForm {
+    pub ports: Option<String>,
+    pub mode: Option<String>,
+    pub vlan_names: Option<String>,
+    pub enabled: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct JuniperSettingsForm {
+    pub name: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub clear_password: Option<String>,
+    pub connect_timeout_secs: Option<u64>,
+    pub strict_host_key_checking: Option<String>,
+}
+
+fn pick_firewall(state: &AppState, protocol: Option<&str>) -> Result<Arc<dyn FirewallCmd>, String> {
     match protocol.unwrap_or("ipv4") {
         "ipv4" | "ip4" | "4" | "" => state
             .ipv4
@@ -98,11 +138,17 @@ fn validate_args(table: Option<&str>, chain: Option<&str>) -> Result<(), String>
     Ok(())
 }
 
-async fn auth_middleware(
-    State(state): State<Arc<AppState>>,
-    req: Request,
-    next: Next,
-) -> Response {
+fn parse_form_bool(value: Option<&str>) -> bool {
+    value
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
+fn decode_juniper_port_path(port: &str) -> String {
+    port.replace('~', "/")
+}
+
+async fn auth_middleware(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
     let auth = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -361,6 +407,139 @@ async fn handle_system_processes(State(state): State<Arc<AppState>>) -> Json<Val
     utils::output(None, Some(data))
 }
 
+// ---- Juniper Handlers ----
+
+async fn handle_juniper_info(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.juniper.info().await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_settings(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.juniper.settings() {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_save_settings(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<JuniperSettingsForm>,
+) -> Json<Value> {
+    let update = JuniperDeviceUpdate {
+        name: form.name.unwrap_or_else(|| "default".to_string()),
+        host: form.host.unwrap_or_default(),
+        port: form.port.unwrap_or(22),
+        username: form.username.unwrap_or_default(),
+        password: form.password.filter(|v| !v.is_empty()),
+        clear_password: parse_form_bool(form.clear_password.as_deref()),
+        connect_timeout_secs: form.connect_timeout_secs.unwrap_or(10),
+        strict_host_key_checking: parse_form_bool(form.strict_host_key_checking.as_deref()),
+    };
+    match state.juniper.save_settings(update) {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_vlans(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.juniper.vlans().await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_create_vlan(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<JuniperVlanForm>,
+) -> Json<Value> {
+    let name = form.name.unwrap_or_default();
+    let vlan_id = form.vlan_id.unwrap_or(0);
+    match state.juniper.create_vlan(&name, vlan_id).await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_delete_vlan(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> Json<Value> {
+    match state.juniper.delete_vlan(&name).await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_ports(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.juniper.ports().await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_access_vlan(
+    State(state): State<Arc<AppState>>,
+    Path(port): Path<String>,
+    Form(form): Form<JuniperAccessVlanForm>,
+) -> Json<Value> {
+    let port = decode_juniper_port_path(&port);
+    let vlan_name = form.vlan_name.unwrap_or_default();
+    match state.juniper.set_access_vlan(&port, &vlan_name).await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_trunk_vlan(
+    State(state): State<Arc<AppState>>,
+    Path(port): Path<String>,
+    Form(form): Form<JuniperTrunkVlanForm>,
+) -> Json<Value> {
+    let port = decode_juniper_port_path(&port);
+    let vlan_names = juniper::split_vlan_names(&form.vlan_names.unwrap_or_default());
+    match state.juniper.set_trunk_vlan(&port, &vlan_names).await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_port_enabled(
+    State(state): State<Arc<AppState>>,
+    Path(port): Path<String>,
+    Form(form): Form<JuniperPortEnabledForm>,
+) -> Json<Value> {
+    let port = decode_juniper_port_path(&port);
+    let enabled = parse_form_bool(form.enabled.as_deref());
+    match state.juniper.set_port_enabled(&port, enabled).await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_juniper_bulk_ports(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<JuniperBulkPortForm>,
+) -> Json<Value> {
+    let ports = juniper::split_port_names(&form.ports.unwrap_or_default());
+    let mode = form.mode.unwrap_or_default();
+    let vlan_names = juniper::split_vlan_names(&form.vlan_names.unwrap_or_default());
+    let enabled = match form.enabled.as_deref() {
+        Some("1" | "true" | "yes" | "on") => Some(true),
+        Some("0" | "false" | "no" | "off") => Some(false),
+        _ => None,
+    };
+    match state
+        .juniper
+        .bulk_config_ports(&ports, &mode, &vlan_names, enabled)
+        .await
+    {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
 // ---- Static File Handlers ----
 
 async fn handle_web_assets(Path(path): Path<String>) -> impl IntoResponse {
@@ -401,7 +580,11 @@ async fn handle_index() -> impl IntoResponse {
 }
 
 async fn handle_docs(Path(path): Path<String>) -> impl IntoResponse {
-    let filename = if path.is_empty() { "iptables-command-reference.html".into() } else { path };
+    let filename = if path.is_empty() {
+        "iptables-command-reference.html".into()
+    } else {
+        path
+    };
     let content = DocAssets::get(&filename)
         .map(|f| f.data.to_vec())
         .unwrap_or_default();
@@ -438,13 +621,17 @@ async fn handle_log(Form(form): Form<LogForm>) -> Json<Value> {
     let level = form.level.as_deref().unwrap_or("info").to_ascii_lowercase();
     let msg = form.msg.as_deref().unwrap_or("");
     let cmd = form.cmd.as_deref().unwrap_or("");
-    let target = if cmd.is_empty() { msg.to_string() } else { format!("{msg} → {cmd}") };
+    let target = if cmd.is_empty() {
+        msg.to_string()
+    } else {
+        format!("{msg} → {cmd}")
+    };
     match level.as_str() {
         "debug" => tracing::debug!(target: "frontend", "{}", target),
-        "info"  => tracing::info!(target: "frontend",  "{}", target),
-        "warn"  => tracing::warn!(target: "frontend",  "{}", target),
+        "info" => tracing::info!(target: "frontend",  "{}", target),
+        "warn" => tracing::warn!(target: "frontend",  "{}", target),
         "error" => tracing::error!(target: "frontend", "{}", target),
-        _       => tracing::info!(target: "frontend",  "{}", target),
+        _ => tracing::info!(target: "frontend",  "{}", target),
     }
     utils::output(None, None)
 }
@@ -466,12 +653,72 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/deleteRule", post(handle_delete_rule))
         .route("/flushMetrics", post(handle_flush_metrics))
         .route("/getRuleInfo", post(handle_get_rule_info))
-        .route("/flushEmptyCustomChain", post(handle_flush_empty_custom_chain))
+        .route(
+            "/flushEmptyCustomChain",
+            post(handle_flush_empty_custom_chain),
+        )
         .route("/export", post(handle_export))
         .route("/import", post(handle_import))
         .route("/exec", post(handle_exec))
         .route("/system/info", get(handle_system_info))
         .route("/system/processes", get(handle_system_processes))
+        .route("/juniper/info", get(handle_juniper_info))
+        .route(
+            "/juniper/settings",
+            get(handle_juniper_settings).post(handle_juniper_save_settings),
+        )
+        .route(
+            "/juniper/vlans",
+            get(handle_juniper_vlans).post(handle_juniper_create_vlan),
+        )
+        .route("/juniper/vlans/:name", delete(handle_juniper_delete_vlan))
+        .route("/juniper/ports", get(handle_juniper_ports))
+        .route(
+            "/juniper/ports/bulk-config",
+            post(handle_juniper_bulk_ports),
+        )
+        .route(
+            "/juniper/ports/:port/access-vlan",
+            post(handle_juniper_access_vlan),
+        )
+        .route(
+            "/juniper/ports/:port/trunk-vlan",
+            post(handle_juniper_trunk_vlan),
+        )
+        .route(
+            "/juniper/ports/:port/enabled",
+            post(handle_juniper_port_enabled),
+        )
+        .route("/api/juniper/info", get(handle_juniper_info))
+        .route(
+            "/api/juniper/settings",
+            get(handle_juniper_settings).post(handle_juniper_save_settings),
+        )
+        .route(
+            "/api/juniper/vlans",
+            get(handle_juniper_vlans).post(handle_juniper_create_vlan),
+        )
+        .route(
+            "/api/juniper/vlans/:name",
+            delete(handle_juniper_delete_vlan),
+        )
+        .route("/api/juniper/ports", get(handle_juniper_ports))
+        .route(
+            "/api/juniper/ports/bulk-config",
+            post(handle_juniper_bulk_ports),
+        )
+        .route(
+            "/api/juniper/ports/:port/access-vlan",
+            post(handle_juniper_access_vlan),
+        )
+        .route(
+            "/api/juniper/ports/:port/trunk-vlan",
+            post(handle_juniper_trunk_vlan),
+        )
+        .route(
+            "/api/juniper/ports/:port/enabled",
+            post(handle_juniper_port_enabled),
+        )
         .route("/web/*path", get(handle_web_assets))
         .route("/platform", get(handle_platform))
         .route("/interfaces", get(handle_interfaces))

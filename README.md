@@ -191,3 +191,10 @@ chmod -R go-w ~/.zshrc ~/.zcompdump*
 ## 授權
 
 Apache License 2.0
+
+
+## example
+https://caloskao.org/linux-iptables-ipport-forwarding/
+iptables -t nat -A PREROUTING -p tcp --dport 20022 -j DNAT --to 192.168.0.1:22
+iptables -t nat -A POSTROUTING -p tcp --dport 22 --dst 192.168.0.1 -j MASQUERADE
+

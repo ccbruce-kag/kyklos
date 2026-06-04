@@ -108,14 +108,11 @@ $rules | ForEach-Object {
     }
 
     async fn flush_rule(&self, _table: &str, _chain: &str) -> Result<(), String> {
-        Err("Windows 防火牆不支援 flush，請使用 Remove-NetFirewallRule 逐一刪除規則。"
-            .to_string())
+        Err("Windows 防火牆不支援 flush，請使用 Remove-NetFirewallRule 逐一刪除規則。".to_string())
     }
 
     async fn delete_rule(&self, _table: &str, _chain: &str, id: &str) -> Result<(), String> {
-        let idx: usize = id
-            .parse()
-            .map_err(|_| format!("invalid rule id: {}", id))?;
+        let idx: usize = id.parse().map_err(|_| format!("invalid rule id: {}", id))?;
         if idx == 0 {
             return Err("rule id must be >= 1".to_string());
         }
@@ -132,9 +129,7 @@ $rules | ForEach-Object {
     }
 
     async fn get_rule_info(&self, _table: &str, _chain: &str, id: &str) -> Result<String, String> {
-        let idx: usize = id
-            .parse()
-            .map_err(|_| format!("invalid rule id: {}", id))?;
+        let idx: usize = id.parse().map_err(|_| format!("invalid rule id: {}", id))?;
         if idx == 0 {
             return Err("rule id must be >= 1".to_string());
         }

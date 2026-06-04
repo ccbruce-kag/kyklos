@@ -119,6 +119,38 @@
     .sys-proc-table th .sort-icon { font-size: .625rem; margin-left: .25rem; opacity: .4; }
     .sys-proc-table th.active .sort-icon { opacity: 1; color: var(--bs-primary); }
     .sys-proc-table td, .sys-proc-table th { padding: .2rem .4rem; }
+    .juniper-table { font-size: .8125rem; }
+    .juniper-table th { white-space: nowrap; font-size: .75rem; color: var(--bs-secondary-color); }
+    .juniper-table td { vertical-align: middle; }
+    .juniper-status-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:.375rem; }
+    .juniper-status-up { background:#198754; box-shadow:0 0 0 3px rgba(25,135,84,.12); }
+    .juniper-status-down { background:#dc3545; box-shadow:0 0 0 3px rgba(220,53,69,.12); }
+    .juniper-chip { display:inline-flex; align-items:center; border:1px solid var(--bs-border-color); border-radius:4px; padding:.1rem .4rem; margin:.08rem; font-family:monospace; font-size:.75rem; background:var(--bs-tertiary-bg); }
+    .juniper-preview { font-family:'Cascadia Code','Fira Code',monospace; font-size:.8125rem; background:#181825; color:#cdd6f4; border-radius:6px; padding:.75rem; white-space:pre-wrap; max-height:280px; overflow:auto; }
+    .juniper-form label { font-size:.75rem; font-weight:600; color:var(--bs-secondary-color); }
+    .juniper-port-switch { min-width:92px; margin:0; }
+    .juniper-port-switch .form-check-input { cursor:pointer; }
+    .juniper-port-switch .form-check-label { font-size:.75rem; cursor:pointer; }
+    .juniper-port-map { display:flex; flex-wrap:wrap; gap:1rem 1.5rem; padding:.75rem; border:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); min-height:110px; }
+    .juniper-port-group { min-width:220px; }
+    .juniper-port-group-title { font-size:.6875rem; color:var(--bs-secondary-color); font-family:monospace; margin-bottom:.375rem; }
+    .juniper-port-grid { display:grid; grid-template-columns:repeat(12, 34px); gap:.45rem .35rem; }
+    .juniper-port-tile { width:34px; padding:0; border:0; background:transparent; color:var(--bs-body-color); font-size:.625rem; text-align:center; cursor:pointer; }
+    .juniper-port-jack { position:relative; display:block; width:28px; height:25px; margin:0 auto .15rem; border:2px solid #adb5bd; background:#fff; transition:border-color .15s, box-shadow .15s, background .15s; }
+    .juniper-port-jack::before { content:""; position:absolute; top:-2px; left:7px; width:10px; height:5px; background:var(--bs-tertiary-bg); border-left:2px solid #adb5bd; border-right:2px solid #adb5bd; }
+    .juniper-port-tile.is-up .juniper-port-jack { background:#20c878; border-color:#159a5b; }
+    .juniper-port-tile.is-unused .juniper-port-jack { background:#fff; border-color:#adb5bd; }
+    .juniper-port-tile.is-disabled .juniper-port-jack { background:#8a8f98; border-color:#6c757d; }
+    .juniper-port-tile.is-selected .juniper-port-jack { border-color:#0d6efd; box-shadow:0 0 0 3px rgba(13,110,253,.22); }
+    .juniper-port-legend { display:flex; flex-wrap:wrap; gap:.5rem 1rem; margin:.6rem 0 1rem; font-size:.75rem; color:var(--bs-secondary-color); }
+    .juniper-port-legend span { display:inline-flex; align-items:center; gap:.35rem; }
+    .juniper-port-legend i { display:inline-block; width:13px; height:13px; border:1px solid #adb5bd; }
+    .juniper-port-legend .legend-up { background:#20c878; border-color:#159a5b; }
+    .juniper-port-legend .legend-unused { background:#fff; }
+    .juniper-port-legend .legend-disabled { background:#8a8f98; border-color:#6c757d; }
+    .juniper-port-legend .legend-selected { background:#fff; border:2px solid #0d6efd; box-shadow:0 0 0 2px rgba(13,110,253,.18); }
+    .juniper-selected-ports { min-height:28px; }
+    @media (max-width: 767.98px) { .juniper-port-grid { grid-template-columns:repeat(6, 34px); } }
     /* AI Chat */
     .ai-chat-scroll { flex: 1 1 auto; overflow-y: auto; background: var(--bs-body-bg); }
     .ai-msg { display: flex; gap: .625rem; margin-bottom: 1rem; align-items: flex-start; }
@@ -188,6 +220,12 @@
             <a href="#" class="menu-link" id="menuTablesLink">
               <i class="menu-icon tf-icons bx bx-shield-quarter"></i>
               <div class="text-truncate" id="menuTablesLabel">防火牆管理</div>
+            </a>
+          </li>
+          <li class="menu-item" id="menuJuniper">
+            <a href="#" class="menu-link" id="menuJuniperLink">
+              <i class="menu-icon tf-icons bx bx-network-chart"></i>
+              <div class="text-truncate" id="menuJuniperLabel">Juniper 設定</div>
             </a>
           </li>
           <li class="menu-item" id="menuSys">
@@ -345,6 +383,173 @@
                     <button id="open-iptables-doc" class="btn btn-outline-primary btn-sm"><i class="bx bx-book me-1"></i>命令文件</button>
               </div>
             </div><!-- /tablesView -->
+
+            <!-- Juniper View -->
+            <div id="juniperView" style="display:none">
+              <ul class="nav nav-tabs nav-fill mb-3" id="juniperTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="juniper-info-tab" data-bs-toggle="tab" data-bs-target="#juniperInfoPane" type="button" role="tab">
+                    <i class="bx bx-info-circle me-1"></i><span id="juniperInfoTabLabel">設備資訊</span>
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="juniper-vlan-tab" data-bs-toggle="tab" data-bs-target="#juniperVlanPane" type="button" role="tab">
+                    <i class="bx bx-layer me-1"></i><span id="juniperVlanTabLabel">VLAN 管理</span>
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="juniper-port-tab" data-bs-toggle="tab" data-bs-target="#juniperPortPane" type="button" role="tab">
+                    <i class="bx bx-git-branch me-1"></i><span id="juniperPortTabLabel">Port 管理</span>
+                  </button>
+                </li>
+              </ul>
+
+              <div class="tab-content p-0">
+                <div class="tab-pane fade show active" id="juniperInfoPane" role="tabpanel">
+                  <div class="card mb-3">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                      <strong style="font-size:.8125rem" id="juniperInfoTitle">設備資訊</strong>
+                      <button class="btn btn-sm btn-outline-secondary" id="juniperInfoRefresh"><i class="bx bx-refresh me-1"></i><span class="juniperRefreshLabel">重新整理</span></button>
+                    </div>
+                    <div class="card-body" id="juniperInfoBody"></div>
+                  </div>
+                  <div class="card">
+                    <div class="card-header py-2"><strong style="font-size:.8125rem" id="juniperSettingsTitle">連線設定</strong></div>
+                    <div class="card-body juniper-form">
+                      <div class="row g-3">
+                        <div class="col-md-3">
+                          <label class="form-label" for="juniperDeviceName">設備名稱</label>
+                          <input type="text" class="form-control font-monospace" id="juniperDeviceName" placeholder="default">
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="juniperHost">管理 IP / Host</label>
+                          <input type="text" class="form-control font-monospace" id="juniperHost" placeholder="10.20.50.2">
+                        </div>
+                        <div class="col-md-2">
+                          <label class="form-label" for="juniperPort">SSH Port</label>
+                          <input type="number" class="form-control font-monospace" id="juniperPort" min="1" max="65535" placeholder="22">
+                        </div>
+                        <div class="col-md-2">
+                          <label class="form-label" for="juniperUsername">Username</label>
+                          <input type="text" class="form-control font-monospace" id="juniperUsername" placeholder="root">
+                        </div>
+                        <div class="col-md-2">
+                          <label class="form-label" for="juniperTimeout">Timeout</label>
+                          <input type="number" class="form-control font-monospace" id="juniperTimeout" min="1" max="120" placeholder="10">
+                        </div>
+                        <div class="col-md-4">
+                          <label class="form-label" for="juniperPassword">Password</label>
+                          <input type="password" class="form-control font-monospace" id="juniperPassword" autocomplete="new-password">
+                          <div class="text-muted mt-1" style="font-size:.75rem" id="juniperPasswordHint">留空代表保留既有密碼</div>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                          <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="juniperClearPassword">
+                            <label class="form-check-label" for="juniperClearPassword" id="juniperClearPasswordLabel">清除已儲存密碼</label>
+                          </div>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                          <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="juniperStrictHostKey">
+                            <label class="form-check-label" for="juniperStrictHostKey" id="juniperStrictHostKeyLabel">Strict Host Key Checking</label>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="d-flex justify-content-end mt-3">
+                        <button class="btn btn-primary" id="juniperSettingsSaveBtn"><i class="bx bx-save me-1"></i><span id="juniperSettingsSaveLabel">儲存設定</span></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="tab-pane fade" id="juniperVlanPane" role="tabpanel">
+                  <div class="row g-3">
+                    <div class="col-lg-4">
+                      <div class="card">
+                        <div class="card-header py-2"><strong style="font-size:.8125rem" id="juniperVlanCreateTitle">新增 VLAN</strong></div>
+                        <div class="card-body juniper-form">
+                          <div class="mb-3">
+                            <label class="form-label" for="juniperVlanName">VLAN 名稱</label>
+                            <input type="text" class="form-control font-monospace" id="juniperVlanName" placeholder="VLAN10">
+                          </div>
+                          <div class="mb-3">
+                            <label class="form-label" for="juniperVlanId">VLAN ID</label>
+                            <input type="number" class="form-control font-monospace" id="juniperVlanId" min="1" max="4094" placeholder="10">
+                          </div>
+                          <button class="btn btn-primary w-100" id="juniperVlanCreateBtn"><i class="bx bx-plus me-1"></i><span id="juniperCreateVlanLabel">新增 VLAN</span></button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-lg-8">
+                      <div class="card">
+                        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                          <strong style="font-size:.8125rem" id="juniperVlanListTitle">VLAN 列表</strong>
+                          <button class="btn btn-sm btn-outline-secondary" id="juniperVlanRefresh"><i class="bx bx-refresh me-1"></i><span class="juniperRefreshLabel">重新整理</span></button>
+                        </div>
+                        <div class="card-body p-2" id="juniperVlanBody"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="tab-pane fade" id="juniperPortPane" role="tabpanel">
+                  <div class="card">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                      <strong style="font-size:.8125rem" id="juniperPortListTitle">Port 管理</strong>
+                      <button class="btn btn-sm btn-outline-secondary" id="juniperPortRefresh"><i class="bx bx-refresh me-1"></i><span class="juniperRefreshLabel">重新整理</span></button>
+                    </div>
+                    <div class="card-body">
+                      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <div>
+                          <strong style="font-size:.8125rem" id="juniperPortMapTitle">Port 狀態面板</strong>
+                          <span class="text-muted ms-2" style="font-size:.75rem" id="juniperPortSelectedCount">已選取 0 個 Port</span>
+                        </div>
+                        <div class="d-flex gap-1">
+                          <button class="btn btn-sm btn-outline-secondary" id="juniperPortSelectAll"><i class="bx bx-select-multiple me-1"></i><span id="juniperPortSelectAllLabel">全選</span></button>
+                          <button class="btn btn-sm btn-outline-secondary" id="juniperPortClearSelection"><i class="bx bx-x me-1"></i><span id="juniperPortClearSelectionLabel">清除選取</span></button>
+                        </div>
+                      </div>
+                      <div class="juniper-port-map" id="juniperPortMap"></div>
+                      <div class="juniper-port-legend">
+                        <span><i class="legend-up"></i><span id="juniperLegendInUse">使用中</span></span>
+                        <span><i class="legend-unused"></i><span id="juniperLegendUnused">未使用</span></span>
+                        <span><i class="legend-disabled"></i><span id="juniperLegendDisabled">停用</span></span>
+                        <span><i class="legend-selected"></i><span id="juniperLegendSelected">已選取</span></span>
+                      </div>
+
+                      <div class="row g-3 align-items-end juniper-form border-top pt-2">
+                        <div class="col-lg-3">
+                          <label class="form-label" for="juniperBulkMode" id="juniperBulkModeLabel">Port Mode</label>
+                          <select class="form-select" id="juniperBulkMode">
+                            <option value="access">Access</option>
+                            <option value="trunk">Trunk</option>
+                          </select>
+                        </div>
+                        <div class="col-lg-4">
+                          <label class="form-label" for="juniperBulkVlans" id="juniperBulkVlansLabel">VLAN Members</label>
+                          <select class="form-select font-monospace" id="juniperBulkVlans" multiple size="3"></select>
+                        </div>
+                        <div class="col-lg-3">
+                          <label class="form-label" for="juniperBulkEnabled" id="juniperBulkEnabledLabel">Admin Status</label>
+                          <select class="form-select" id="juniperBulkEnabled">
+                            <option value="" id="juniperBulkKeepOption">保持原狀</option>
+                            <option value="1" id="juniperBulkEnableOption">啟用</option>
+                            <option value="0" id="juniperBulkDisableOption">停用</option>
+                          </select>
+                        </div>
+                        <div class="col-lg-2">
+                          <button class="btn btn-primary w-100" id="juniperBulkApply"><i class="bx bx-check me-1"></i><span id="juniperBulkApplyLabel">套用至選取 Port</span></button>
+                        </div>
+                      </div>
+                      <div class="juniper-selected-ports mt-2" id="juniperSelectedPorts"></div>
+                      <div class="alert alert-warning py-2 mt-2 mb-0 d-none" id="juniperManagementPortWarning" style="font-size:.75rem"></div>
+
+                      <div class="border-top mt-3 pt-2" id="juniperPortBody"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <!-- AI View -->
             <div id="aiView" style="display:none">
@@ -591,6 +796,24 @@
         allMetricsSuffix: "所有統計數據？", ruleMetricsPrefix: "第 ", ruleMetricsSuffix: " 條規則的統計數據？",
         ruleNumberPrefix: "第", ruleNumberSuffix: "條規則", clearEmptyPrompt: "確認清除用戶自定義的所有空鏈？",
         dashLabel: "儀表板", tablesLabel: "防火牆管理", systemLabel: "系統現況", docLabel: "命令文件",
+        juniperLabel: "Juniper 設定", juniperInfo: "設備資訊", juniperVlan: "VLAN 管理", juniperPort: "Port 管理",
+        juniperRefresh: "重新整理", juniperCreateVlan: "新增 VLAN", juniperVlanList: "VLAN 列表", juniperPortList: "Port 管理",
+        juniperConnected: "已連線", juniperDisconnected: "未連線", juniperMgmtIp: "管理 IP", juniperHostname: "Hostname",
+        juniperModel: "Model", juniperVersion: "JunOS Version", juniperUptime: "Uptime", juniperSerial: "Serial Number",
+        juniperSettings: "連線設定", juniperDeviceName: "設備名稱", juniperHost: "管理 IP / Host", juniperPortNo: "SSH Port",
+        juniperUsername: "Username", juniperPassword: "Password", juniperTimeout: "Timeout", juniperPasswordHint: "留空代表保留既有密碼",
+        juniperClearPassword: "清除已儲存密碼", juniperStrictHostKey: "Strict Host Key Checking", juniperSaveSettings: "儲存設定",
+        juniperSettingsSaved: "Juniper 連線設定已儲存",
+        juniperVlanName: "VLAN 名稱", juniperVlanId: "VLAN ID", juniperInterfaces: "綁定介面", juniperAction: "操作",
+        juniperAdmin: "Admin Status", juniperLink: "Link Status", juniperMode: "Mode", juniperMembers: "VLAN Members",
+        juniperSetAccess: "設定 Access VLAN", juniperSetTrunk: "設定 Trunk VLAN", juniperCommandPreview: "指令預覽",
+        juniperEnabled: "啟用", juniperDisabled: "停用", juniperEnablePort: "啟用 Port", juniperDisablePort: "停用 Port",
+        juniperLinkInUse: "使用中", juniperLinkUnused: "未使用",
+        juniperPortMap: "Port 狀態面板", juniperSelectedCount: "已選取 {count} 個 Port", juniperSelectAll: "全選", juniperClearSelection: "清除選取",
+        juniperSelected: "已選取", juniperBulkKeep: "保持原狀", juniperBulkApply: "套用至選取 Port", juniperBulkTitle: "批次設定 Port",
+        juniperNoPortSelected: "請至少選取一個 Port", juniperAccessOneVlan: "Access 模式只能選擇一個 VLAN",
+        juniperMgmtPortWarning: "注意：ge-0/0/23 是 Firewall-Man 管理連線 Port，修改或停用可能造成 Juniper 失聯。",
+        juniperConfirmApply: "確認下發這些 JunOS 指令？", juniperApplied: "Juniper 設定已套用", juniperDeleted: "已刪除 VLAN",
         dashTotalRules: "規則總數", dashTotalChains: "鏈總數", dashTotalPkts: "封包總計", dashTotalBytes: "位元組總計",
         dashTrendLabel: "流量趨勢 (5 秒取樣)", dashIn: "入站", dashOut: "出站", dashPkt: "封包", dashPortIn: "入封包", dashPortOut: "出封包", dashPortTotal: "總計",
         dashNoData: "無資料", dashUpdated: "更新時間",
@@ -624,6 +847,24 @@
         allMetricsSuffix: "all counters?", ruleMetricsPrefix: "Rule #", ruleMetricsSuffix: " counters?",
         ruleNumberPrefix: "Rule #", ruleNumberSuffix: "", clearEmptyPrompt: "Clear all empty custom chains?",
         dashLabel: "Dashboard", tablesLabel: "Tables", systemLabel: "System", docLabel: "Command Reference",
+        juniperLabel: "Juniper Settings", juniperInfo: "Device Info", juniperVlan: "VLAN Management", juniperPort: "Port Management",
+        juniperRefresh: "Refresh", juniperCreateVlan: "Create VLAN", juniperVlanList: "VLAN List", juniperPortList: "Port Management",
+        juniperConnected: "Connected", juniperDisconnected: "Disconnected", juniperMgmtIp: "Management IP", juniperHostname: "Hostname",
+        juniperModel: "Model", juniperVersion: "JunOS Version", juniperUptime: "Uptime", juniperSerial: "Serial Number",
+        juniperSettings: "Connection Settings", juniperDeviceName: "Device Name", juniperHost: "Management IP / Host", juniperPortNo: "SSH Port",
+        juniperUsername: "Username", juniperPassword: "Password", juniperTimeout: "Timeout", juniperPasswordHint: "Leave blank to keep the stored password",
+        juniperClearPassword: "Clear stored password", juniperStrictHostKey: "Strict Host Key Checking", juniperSaveSettings: "Save Settings",
+        juniperSettingsSaved: "Juniper connection settings saved",
+        juniperVlanName: "VLAN Name", juniperVlanId: "VLAN ID", juniperInterfaces: "Interfaces", juniperAction: "Action",
+        juniperAdmin: "Admin Status", juniperLink: "Link Status", juniperMode: "Mode", juniperMembers: "VLAN Members",
+        juniperSetAccess: "Set Access VLAN", juniperSetTrunk: "Set Trunk VLAN", juniperCommandPreview: "Command Preview",
+        juniperEnabled: "Enabled", juniperDisabled: "Disabled", juniperEnablePort: "Enable Port", juniperDisablePort: "Disable Port",
+        juniperLinkInUse: "In Use", juniperLinkUnused: "Unused",
+        juniperPortMap: "Port Status Panel", juniperSelectedCount: "{count} ports selected", juniperSelectAll: "Select All", juniperClearSelection: "Clear Selection",
+        juniperSelected: "Selected", juniperBulkKeep: "Keep unchanged", juniperBulkApply: "Apply to Selected Ports", juniperBulkTitle: "Bulk Port Configuration",
+        juniperNoPortSelected: "Select at least one port", juniperAccessOneVlan: "Access mode requires exactly one VLAN",
+        juniperMgmtPortWarning: "Warning: ge-0/0/23 is the Firewall-Man management port. Changing or disabling it may disconnect Juniper.",
+        juniperConfirmApply: "Apply these JunOS commands?", juniperApplied: "Juniper setting applied", juniperDeleted: "VLAN deleted",
         dashTotalRules: "Total Rules", dashTotalChains: "Chains", dashTotalPkts: "Packets", dashTotalBytes: "Bytes",
         dashTrendLabel: "Traffic Trend (5s interval)", dashIn: "In", dashOut: "Out", dashPkt: "pkt", dashPortIn: "In (pkts)", dashPortOut: "Out (pkts)", dashPortTotal: "Total",
         dashNoData: "No data", dashUpdated: "Updated",
@@ -656,6 +897,24 @@
         allMetricsSuffix: "すべての統計データをクリアしますか？", ruleMetricsPrefix: "ルール #", ruleMetricsSuffix: " の統計データをクリアしますか？",
         ruleNumberPrefix: "ルール #", ruleNumberSuffix: "", clearEmptyPrompt: "空のカスタムチェインをすべて削除しますか？",
         dashLabel: "ダッシュボード", tablesLabel: "ファイアウォール管理", systemLabel: "システム情報", docLabel: "コマンドリファレンス",
+        juniperLabel: "Juniper 設定", juniperInfo: "デバイス情報", juniperVlan: "VLAN 管理", juniperPort: "Port 管理",
+        juniperRefresh: "更新", juniperCreateVlan: "VLAN 作成", juniperVlanList: "VLAN 一覧", juniperPortList: "Port 管理",
+        juniperConnected: "接続済み", juniperDisconnected: "未接続", juniperMgmtIp: "管理 IP", juniperHostname: "Hostname",
+        juniperModel: "Model", juniperVersion: "JunOS Version", juniperUptime: "Uptime", juniperSerial: "Serial Number",
+        juniperSettings: "接続設定", juniperDeviceName: "デバイス名", juniperHost: "管理 IP / Host", juniperPortNo: "SSH Port",
+        juniperUsername: "Username", juniperPassword: "Password", juniperTimeout: "Timeout", juniperPasswordHint: "空欄の場合は保存済みパスワードを維持します",
+        juniperClearPassword: "保存済みパスワードを削除", juniperStrictHostKey: "Strict Host Key Checking", juniperSaveSettings: "設定を保存",
+        juniperSettingsSaved: "Juniper 接続設定を保存しました",
+        juniperVlanName: "VLAN 名", juniperVlanId: "VLAN ID", juniperInterfaces: "インターフェース", juniperAction: "操作",
+        juniperAdmin: "Admin Status", juniperLink: "Link Status", juniperMode: "Mode", juniperMembers: "VLAN Members",
+        juniperSetAccess: "Access VLAN 設定", juniperSetTrunk: "Trunk VLAN 設定", juniperCommandPreview: "コマンドプレビュー",
+        juniperEnabled: "有効", juniperDisabled: "無効", juniperEnablePort: "Port を有効化", juniperDisablePort: "Port を無効化",
+        juniperLinkInUse: "使用中", juniperLinkUnused: "未使用",
+        juniperPortMap: "Port ステータスパネル", juniperSelectedCount: "{count} Port 選択中", juniperSelectAll: "すべて選択", juniperClearSelection: "選択解除",
+        juniperSelected: "選択済み", juniperBulkKeep: "変更しない", juniperBulkApply: "選択 Port に適用", juniperBulkTitle: "Port 一括設定",
+        juniperNoPortSelected: "Port を1つ以上選択してください", juniperAccessOneVlan: "Access モードでは VLAN を1つだけ選択してください",
+        juniperMgmtPortWarning: "注意: ge-0/0/23 は Firewall-Man 管理 Port です。変更または無効化すると Juniper に接続できなくなる可能性があります。",
+        juniperConfirmApply: "これらの JunOS コマンドを適用しますか？", juniperApplied: "Juniper 設定を適用しました", juniperDeleted: "VLAN を削除しました",
         dashTotalRules: "ルール総数", dashTotalChains: "チェイン数", dashTotalPkts: "パケット総数", dashTotalBytes: "バイト総数",
         dashTrendLabel: "トラフィック傾向 (5秒間隔)", dashIn: "入力", dashOut: "出力", dashPkt: "pkt", dashPortIn: "入力 (pkt)", dashPortOut: "出力 (pkt)", dashPortTotal: "合計",
         dashNoData: "データなし", dashUpdated: "更新時間",
@@ -684,10 +943,44 @@
       var lng = i18n[currentLang];
       $('#menuDashLabel').text(lng.dashLabel || 'Dashboard');
       $('#menuTablesLabel').text(lng.tablesLabel || 'Tables');
+      $('#menuJuniperLabel').text(lng.juniperLabel || 'Juniper Settings');
       $('#menuSysLabel').text(lng.systemLabel || 'System');
       $('#menuShellLabel').text(lng.shellLabel || 'Shell');
       $('#menuAILabel').text(lng.aiLabel || 'AI Assistant');
       $('#menuDocLabel').text(lng.docLabel || 'Command Reference');
+      $('#juniperInfoTabLabel,#juniperInfoTitle').text(lng.juniperInfo || 'Device Info');
+      $('#juniperVlanTabLabel').text(lng.juniperVlan || 'VLAN Management');
+      $('#juniperPortTabLabel,#juniperPortListTitle').text(lng.juniperPort || 'Port Management');
+      $('#juniperPortMapTitle').text(lng.juniperPortMap || 'Port Status Panel');
+      $('#juniperPortSelectAllLabel').text(lng.juniperSelectAll || 'Select All');
+      $('#juniperPortClearSelectionLabel').text(lng.juniperClearSelection || 'Clear Selection');
+      $('#juniperBulkApplyLabel').text(lng.juniperBulkApply || 'Apply to Selected Ports');
+      $('#juniperBulkKeepOption').text(lng.juniperBulkKeep || 'Keep unchanged');
+      $('#juniperBulkEnableOption').text(lng.juniperEnabled || 'Enabled');
+      $('#juniperBulkDisableOption,#juniperLegendDisabled').text(lng.juniperDisabled || 'Disabled');
+      $('#juniperLegendInUse').text(lng.juniperLinkInUse || 'In Use');
+      $('#juniperLegendUnused').text(lng.juniperLinkUnused || 'Unused');
+      $('#juniperLegendSelected').text(lng.juniperSelected || 'Selected');
+      $('#juniperBulkModeLabel').text(lng.juniperMode || 'Mode');
+      $('#juniperBulkVlansLabel').text(lng.juniperMembers || 'VLAN Members');
+      $('#juniperBulkEnabledLabel').text(lng.juniperAdmin || 'Admin Status');
+      $('#juniperVlanCreateTitle,#juniperCreateVlanLabel').text(lng.juniperCreateVlan || 'Create VLAN');
+      $('#juniperVlanListTitle').text(lng.juniperVlanList || 'VLAN List');
+      $('.juniperRefreshLabel').text(lng.juniperRefresh || 'Refresh');
+      $('#juniperSettingsTitle').text(lng.juniperSettings || 'Connection Settings');
+      $('label[for="juniperDeviceName"]').text(lng.juniperDeviceName || 'Device Name');
+      $('label[for="juniperHost"]').text(lng.juniperHost || 'Management IP / Host');
+      $('label[for="juniperPort"]').text(lng.juniperPortNo || 'SSH Port');
+      $('label[for="juniperUsername"]').text(lng.juniperUsername || 'Username');
+      $('label[for="juniperPassword"]').text(lng.juniperPassword || 'Password');
+      $('label[for="juniperTimeout"]').text(lng.juniperTimeout || 'Timeout');
+      $('#juniperPasswordHint').text(lng.juniperPasswordHint || 'Leave blank to keep the stored password');
+      $('#juniperClearPasswordLabel').text(lng.juniperClearPassword || 'Clear stored password');
+      $('#juniperStrictHostKeyLabel').text(lng.juniperStrictHostKey || 'Strict Host Key Checking');
+      $('#juniperSettingsSaveLabel').text(lng.juniperSaveSettings || 'Save Settings');
+      $('label[for="juniperVlanName"]').text(lng.juniperVlanName || 'VLAN Name');
+      $('label[for="juniperVlanId"]').text(lng.juniperVlanId || 'VLAN ID');
+      if (typeof updateJuniperPortSelection === 'function') updateJuniperPortSelection();
       if (lng.aiSend) $('#aiSendLabel').text(lng.aiSend);
       if (lng.aiInputPlaceholder) $('#aiInput').attr('placeholder', lng.aiInputPlaceholder);
       const labels = [
@@ -1332,6 +1625,487 @@
       logger.info('System info refreshed');
     });
 
+    // ─── Juniper ───
+    var juniperVlanNames = [];
+    var juniperPortRows = [];
+    var juniperSelectedPorts = {};
+    function escHtml(v) { return $('<div>').text(v === undefined || v === null ? '' : String(v)).html(); }
+    function renderJuniperChips(items) {
+      if (!items || !items.length) return '<span class="text-muted">-</span>';
+      return items.map(function (item) { return '<span class="juniper-chip">' + escHtml(item) + '</span>'; }).join('');
+    }
+    function juniperPreview(commands) {
+      return (commands || []).join('\n');
+    }
+    var juniperBase = null;
+    var juniperBaseCandidates = ['/juniper', '/api/juniper', 'juniper', 'api/juniper'];
+    function juniperUrl(path) { return juniperBase + path; }
+    function juniperCandidateUrl(base, path) { return base + path; }
+    function juniperPortPath(port) { return String(port || '').replace(/\//g, '~'); }
+    function renderJuniperBulkVlanOptions() {
+      var current = $('#juniperBulkVlans').val();
+      var selected = Array.isArray(current) ? current : current ? [current] : [];
+      var html = juniperVlanNames.map(function (name) {
+        return '<option value="' + escHtml(name) + '"' + (selected.indexOf(name) !== -1 ? ' selected' : '') + '>' + escHtml(name) + '</option>';
+      }).join('');
+      $('#juniperBulkVlans').html(html);
+      updateJuniperBulkVlanMode();
+    }
+    function updateJuniperBulkVlanMode() {
+      var mode = $('#juniperBulkMode').val();
+      var select = $('#juniperBulkVlans');
+      var selected = select.val() || [];
+      if (mode === 'access') {
+        select.prop('multiple', false).attr('size', 1);
+        if (selected.length > 1) select.val(selected[0]);
+      } else {
+        select.prop('multiple', true).attr('size', 3);
+        select.val(selected);
+      }
+    }
+    function selectedJuniperPorts() {
+      return Object.keys(juniperSelectedPorts).filter(function (port) { return !!juniperSelectedPorts[port]; }).sort();
+    }
+    function updateJuniperPortSelection() {
+      var lang = i18n[currentLang];
+      var ports = selectedJuniperPorts();
+      var countText = (lang.juniperSelectedCount || '{count} ports selected').replace('{count}', ports.length);
+      $('#juniperPortSelectedCount').text(countText);
+      $('#juniperSelectedPorts').html(ports.length ? renderJuniperChips(ports) : '<span class="text-muted">-</span>');
+      $('.juniper-port-tile').each(function () {
+        $(this).toggleClass('is-selected', !!juniperSelectedPorts[$(this).data('port')]);
+      });
+      $('.juniper-port-select').each(function () {
+        $(this).prop('checked', !!juniperSelectedPorts[$(this).data('port')]);
+      });
+      var hasManagementPort = ports.indexOf('ge-0/0/23') !== -1;
+      $('#juniperManagementPortWarning')
+        .toggleClass('d-none', !hasManagementPort)
+        .text(lang.juniperMgmtPortWarning || 'Warning: ge-0/0/23 is the Firewall-Man management port.');
+    }
+    function renderJuniperPortMap(rows) {
+      var lang = i18n[currentLang];
+      var groups = {};
+      rows.forEach(function (p) {
+        var slash = p.port.lastIndexOf('/');
+        var group = slash === -1 ? p.port : p.port.substring(0, slash);
+        var label = slash === -1 ? p.port : p.port.substring(slash + 1);
+        if (!groups[group]) groups[group] = [];
+        groups[group].push({ port: p, label: label });
+      });
+      var html = '';
+      Object.keys(groups).sort().forEach(function (group) {
+        groups[group].sort(function (a, b) { return Number(a.label) - Number(b.label); });
+        if (groups[group].length > 4 && groups[group].every(function (item) { return /^\d+$/.test(item.label); })) {
+          groups[group] = groups[group].filter(function (item) { return Number(item.label) % 2 === 0; })
+            .concat(groups[group].filter(function (item) { return Number(item.label) % 2 === 1; }));
+        }
+        html += '<div class="juniper-port-group"><div class="juniper-port-group-title">' + escHtml(group) + '</div><div class="juniper-port-grid">';
+        groups[group].forEach(function (item) {
+          var p = item.port;
+          var stateClass = p.enabled === false ? 'is-disabled' : p.link_status === 'up' ? 'is-up' : 'is-unused';
+          var stateLabel = p.enabled === false ? (lang.juniperDisabled || 'Disabled') : p.link_status === 'up' ? (lang.juniperLinkInUse || 'In Use') : (lang.juniperLinkUnused || 'Unused');
+          var title = p.port + ' · ' + stateLabel + ' · ' + p.mode + ' · ' + (p.vlan_members || []).join(', ');
+          html += '<button type="button" class="juniper-port-tile ' + stateClass + '" data-port="' + escHtml(p.port) + '" title="' + escHtml(title) + '">' +
+            '<span class="juniper-port-jack"></span><span>' + escHtml(item.label) + '</span></button>';
+        });
+        html += '</div></div>';
+      });
+      $('#juniperPortMap').html(html || '<span class="text-muted">' + (lang.dashNoData || 'No data') + '</span>');
+      updateJuniperPortSelection();
+    }
+    function showJuniperError(msg) {
+      logger.error('Juniper API 錯誤', msg || '');
+      layer.alert('<pre class="modal-pre">' + escHtml(msg || 'Unknown error') + '</pre>', { title: 'Juniper' });
+    }
+    function juniperAjaxError(xhr, textStatus, errorThrown) {
+      if (xhr && xhr.responseJSON && xhr.responseJSON.msg) return xhr.responseJSON.msg;
+      if (xhr && xhr.responseText) return xhr.responseText;
+      var parts = [];
+      if (xhr && xhr.status) parts.push('HTTP ' + xhr.status);
+      if (xhr && xhr.statusText) parts.push(xhr.statusText);
+      if (textStatus) parts.push(textStatus);
+      if (errorThrown) parts.push(errorThrown);
+      return parts.join(' · ') || 'Request failed without response body';
+    }
+    function renderJuniperSettings(d) {
+      $('#juniperDeviceName').val(d.name || 'default');
+      $('#juniperHost').val(d.host || '');
+      $('#juniperPort').val(d.port || 22);
+      $('#juniperUsername').val(d.username || '');
+      $('#juniperPassword').val('');
+      $('#juniperTimeout').val(d.connect_timeout_secs || 10);
+      $('#juniperStrictHostKey').prop('checked', !!d.strict_host_key_checking);
+      $('#juniperClearPassword').prop('checked', false);
+      logger.debug('Juniper 連線設定已載入', (d.host || '') + ':' + (d.port || ''));
+    }
+    function detectJuniperApi(done) {
+      if (juniperBase) { if (done) done(); return; }
+      var candidates = juniperBaseCandidates.slice();
+      var errors = [];
+      function tryNext() {
+        if (!candidates.length) {
+          var msg = 'Juniper API route not found. Tried: ' + juniperBaseCandidates.join(', ') + (errors.length ? '\n' + errors.join('\n') : '');
+          $('#juniperInfoBody').html('<div class="text-danger p-2">' + escHtml(msg) + '</div>');
+          logger.error('Juniper API route not found', msg);
+          return;
+        }
+        var base = candidates.shift();
+        $.ajax({ url: juniperCandidateUrl(base, '/settings'), dataType: 'json', method: 'GET' })
+          .done(function (res) {
+            juniperBase = base;
+            logger.debug('Juniper API base selected', base);
+            if (res.code === 0) renderJuniperSettings(res.data || {});
+            if (done) done(res);
+          })
+          .fail(function (xhr, textStatus, errorThrown) {
+            errors.push(base + ' -> ' + juniperAjaxError(xhr, textStatus, errorThrown));
+            tryNext();
+          });
+      }
+      tryNext();
+    }
+    function confirmJuniperCommands(title, commands, cb) {
+      var lang = i18n[currentLang];
+      layer.open({
+        title: title || (lang.juniperCommandPreview || 'Command Preview'),
+        content:
+          '<div class="mb-2 text-muted" style="font-size:.8125rem">' + escHtml(lang.juniperConfirmApply || 'Apply these JunOS commands?') + '</div>' +
+          '<pre class="juniper-preview">' + escHtml(juniperPreview(commands)) + '</pre>',
+        area: ['720px', 'auto'],
+        btn: [lang.confirm, lang.cancel],
+        btn1: function () { _hideModal(); cb && cb(); },
+        btn2: function () { _hideModal(); }
+      });
+    }
+    function loadJuniperInfo() {
+      var lang = i18n[currentLang];
+      $('#juniperInfoBody').html('<div class="text-muted p-2">Loading...</div>');
+      detectJuniperApi(function () {
+      $.get(juniperUrl('/info'), function (res) {
+        if (res.code !== 0) { $('#juniperInfoBody').html('<div class="text-danger p-2">' + escHtml(res.msg) + '</div>'); logger.warn('Juniper 設備資訊載入失敗', res.msg); return; }
+        var d = res.data || {};
+        var dot = d.connected ? 'juniper-status-up' : 'juniper-status-down';
+        var text = d.connected ? (lang.juniperConnected || 'Connected') : (lang.juniperDisconnected || 'Disconnected');
+        $('#juniperInfoBody').html(
+          '<div class="row">' +
+            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperHostname + '</div><div class="sys-card-val">' + escHtml(d.hostname || 'N/A') + '</div></div>' +
+            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperModel + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.model || 'N/A') + '</div></div>' +
+            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperVersion + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.junos_version || 'N/A') + '</div></div>' +
+            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperMgmtIp + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.management_ip || 'N/A') + '</div></div>' +
+            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperUptime + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.uptime || 'N/A') + '</div></div>' +
+            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperSerial + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.serial_number || 'N/A') + '</div></div>' +
+            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">Status</div><div class="sys-card-val" style="font-size:1rem"><span class="juniper-status-dot ' + dot + '"></span>' + escHtml(text) + '</div></div>' +
+          '</div>'
+        );
+        logger.debug('Juniper 設備資訊已載入', d.management_ip || '');
+      }, 'json').fail(function (xhr, textStatus, errorThrown) {
+        var msg = juniperAjaxError(xhr, textStatus, errorThrown);
+        $('#juniperInfoBody').html('<div class="text-danger p-2">' + escHtml(msg) + '</div>');
+        logger.warn('Juniper 設備資訊載入失敗', msg);
+      });
+      });
+    }
+    function loadJuniperSettings() {
+      detectJuniperApi(function (preloaded) {
+      if (preloaded && preloaded.code === 0) return;
+      $.get(juniperUrl('/settings'), function (res) {
+        if (res.code !== 0) { showJuniperError(res.msg); return; }
+        renderJuniperSettings(res.data || {});
+      }, 'json').fail(function (xhr, textStatus, errorThrown) { showJuniperError(juniperAjaxError(xhr, textStatus, errorThrown)); });
+      });
+    }
+    function loadJuniperVlans() {
+      var lang = i18n[currentLang];
+      $('#juniperVlanBody').html('<div class="text-muted p-2">Loading...</div>');
+      detectJuniperApi(function () {
+      $.get(juniperUrl('/vlans'), function (res) {
+        if (res.code !== 0) { $('#juniperVlanBody').html('<div class="text-danger p-2">' + escHtml(res.msg) + '</div>'); logger.warn('Juniper VLAN 載入失敗', res.msg); return; }
+        var rows = res.data || [];
+        juniperVlanNames = rows.map(function (v) { return v.name; });
+        renderJuniperBulkVlanOptions();
+        if (!rows.length) { $('#juniperVlanBody').html('<div class="text-muted p-2">' + (lang.dashNoData || 'No data') + '</div>'); return; }
+        var html = '<div class="table-responsive"><table class="table table-sm table-hover juniper-table mb-0"><thead><tr>' +
+          '<th>' + lang.juniperVlanName + '</th><th>' + lang.juniperVlanId + '</th><th>' + lang.juniperInterfaces + '</th><th style="width:90px">' + lang.juniperAction + '</th></tr></thead><tbody>';
+        rows.forEach(function (v) {
+          html += '<tr><td><strong>' + escHtml(v.name) + '</strong></td><td><code>' + escHtml(v.vlan_id) + '</code></td><td>' + renderJuniperChips(v.interfaces) + '</td>' +
+            '<td><button class="btn btn-sm btn-outline-danger juniper-delete-vlan" data-name="' + escHtml(v.name) + '"><i class="bx bx-trash"></i></button></td></tr>';
+        });
+        html += '</tbody></table></div>';
+        $('#juniperVlanBody').html(html);
+        logger.debug('Juniper VLAN 已載入', rows.length + ' VLANs');
+      }, 'json').fail(function (xhr, textStatus, errorThrown) {
+        var msg = juniperAjaxError(xhr, textStatus, errorThrown);
+        $('#juniperVlanBody').html('<div class="text-danger p-2">' + escHtml(msg) + '</div>');
+        logger.warn('Juniper VLAN 載入失敗', msg);
+      });
+      });
+    }
+    function loadJuniperPorts() {
+      var lang = i18n[currentLang];
+      $('#juniperPortBody').html('<div class="text-muted p-2">Loading...</div>');
+      detectJuniperApi(function () {
+      $.get(juniperUrl('/ports'), function (res) {
+        if (res.code !== 0) { $('#juniperPortBody').html('<div class="text-danger p-2">' + escHtml(res.msg) + '</div>'); logger.warn('Juniper Port 載入失敗', res.msg); return; }
+        var rows = res.data || [];
+        juniperPortRows = rows;
+        var existingPorts = {};
+        rows.forEach(function (p) { existingPorts[p.port] = true; });
+        Object.keys(juniperSelectedPorts).forEach(function (port) {
+          if (!existingPorts[port]) delete juniperSelectedPorts[port];
+        });
+        renderJuniperPortMap(rows);
+        if (!rows.length) { $('#juniperPortBody').html('<div class="text-muted p-2">' + (lang.dashNoData || 'No data') + '</div>'); return; }
+        var html = '<div class="table-responsive"><table class="table table-sm table-hover juniper-table mb-0"><thead><tr>' +
+          '<th style="width:32px"></th><th>Port</th><th>' + lang.juniperAdmin + '</th><th>' + lang.juniperLink + '</th><th>' + lang.juniperMode + '</th><th>' + lang.juniperMembers + '</th><th style="width:210px">' + lang.juniperAction + '</th></tr></thead><tbody>';
+        rows.forEach(function (p) {
+          var linkCls = p.link_status === 'up' ? 'text-success' : 'text-muted';
+          var linkLabel = p.link_status === 'up' ? (lang.juniperLinkInUse || 'In Use') : (lang.juniperLinkUnused || 'Unused');
+          var enabled = p.enabled !== false;
+          var enabledLabel = enabled ? (lang.juniperEnabled || 'Enabled') : (lang.juniperDisabled || 'Disabled');
+          html += '<tr><td><input class="form-check-input juniper-port-select" type="checkbox" data-port="' + escHtml(p.port) + '"' + (juniperSelectedPorts[p.port] ? ' checked' : '') + '></td><td><code>' + escHtml(p.port) + '</code></td><td>' +
+            '<div class="form-check form-switch juniper-port-switch">' +
+              '<input class="form-check-input juniper-port-enabled" type="checkbox" role="switch" data-port="' + escHtml(p.port) + '"' + (enabled ? ' checked' : '') + '>' +
+              '<span class="form-check-label">' + escHtml(enabledLabel) + '</span>' +
+            '</div></td><td class="' + linkCls + '">' + escHtml(linkLabel) + '</td>' +
+            '<td><span class="badge bg-label-' + (p.mode === 'trunk' ? 'primary' : p.mode === 'access' ? 'success' : 'secondary') + '">' + escHtml(p.mode) + '</span></td>' +
+            '<td>' + renderJuniperChips(p.vlan_members) + '</td><td>' +
+            '<button class="btn btn-sm btn-outline-primary me-1 juniper-set-access" data-port="' + escHtml(p.port) + '"><i class="bx bx-link me-1"></i>Access</button>' +
+            '<button class="btn btn-sm btn-outline-info juniper-set-trunk" data-port="' + escHtml(p.port) + '"><i class="bx bx-git-merge me-1"></i>Trunk</button>' +
+            '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        $('#juniperPortBody').html(html);
+        updateJuniperPortSelection();
+        logger.debug('Juniper Port 已載入', rows.length + ' ports');
+      }, 'json').fail(function (xhr, textStatus, errorThrown) {
+        var msg = juniperAjaxError(xhr, textStatus, errorThrown);
+        $('#juniperPortBody').html('<div class="text-danger p-2">' + escHtml(msg) + '</div>');
+        logger.warn('Juniper Port 載入失敗', msg);
+      });
+      });
+    }
+    function loadJuniperAll() {
+      loadJuniperSettings();
+      loadJuniperInfo();
+    }
+    function applyJuniperPost(path, data, done) {
+      detectJuniperApi(function () {
+      $.post(juniperUrl(path), data, function (res) {
+        if (res.code !== 0) { showJuniperError(res.msg); return; }
+        var lang = i18n[currentLang];
+        layer.open({
+          title: lang.juniperApplied || 'Juniper setting applied',
+          content: '<pre class="modal-pre">' + escHtml((res.data && res.data.output) || '') + '</pre>',
+          btn: [lang.btnOk || 'OK']
+        });
+        done && done(res);
+      }, 'json').fail(function (xhr, textStatus, errorThrown) { showJuniperError(juniperAjaxError(xhr, textStatus, errorThrown)); });
+      });
+    }
+    function vlanOptionsHtml(selected) {
+      var opts = juniperVlanNames.map(function (name) {
+        return '<option value="' + escHtml(name) + '"' + (name === selected ? ' selected' : '') + '>' + escHtml(name) + '</option>';
+      }).join('');
+      return opts || '<option value="">-</option>';
+    }
+    function juniperBulkCommands(ports, mode, vlans, enabled) {
+      var commands = ['configure'];
+      var members = vlans.join(' ');
+      ports.forEach(function (port) {
+        commands.push('delete interfaces ' + port + ' unit 0 family ethernet-switching vlan members');
+        if (mode === 'access') {
+          commands.push('delete interfaces ' + port + ' unit 0 family ethernet-switching port-mode');
+          commands.push('set interfaces ' + port + ' unit 0 family ethernet-switching vlan members ' + vlans[0]);
+        } else {
+          commands.push('set interfaces ' + port + ' unit 0 family ethernet-switching port-mode trunk');
+          commands.push('set interfaces ' + port + ' unit 0 family ethernet-switching vlan members [ ' + members + ' ]');
+        }
+        if (enabled === '1') commands.push('delete interfaces ' + port + ' disable');
+        if (enabled === '0') commands.push('set interfaces ' + port + ' disable');
+      });
+      commands.push('commit and-quit');
+      return commands;
+    }
+    $(document).on('click', '#juniperInfoRefresh', loadJuniperInfo);
+    $(document).on('click', '#juniperSettingsSaveBtn', function () {
+      var lang = i18n[currentLang];
+      var data = {
+        name: $('#juniperDeviceName').val().trim(),
+        host: $('#juniperHost').val().trim(),
+        port: $('#juniperPort').val(),
+        username: $('#juniperUsername').val().trim(),
+        password: $('#juniperPassword').val(),
+        clear_password: $('#juniperClearPassword').is(':checked') ? '1' : '0',
+        connect_timeout_secs: $('#juniperTimeout').val(),
+        strict_host_key_checking: $('#juniperStrictHostKey').is(':checked') ? '1' : '0'
+      };
+      logger.info('Juniper 儲存連線設定', data.host + ':' + data.port);
+      detectJuniperApi(function () {
+      $.post(juniperUrl('/settings'), data, function (res) {
+        if (res.code !== 0) { showJuniperError(res.msg); return; }
+        layer.msg(lang.juniperSettingsSaved || 'Juniper connection settings saved', { icon: 1 });
+        $('#juniperPassword').val('');
+        $('#juniperClearPassword').prop('checked', false);
+        loadJuniperAll();
+      }, 'json').fail(function (xhr, textStatus, errorThrown) { showJuniperError(juniperAjaxError(xhr, textStatus, errorThrown)); });
+      });
+    });
+    $(document).on('click', '#juniperVlanRefresh', loadJuniperVlans);
+    $(document).on('click', '#juniperPortRefresh', loadJuniperPorts);
+    $(document).on('click', '.juniper-port-tile', function () {
+      var port = $(this).data('port');
+      juniperSelectedPorts[port] = !juniperSelectedPorts[port];
+      updateJuniperPortSelection();
+    });
+    $(document).on('change', '.juniper-port-select', function () {
+      juniperSelectedPorts[$(this).data('port')] = $(this).is(':checked');
+      updateJuniperPortSelection();
+    });
+    $(document).on('click', '#juniperPortSelectAll', function () {
+      juniperPortRows.forEach(function (p) { juniperSelectedPorts[p.port] = true; });
+      updateJuniperPortSelection();
+    });
+    $(document).on('click', '#juniperPortClearSelection', function () {
+      juniperSelectedPorts = {};
+      updateJuniperPortSelection();
+    });
+    $(document).on('change', '#juniperBulkMode', updateJuniperBulkVlanMode);
+    $(document).on('click', '#juniperBulkApply', function () {
+      var lang = i18n[currentLang];
+      var ports = selectedJuniperPorts();
+      var mode = $('#juniperBulkMode').val();
+      var selectedVlans = $('#juniperBulkVlans').val();
+      var vlans = Array.isArray(selectedVlans) ? selectedVlans : selectedVlans ? [selectedVlans] : [];
+      var enabled = $('#juniperBulkEnabled').val();
+      if (!ports.length) { layer.msg(lang.juniperNoPortSelected || 'Select at least one port', { icon: 2 }); return; }
+      if (!vlans.length) { layer.msg(lang.juniperMembers || 'VLAN Members', { icon: 2 }); return; }
+      if (mode === 'access' && vlans.length !== 1) { layer.msg(lang.juniperAccessOneVlan || 'Access mode requires exactly one VLAN', { icon: 2 }); return; }
+      var commands = juniperBulkCommands(ports, mode, vlans, enabled);
+      confirmJuniperCommands(lang.juniperBulkTitle || 'Bulk Port Configuration', commands, function () {
+        logger.info('Juniper 批次設定 Port', ports.join(', '));
+        applyJuniperPost('/ports/bulk-config', {
+          ports: ports.join(','),
+          mode: mode,
+          vlan_names: vlans.join(' '),
+          enabled: enabled
+        }, function () {
+          loadJuniperVlans();
+          loadJuniperPorts();
+        });
+      });
+    });
+    $(document).on('shown.bs.tab', '#juniperTabs .nav-link', function () {
+      var target = $(this).attr('data-bs-target');
+      if (target === '#juniperInfoPane') { loadJuniperSettings(); loadJuniperInfo(); }
+      if (target === '#juniperVlanPane') loadJuniperVlans();
+      if (target === '#juniperPortPane') { loadJuniperVlans(); loadJuniperPorts(); }
+    });
+    $(document).on('click', '#juniperVlanCreateBtn', function () {
+      var lang = i18n[currentLang];
+      var name = $('#juniperVlanName').val().trim();
+      var id = $('#juniperVlanId').val().trim();
+      var commands = ['configure', 'set vlans ' + name + ' vlan-id ' + id, 'commit and-quit'];
+      confirmJuniperCommands(lang.juniperCreateVlan, commands, function () {
+        logger.info('Juniper 新增 VLAN', name + ' id=' + id);
+        applyJuniperPost('/vlans', { name: name, vlan_id: id }, function () {
+          $('#juniperVlanName,#juniperVlanId').val('');
+          loadJuniperVlans();
+          loadJuniperPorts();
+        });
+      });
+    });
+    $(document).on('click', '.juniper-delete-vlan', function () {
+      var lang = i18n[currentLang];
+      var name = $(this).data('name');
+      var commands = ['configure', 'delete vlans ' + name, 'commit and-quit'];
+      confirmJuniperCommands((lang.delete || 'Delete') + ' ' + name, commands, function () {
+        logger.info('Juniper 刪除 VLAN', name);
+        $.ajax({ url: juniperUrl('/vlans/') + encodeURIComponent(name), type: 'DELETE', dataType: 'json' })
+          .done(function (res) {
+            if (res.code !== 0) { showJuniperError(res.msg); return; }
+            layer.msg(lang.juniperDeleted || 'VLAN deleted', { icon: 1 });
+            loadJuniperVlans();
+            loadJuniperPorts();
+          })
+          .fail(function (xhr, textStatus, errorThrown) { showJuniperError(juniperAjaxError(xhr, textStatus, errorThrown)); });
+      });
+    });
+    $(document).on('click', '.juniper-set-access', function () {
+      var lang = i18n[currentLang];
+      var port = $(this).data('port');
+      layer.open({
+        title: (lang.juniperSetAccess || 'Set Access VLAN') + ' · ' + port,
+        content: '<div class="juniper-form"><label class="form-label">' + lang.juniperVlanName + '</label><select class="form-select font-monospace" id="juniperAccessVlanSelect">' + vlanOptionsHtml('') + '</select></div>',
+        area: ['520px', 'auto'],
+        btn: [lang.confirm, lang.cancel],
+        btn1: function () {
+          var vlan = $('#juniperAccessVlanSelect').val();
+          var commands = [
+            'configure',
+            'delete interfaces ' + port + ' unit 0 family ethernet-switching vlan members',
+            'delete interfaces ' + port + ' unit 0 family ethernet-switching port-mode',
+            'set interfaces ' + port + ' unit 0 family ethernet-switching vlan members ' + vlan,
+            'commit and-quit'
+          ];
+          _hideModal();
+          confirmJuniperCommands(lang.juniperSetAccess + ' · ' + port, commands, function () {
+            logger.info('Juniper 設定 Access VLAN', port + ' → ' + vlan);
+            applyJuniperPost('/ports/' + juniperPortPath(port) + '/access-vlan', { vlan_name: vlan }, function () { loadJuniperPorts(); });
+          });
+        },
+        btn2: function () { _hideModal(); }
+      });
+    });
+    $(document).on('click', '.juniper-set-trunk', function () {
+      var lang = i18n[currentLang];
+      var port = $(this).data('port');
+      layer.open({
+        title: (lang.juniperSetTrunk || 'Set Trunk VLAN') + ' · ' + port,
+        content:
+          '<div class="juniper-form"><label class="form-label">' + lang.juniperMembers + '</label>' +
+          '<input type="text" class="form-control font-monospace" id="juniperTrunkVlansInput" placeholder="VLAN10 VLAN20">' +
+          '<div class="text-muted mt-1" style="font-size:.75rem">' + renderJuniperChips(juniperVlanNames) + '</div></div>',
+        area: ['560px', 'auto'],
+        btn: [lang.confirm, lang.cancel],
+        btn1: function () {
+          var vlans = $('#juniperTrunkVlansInput').val().trim();
+          var bracketVlans = vlans.split(/[,\s]+/).filter(Boolean).join(' ');
+          var commands = [
+            'configure',
+            'delete interfaces ' + port + ' unit 0 family ethernet-switching vlan members',
+            'set interfaces ' + port + ' unit 0 family ethernet-switching port-mode trunk',
+            'set interfaces ' + port + ' unit 0 family ethernet-switching vlan members [ ' + bracketVlans + ' ]',
+            'commit and-quit'
+          ];
+          _hideModal();
+          confirmJuniperCommands(lang.juniperSetTrunk + ' · ' + port, commands, function () {
+            logger.info('Juniper 設定 Trunk VLAN', port + ' → ' + bracketVlans);
+            applyJuniperPost('/ports/' + juniperPortPath(port) + '/trunk-vlan', { vlan_names: vlans }, function () { loadJuniperPorts(); });
+          });
+        },
+        btn2: function () { _hideModal(); }
+      });
+    });
+    $(document).on('change', '.juniper-port-enabled', function () {
+      var lang = i18n[currentLang];
+      var input = $(this);
+      var port = input.data('port');
+      var enabled = input.is(':checked');
+      var title = enabled ? (lang.juniperEnablePort || 'Enable Port') : (lang.juniperDisablePort || 'Disable Port');
+      var command = enabled ? 'delete interfaces ' + port + ' disable' : 'set interfaces ' + port + ' disable';
+      var commands = ['configure', command, 'commit and-quit'];
+
+      // Keep the displayed state authoritative until JunOS confirms the commit.
+      input.prop('checked', !enabled);
+      confirmJuniperCommands(title + ' · ' + port, commands, function () {
+        logger.info('Juniper ' + title, port);
+        applyJuniperPost('/ports/' + juniperPortPath(port) + '/enabled', { enabled: enabled ? '1' : '0' }, function () {
+          loadJuniperPorts();
+        });
+      });
+    });
+
     // ─── Shell Terminal ───
     let term = null, wsShell = null, termFit = null;
     let lastShellInputAt = 0;
@@ -1692,6 +2466,8 @@
 
       // ─── Dashboard view toggle & timer ───
       function switchView(mode) {
+        $('#juniperView').hide();
+        $('#menuJuniper').removeClass('active');
         if (mode === 'dashboard') {
           destroyTerminal();
           if (wsAI) { try { wsAI.close(); } catch(e) {} wsAI = null; aiRunning = false; }
@@ -1744,6 +2520,25 @@
           if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
           setTimeout(function () { $('#aiInput').focus(); }, 100);
           logger.info('切換至 AI 助手');
+        } else if (mode === 'juniper') {
+          destroyTerminal();
+          if (wsAI) { try { wsAI.close(); } catch(e) {} wsAI = null; aiRunning = false; }
+          $('#shellView').hide();
+          $('#aiView').hide();
+          $('#dashboardView').hide();
+          $('#tablesView').hide();
+          $('#systemView').hide();
+          $('#juniperView').show();
+          $('.action-buttons').hide();
+          $('#menuJuniper').addClass('active');
+          $('#menuDash').removeClass('active');
+          $('#menuTables').removeClass('active');
+          $('#menuSys').removeClass('active');
+          $('#menuShell').removeClass('active');
+          $('#menuAI').removeClass('active');
+          if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
+          loadJuniperAll();
+          logger.info('切換至 Juniper 設定');
         } else if (mode === 'system') {
           destroyTerminal();
           if (wsAI) { try { wsAI.close(); } catch(e) {} wsAI = null; aiRunning = false; }
@@ -1781,6 +2576,7 @@
       }
       $('#menuDashLink').on('click', function (e) { e.preventDefault(); switchView('dashboard'); });
       $('#menuTablesLink').on('click', function (e) { e.preventDefault(); switchView('tables'); });
+      $('#menuJuniperLink').on('click', function (e) { e.preventDefault(); switchView('juniper'); });
       $('#menuSysLink').on('click', function (e) { e.preventDefault(); switchView('system'); });
       $('#menuShellLink').on('click', function (e) { e.preventDefault(); switchView('shell'); });
       $('#menuAILink').on('click', function (e) { e.preventDefault(); switchView('ai'); });

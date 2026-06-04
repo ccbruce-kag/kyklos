@@ -2,13 +2,11 @@ use crate::iptables::types::*;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static SYSTEM_TITLE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"Chain (.+) \(policy (.+) (.+) packets, (.+) bytes\)").unwrap()
-});
+static SYSTEM_TITLE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"Chain (.+) \(policy (.+) (.+) packets, (.+) bytes\)").unwrap());
 
-static CUSTOM_TITLE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"Chain (.+) \((\d+) references\)").unwrap()
-});
+static CUSTOM_TITLE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"Chain (.+) \((\d+) references\)").unwrap());
 
 static COLUMN_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(\d+?)\s+(.+?)\s+(.+?)\s+(.+?)\s+(.+?)\s+(.+?)\s+(.+?)\s+(.+?)\s+(.+?)\s+([0-9A-Za-z:\.\/-]+)\s*(.*)").unwrap()
@@ -56,7 +54,10 @@ pub fn parse_column(lines: &[String]) -> Result<Vec<Column>, String> {
             out: caps[8].to_string(),
             source: caps[9].to_string(),
             destination: caps[10].to_string(),
-            action: caps.get(11).map(|m| m.as_str().to_string()).unwrap_or_default(),
+            action: caps
+                .get(11)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default(),
         };
         out.push(c);
     }
@@ -106,7 +107,11 @@ num   pkts bytes target     prot opt in     out     source               destina
                 continue;
             }
             let title = chain_info[0];
-            let _column = if chain_info.len() > 1 { chain_info[1] } else { "" };
+            let _column = if chain_info.len() > 1 {
+                chain_info[1]
+            } else {
+                ""
+            };
             println!("{} | {} cols", title, chain_info.len() - 2);
         }
     }

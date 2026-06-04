@@ -124,11 +124,7 @@ async fn run_shell(socket: WebSocket, state: Arc<AppState>) {
         ws_ypixel: 0,
     };
     unsafe {
-        nix::libc::ioctl(
-            slave_fd,
-            nix::libc::TIOCSWINSZ as nix::libc::c_ulong,
-            &ws,
-        );
+        nix::libc::ioctl(slave_fd, nix::libc::TIOCSWINSZ as nix::libc::c_ulong, &ws);
     }
 
     // Enable echo and canonical mode on the slave terminal
@@ -230,19 +226,32 @@ async fn run_shell(socket: WebSocket, state: Arc<AppState>) {
             let master_raw = master_owned.into_raw_fd();
             let flags = unsafe { nix::libc::fcntl(master_raw, nix::libc::F_GETFL) };
             if flags >= 0 {
-                unsafe { nix::libc::fcntl(master_raw, nix::libc::F_SETFL, flags | nix::libc::O_NONBLOCK) };
+                unsafe {
+                    nix::libc::fcntl(
+                        master_raw,
+                        nix::libc::F_SETFL,
+                        flags | nix::libc::O_NONBLOCK,
+                    )
+                };
             }
             let master_file = unsafe { std::fs::File::from_raw_fd(master_raw) };
             let async_master = match AsyncFd::new(master_file) {
                 Ok(a) => a,
                 Err(e) => {
-                    let _ = sender.send(Message::Text(format!("AsyncFd error: {e}"))).await;
+                    let _ = sender
+                        .send(Message::Text(format!("AsyncFd error: {e}")))
+                        .await;
                     return;
                 }
             };
 
             // Set initial window size on master
-            let ws = Winsize { ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0 };
+            let ws = Winsize {
+                ws_row: 24,
+                ws_col: 80,
+                ws_xpixel: 0,
+                ws_ypixel: 0,
+            };
             unsafe {
                 nix::libc::ioctl(master_raw, nix::libc::TIOCSWINSZ as nix::libc::c_ulong, &ws);
             }

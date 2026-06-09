@@ -151,6 +151,27 @@
     .juniper-port-legend .legend-selected { background:#fff; border:2px solid #0d6efd; box-shadow:0 0 0 2px rgba(13,110,253,.18); }
     .juniper-selected-ports { min-height:28px; }
     @media (max-width: 767.98px) { .juniper-port-grid { grid-template-columns:repeat(6, 34px); } }
+    .haproxy-form label { font-size:.75rem; font-weight:600; color:var(--bs-secondary-color); }
+    .haproxy-preview { font-family:'Cascadia Code','Fira Code',monospace; font-size:.8125rem; background:#181825; color:#cdd6f4; border-radius:6px; padding:.75rem; white-space:pre; min-height:260px; max-height:460px; overflow:auto; }
+    .haproxy-table { font-size:.8125rem; min-width:1100px; table-layout:fixed; }
+    .haproxy-table th { white-space:nowrap; font-size:.75rem; color:var(--bs-secondary-color); }
+    .haproxy-table th:nth-child(1), .haproxy-table td:nth-child(1) { width:28%; min-width:280px; }
+    .haproxy-table th:nth-child(2), .haproxy-table td:nth-child(2) { width:38%; min-width:380px; }
+    .haproxy-table th:nth-child(3), .haproxy-table td:nth-child(3) { width:14%; min-width:160px; }
+    .haproxy-table th:nth-child(4), .haproxy-table td:nth-child(4) { width:12%; min-width:90px; text-align:center; }
+    .haproxy-table th:nth-child(5), .haproxy-table td:nth-child(5) { width:10%; min-width:70px; text-align:center; }
+    .haproxy-preview-actions { display:flex; justify-content:flex-end; gap:.5rem; padding-top:.75rem; }
+    .haproxy-status-value { font-size:1rem; font-weight:600; line-height:1.25; }
+    #toastContainer { z-index: 20000; }
+    .haproxy-toast { min-width:340px; max-width:420px; background:#fff; color:#2b2c40; opacity:1 !important; border:1px solid rgba(25,135,84,.22); border-left:6px solid #198754; box-shadow:0 .85rem 2.25rem rgba(20,24,40,.28); border-radius:8px; overflow:hidden; }
+    .haproxy-toast.is-disabled { border-left-color:#fd7e14; }
+    .haproxy-toast.showing, .haproxy-toast.show { opacity:1 !important; }
+    .haproxy-toast .toast-body { padding:1rem; }
+    .haproxy-toast-icon { width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#fff; font-size:1.35rem; background:#198754; box-shadow:0 .35rem .85rem rgba(25,135,84,.25); }
+    .haproxy-toast.is-disabled .haproxy-toast-icon { background:#fd7e14; box-shadow:0 .35rem .85rem rgba(253,126,20,.28); }
+    .haproxy-toast-title { font-size:.95rem; font-weight:800; color:var(--bs-heading-color); line-height:1.25; }
+    .haproxy-toast-message { font-size:.8125rem; color:var(--bs-body-color); margin-top:.125rem; }
+    .haproxy-toast-detail { font-size:.72rem; color:var(--bs-secondary-color); font-family:monospace; margin-top:.35rem; word-break:break-all; }
     /* AI Chat */
     .ai-chat-scroll { flex: 1 1 auto; overflow-y: auto; background: var(--bs-body-bg); }
     .ai-msg { display: flex; gap: .625rem; margin-bottom: 1rem; align-items: flex-start; }
@@ -226,6 +247,12 @@
             <a href="#" class="menu-link" id="menuJuniperLink">
               <i class="menu-icon tf-icons bx bx-network-chart"></i>
               <div class="text-truncate" id="menuJuniperLabel">Juniper 設定</div>
+            </a>
+          </li>
+          <li class="menu-item" id="menuHaproxy">
+            <a href="#" class="menu-link" id="menuHaproxyLink">
+              <i class="menu-icon tf-icons bx bx-transfer"></i>
+              <div class="text-truncate" id="menuHaproxyLabel">HAProxy 管理</div>
             </a>
           </li>
           <li class="menu-item" id="menuSys">
@@ -551,6 +578,170 @@
               </div>
             </div>
 
+            <!-- HAProxy View -->
+            <div id="haproxyView" style="display:none">
+              <ul class="nav nav-tabs nav-fill mb-3" id="haproxyTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="haproxy-status-tab" data-bs-toggle="tab" data-bs-target="#haproxyStatusPane" type="button" role="tab">
+                    <i class="bx bx-pulse me-1"></i><span id="haproxyStatusTabLabel">HAProxy 狀態</span>
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="haproxy-web-tab" data-bs-toggle="tab" data-bs-target="#haproxyWebPane" type="button" role="tab">
+                    <i class="bx bx-world me-1"></i><span id="haproxyWebTabLabel">Web 負載平衡</span>
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="haproxy-sql-tab" data-bs-toggle="tab" data-bs-target="#haproxySqlPane" type="button" role="tab">
+                    <i class="bx bx-data me-1"></i><span id="haproxySqlTabLabel">SQL Server 負載平衡</span>
+                  </button>
+                </li>
+              </ul>
+
+              <div class="tab-content p-0">
+                <div class="tab-pane fade show active" id="haproxyStatusPane" role="tabpanel">
+                  <div class="card mb-3">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                      <strong style="font-size:.8125rem" id="haproxyStatusTitle">HAProxy 狀態</strong>
+                      <button class="btn btn-sm btn-outline-secondary" id="haproxyStatusRefresh"><i class="bx bx-refresh me-1"></i><span class="haproxyRefreshLabel">重新整理</span></button>
+                    </div>
+                    <div class="card-body" id="haproxyStatusBody"></div>
+                  </div>
+                  <div class="d-flex gap-2 justify-content-end">
+                    <button class="btn btn-outline-primary" id="haproxyReloadBtn"><i class="bx bx-refresh me-1"></i><span id="haproxyReloadLabel">Reload HAProxy</span></button>
+                    <button class="btn btn-outline-warning" id="haproxyRestartBtn"><i class="bx bx-power-off me-1"></i><span id="haproxyRestartLabel">Restart HAProxy</span></button>
+                  </div>
+                  <div class="card mt-3">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                      <strong style="font-size:.8125rem" id="haproxySavedTitle">已儲存負載平衡設定</strong>
+                      <button class="btn btn-sm btn-outline-secondary" id="haproxySavedRefresh"><i class="bx bx-refresh me-1"></i><span class="haproxyRefreshLabel">重新整理</span></button>
+                    </div>
+                    <div class="card-body" id="haproxySavedBody"></div>
+                  </div>
+                </div>
+
+                <div class="tab-pane fade" id="haproxyWebPane" role="tabpanel">
+                  <div class="row g-3">
+                    <div class="col-12">
+                      <div class="card">
+                        <div class="card-header py-2"><strong style="font-size:.8125rem" id="haproxyWebTitle">Web Load Balance</strong></div>
+                        <div class="card-body haproxy-form">
+                          <div class="row g-3">
+                            <div class="col-md-6">
+                              <label class="form-label" for="haproxyWebName">Frontend Name</label>
+                              <input type="text" class="form-control font-monospace" id="haproxyWebName" value="web">
+                            </div>
+                            <div class="col-md-6">
+                              <label class="form-label" for="haproxyWebPort">Listen Port</label>
+                              <input type="number" class="form-control font-monospace" id="haproxyWebPort" min="1" max="65535" value="80">
+                            </div>
+                            <div class="col-md-6">
+                              <label class="form-label" for="haproxyWebBalance">Balance Method</label>
+                              <select class="form-select" id="haproxyWebBalance">
+                                <option value="roundrobin">roundrobin</option>
+                                <option value="leastconn">leastconn</option>
+                                <option value="source">source</option>
+                              </select>
+                            </div>
+                            <div class="col-md-6">
+                              <label class="form-label" for="haproxyWebHealthPath">Health Check Path</label>
+                              <input type="text" class="form-control font-monospace" id="haproxyWebHealthPath" value="/">
+                            </div>
+                          </div>
+                          <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+                            <strong style="font-size:.8125rem" id="haproxyWebBackendTitle">Backend Servers</strong>
+                            <button class="btn btn-sm btn-outline-primary" id="haproxyWebAddServer"><i class="bx bx-plus me-1"></i><span class="haproxyAddServerLabel">新增 Server</span></button>
+                          </div>
+                          <div class="table-responsive">
+                            <table class="table table-sm haproxy-table mb-0" id="haproxyWebServers">
+                              <thead><tr><th>Name</th><th>IP</th><th>Port</th><th>Status</th><th></th></tr></thead>
+                              <tbody></tbody>
+                            </table>
+                          </div>
+                          <button class="btn btn-primary w-100 mt-3" id="haproxyWebGenerate"><i class="bx bx-code-alt me-1"></i><span class="haproxyGenerateLabel">產生設定預覽</span></button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-12">
+                      <div class="card">
+                        <div class="card-header py-2">
+                          <strong style="font-size:.8125rem" class="haproxyPreviewTitle">HAProxy Config Preview</strong>
+                        </div>
+                        <div class="card-body">
+                          <pre class="haproxy-preview" id="haproxyWebPreview"></pre>
+                          <div class="haproxy-preview-actions">
+                            <button class="btn btn-outline-primary haproxy-validate-preview" data-target="#haproxyWebPreview"><i class="bx bx-check-shield me-1"></i><span class="haproxyValidateLabel">驗證設定</span></button>
+                            <button class="btn btn-success haproxy-apply-preview" data-kind="web" data-target="#haproxyWebPreview"><i class="bx bx-check me-1"></i><span class="haproxyApplyLabel">驗證並套用</span></button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="tab-pane fade" id="haproxySqlPane" role="tabpanel">
+                  <div class="row g-3">
+                    <div class="col-12">
+                      <div class="card">
+                        <div class="card-header py-2"><strong style="font-size:.8125rem" id="haproxySqlTitle">SQL Server Load Balance</strong></div>
+                        <div class="card-body haproxy-form">
+                          <div class="row g-3">
+                            <div class="col-md-6">
+                              <label class="form-label" for="haproxySqlName">Frontend Name</label>
+                              <input type="text" class="form-control font-monospace" id="haproxySqlName" value="msql">
+                            </div>
+                            <div class="col-md-6">
+                              <label class="form-label" for="haproxySqlPort">Listen Port</label>
+                              <input type="number" class="form-control font-monospace" id="haproxySqlPort" min="1" max="65535" value="1433">
+                            </div>
+                            <div class="col-md-6">
+                              <label class="form-label" for="haproxySqlBalance">Balance Method</label>
+                              <select class="form-select" id="haproxySqlBalance">
+                                <option value="source">source</option>
+                                <option value="leastconn">leastconn</option>
+                                <option value="roundrobin">roundrobin</option>
+                              </select>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="haproxySqlHealth" checked>
+                                <label class="form-check-label" for="haproxySqlHealth" id="haproxySqlHealthLabel">TCP Health Check</label>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+                            <strong style="font-size:.8125rem" id="haproxySqlBackendTitle">Backend Servers</strong>
+                            <button class="btn btn-sm btn-outline-primary" id="haproxySqlAddServer"><i class="bx bx-plus me-1"></i><span class="haproxyAddServerLabel">新增 Server</span></button>
+                          </div>
+                          <div class="table-responsive">
+                            <table class="table table-sm haproxy-table mb-0" id="haproxySqlServers">
+                              <thead><tr><th>Name</th><th>IP</th><th>Port</th><th>Status</th><th></th></tr></thead>
+                              <tbody></tbody>
+                            </table>
+                          </div>
+                          <button class="btn btn-primary w-100 mt-3" id="haproxySqlGenerate"><i class="bx bx-code-alt me-1"></i><span class="haproxyGenerateLabel">產生設定預覽</span></button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-12">
+                      <div class="card">
+                        <div class="card-header py-2">
+                          <strong style="font-size:.8125rem" class="haproxyPreviewTitle">HAProxy Config Preview</strong>
+                        </div>
+                        <div class="card-body">
+                          <pre class="haproxy-preview" id="haproxySqlPreview"></pre>
+                          <div class="haproxy-preview-actions">
+                            <button class="btn btn-outline-primary haproxy-validate-preview" data-target="#haproxySqlPreview"><i class="bx bx-check-shield me-1"></i><span class="haproxyValidateLabel">驗證設定</span></button>
+                            <button class="btn btn-success haproxy-apply-preview" data-kind="sql" data-target="#haproxySqlPreview"><i class="bx bx-check me-1"></i><span class="haproxyApplyLabel">驗證並套用</span></button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- AI View -->
             <div id="aiView" style="display:none">
               <div class="card dash-card">
@@ -814,6 +1005,11 @@
         juniperNoPortSelected: "請至少選取一個 Port", juniperAccessOneVlan: "Access 模式只能選擇一個 VLAN",
         juniperMgmtPortWarning: "注意：ge-0/0/23 是 Firewall-Man 管理連線 Port，修改或停用可能造成 Juniper 失聯。",
         juniperConfirmApply: "確認下發這些 JunOS 指令？", juniperApplied: "Juniper 設定已套用", juniperDeleted: "已刪除 VLAN",
+        haproxyLabel: "HAProxy 管理", haproxyStatus: "HAProxy 狀態", haproxyWeb: "Web 負載平衡", haproxySql: "SQL Server 負載平衡",
+        haproxyReload: "Reload HAProxy", haproxyRestart: "Restart HAProxy", haproxyInstalled: "是否已安裝", haproxyService: "Service 狀態",
+        haproxyConfigPath: "設定檔路徑", haproxyConfigValid: "設定檔驗證", haproxyVersion: "版本", haproxyGenerate: "產生設定預覽",
+        haproxyValidate: "驗證設定", haproxyApply: "驗證並套用", haproxyAddServer: "新增 Server", haproxyPreview: "HAProxy Config Preview",
+        haproxyConfirmApply: "確認寫入設定、備份原設定並 reload HAProxy？", haproxyApplied: "HAProxy 設定已套用",
         dashTotalRules: "規則總數", dashTotalChains: "鏈總數", dashTotalPkts: "封包總計", dashTotalBytes: "位元組總計",
         dashTrendLabel: "流量趨勢 (5 秒取樣)", dashIn: "入站", dashOut: "出站", dashPkt: "封包", dashPortIn: "入封包", dashPortOut: "出封包", dashPortTotal: "總計",
         dashNoData: "無資料", dashUpdated: "更新時間",
@@ -865,6 +1061,11 @@
         juniperNoPortSelected: "Select at least one port", juniperAccessOneVlan: "Access mode requires exactly one VLAN",
         juniperMgmtPortWarning: "Warning: ge-0/0/23 is the Firewall-Man management port. Changing or disabling it may disconnect Juniper.",
         juniperConfirmApply: "Apply these JunOS commands?", juniperApplied: "Juniper setting applied", juniperDeleted: "VLAN deleted",
+        haproxyLabel: "HAProxy Management", haproxyStatus: "HAProxy Status", haproxyWeb: "Web Load Balance", haproxySql: "SQL Server Load Balance",
+        haproxyReload: "Reload HAProxy", haproxyRestart: "Restart HAProxy", haproxyInstalled: "Installed", haproxyService: "Service Status",
+        haproxyConfigPath: "Config Path", haproxyConfigValid: "Config Valid", haproxyVersion: "Version", haproxyGenerate: "Generate Preview",
+        haproxyValidate: "Validate Config", haproxyApply: "Validate & Apply", haproxyAddServer: "Add Server", haproxyPreview: "HAProxy Config Preview",
+        haproxyConfirmApply: "Write config, back up current file, and reload HAProxy?", haproxyApplied: "HAProxy config applied",
         dashTotalRules: "Total Rules", dashTotalChains: "Chains", dashTotalPkts: "Packets", dashTotalBytes: "Bytes",
         dashTrendLabel: "Traffic Trend (5s interval)", dashIn: "In", dashOut: "Out", dashPkt: "pkt", dashPortIn: "In (pkts)", dashPortOut: "Out (pkts)", dashPortTotal: "Total",
         dashNoData: "No data", dashUpdated: "Updated",
@@ -915,6 +1116,11 @@
         juniperNoPortSelected: "Port を1つ以上選択してください", juniperAccessOneVlan: "Access モードでは VLAN を1つだけ選択してください",
         juniperMgmtPortWarning: "注意: ge-0/0/23 は Firewall-Man 管理 Port です。変更または無効化すると Juniper に接続できなくなる可能性があります。",
         juniperConfirmApply: "これらの JunOS コマンドを適用しますか？", juniperApplied: "Juniper 設定を適用しました", juniperDeleted: "VLAN を削除しました",
+        haproxyLabel: "HAProxy 管理", haproxyStatus: "HAProxy 状態", haproxyWeb: "Web ロードバランス", haproxySql: "SQL Server ロードバランス",
+        haproxyReload: "HAProxy Reload", haproxyRestart: "HAProxy Restart", haproxyInstalled: "インストール済み", haproxyService: "Service 状態",
+        haproxyConfigPath: "設定ファイル", haproxyConfigValid: "設定検証", haproxyVersion: "バージョン", haproxyGenerate: "設定プレビュー生成",
+        haproxyValidate: "設定を検証", haproxyApply: "検証して適用", haproxyAddServer: "Server 追加", haproxyPreview: "HAProxy Config Preview",
+        haproxyConfirmApply: "設定を書き込み、現設定をバックアップして HAProxy を reload しますか？", haproxyApplied: "HAProxy 設定を適用しました",
         dashTotalRules: "ルール総数", dashTotalChains: "チェイン数", dashTotalPkts: "パケット総数", dashTotalBytes: "バイト総数",
         dashTrendLabel: "トラフィック傾向 (5秒間隔)", dashIn: "入力", dashOut: "出力", dashPkt: "pkt", dashPortIn: "入力 (pkt)", dashPortOut: "出力 (pkt)", dashPortTotal: "合計",
         dashNoData: "データなし", dashUpdated: "更新時間",
@@ -944,6 +1150,7 @@
       $('#menuDashLabel').text(lng.dashLabel || 'Dashboard');
       $('#menuTablesLabel').text(lng.tablesLabel || 'Tables');
       $('#menuJuniperLabel').text(lng.juniperLabel || 'Juniper Settings');
+      $('#menuHaproxyLabel').text(lng.haproxyLabel || 'HAProxy Management');
       $('#menuSysLabel').text(lng.systemLabel || 'System');
       $('#menuShellLabel').text(lng.shellLabel || 'Shell');
       $('#menuAILabel').text(lng.aiLabel || 'AI Assistant');
@@ -981,6 +1188,17 @@
       $('label[for="juniperVlanName"]').text(lng.juniperVlanName || 'VLAN Name');
       $('label[for="juniperVlanId"]').text(lng.juniperVlanId || 'VLAN ID');
       if (typeof updateJuniperPortSelection === 'function') updateJuniperPortSelection();
+      $('#haproxyStatusTabLabel,#haproxyStatusTitle').text(lng.haproxyStatus || 'HAProxy Status');
+      $('#haproxyWebTabLabel,#haproxyWebTitle').text(lng.haproxyWeb || 'Web Load Balance');
+      $('#haproxySqlTabLabel,#haproxySqlTitle').text(lng.haproxySql || 'SQL Server Load Balance');
+      $('#haproxyReloadLabel').text(lng.haproxyReload || 'Reload HAProxy');
+      $('#haproxyRestartLabel').text(lng.haproxyRestart || 'Restart HAProxy');
+      $('.haproxyRefreshLabel').text(lng.juniperRefresh || 'Refresh');
+      $('.haproxyGenerateLabel').text(lng.haproxyGenerate || 'Generate Preview');
+      $('.haproxyValidateLabel').text(lng.haproxyValidate || 'Validate Config');
+      $('.haproxyApplyLabel').text(lng.haproxyApply || 'Validate & Apply');
+      $('.haproxyAddServerLabel').text(lng.haproxyAddServer || 'Add Server');
+      $('.haproxyPreviewTitle').text(lng.haproxyPreview || 'HAProxy Config Preview');
       if (lng.aiSend) $('#aiSendLabel').text(lng.aiSend);
       if (lng.aiInputPlaceholder) $('#aiInput').attr('placeholder', lng.aiInputPlaceholder);
       const labels = [
@@ -1718,6 +1936,10 @@
       logger.error('Juniper API 錯誤', msg || '');
       layer.alert('<pre class="modal-pre">' + escHtml(msg || 'Unknown error') + '</pre>', { title: 'Juniper' });
     }
+    function showHaproxyError(msg) {
+      logger.error('HAProxy API 錯誤', msg || '');
+      layer.alert('<pre class="modal-pre">' + escHtml(msg || 'Unknown error') + '</pre>', { title: 'HAProxy' });
+    }
     function juniperAjaxError(xhr, textStatus, errorThrown) {
       if (xhr && xhr.responseJSON && xhr.responseJSON.msg) return xhr.responseJSON.msg;
       if (xhr && xhr.responseText) return xhr.responseText;
@@ -2110,6 +2332,315 @@
       });
     });
 
+    // ─── HAProxy ───
+    var haproxyBase = null;
+    var haproxyBaseCandidates = ['/haproxy', '/api/haproxy', 'haproxy', 'api/haproxy'];
+    function haproxyUrl(path) { return haproxyBase + path; }
+    function detectHaproxyApi(done) {
+      if (haproxyBase) { if (done) done(); return; }
+      var candidates = haproxyBaseCandidates.slice();
+      var errors = [];
+      function tryNext() {
+        if (!candidates.length) {
+          var msg = 'HAProxy API route not found. Tried: ' + haproxyBaseCandidates.join(', ') + (errors.length ? '\n' + errors.join('\n') : '');
+          $('#haproxyStatusBody').html('<div class="text-danger p-2">' + escHtml(msg) + '</div>');
+          logger.error('HAProxy API route not found', msg);
+          return;
+        }
+        var base = candidates.shift();
+        $.ajax({ url: base + '/status', dataType: 'json', method: 'GET' })
+          .done(function () { haproxyBase = base; if (done) done(); })
+          .fail(function (xhr, textStatus, errorThrown) {
+            errors.push(base + ' -> ' + juniperAjaxError(xhr, textStatus, errorThrown));
+            tryNext();
+          });
+      }
+      tryNext();
+    }
+    function haproxyServerRow(prefix, data) {
+      data = data || {};
+      var name = data.name || '';
+      var ip = data.ip || '';
+      var port = data.port || '';
+      var checked = data.health_check === false ? '' : ' checked';
+      return '<tr>' +
+        '<td><input class="form-control form-control-sm font-monospace haproxy-server-name" value="' + escHtml(name) + '"></td>' +
+        '<td><input class="form-control form-control-sm font-monospace haproxy-server-ip" value="' + escHtml(ip) + '"></td>' +
+        '<td><input type="number" class="form-control form-control-sm font-monospace haproxy-server-port" min="1" max="65535" value="' + escHtml(port) + '"></td>' +
+        '<td><input class="form-check-input haproxy-server-health" type="checkbox"' + checked + '></td>' +
+        '<td><button class="btn btn-sm btn-outline-danger haproxy-remove-server"><i class="bx bx-trash"></i></button></td>' +
+      '</tr>';
+    }
+    function ensureHaproxyDefaults() {
+      if (!$('#haproxyWebServers tbody tr').length) {
+        $('#haproxyWebServers tbody')
+          .append(haproxyServerRow('web', { name: 'web1', ip: '192.168.1.10', port: 80 }))
+          .append(haproxyServerRow('web', { name: 'web2', ip: '192.168.1.11', port: 80 }));
+      }
+      if (!$('#haproxySqlServers tbody tr').length) {
+        $('#haproxySqlServers tbody')
+          .append(haproxyServerRow('sql', { name: 'sql_node1', ip: '10.0.0.10', port: 1433 }))
+          .append(haproxyServerRow('sql', { name: 'sql_node2', ip: '10.0.0.11', port: 1433 }));
+      }
+    }
+    function collectHaproxyServers(table) {
+      var servers = [];
+      $(table).find('tbody tr').each(function () {
+        var row = $(this);
+        servers.push({
+          name: row.find('.haproxy-server-name').val().trim(),
+          ip: row.find('.haproxy-server-ip').val().trim(),
+          port: Number(row.find('.haproxy-server-port').val()),
+          health_check: row.find('.haproxy-server-health').is(':checked')
+        });
+      });
+      return servers;
+    }
+    function haproxyFormData(kind) {
+      if (kind === 'web') {
+        return {
+          name: $('#haproxyWebName').val().trim(),
+          bind_port: $('#haproxyWebPort').val(),
+          balance_method: $('#haproxyWebBalance').val(),
+          health_check_path: $('#haproxyWebHealthPath').val().trim(),
+          servers: JSON.stringify(collectHaproxyServers('#haproxyWebServers'))
+        };
+      }
+      return {
+        name: $('#haproxySqlName').val().trim(),
+        bind_port: $('#haproxySqlPort').val(),
+        balance_method: $('#haproxySqlBalance').val(),
+        health_check: $('#haproxySqlHealth').is(':checked') ? '1' : '0',
+        servers: JSON.stringify(collectHaproxyServers('#haproxySqlServers'))
+      };
+    }
+    function loadHaproxyStatus() {
+      var lang = i18n[currentLang];
+      $('#haproxyStatusBody').html('<div class="text-muted p-2">Loading...</div>');
+      detectHaproxyApi(function () {
+        $.get(haproxyUrl('/status'), function (res) {
+          if (res.code !== 0) { $('#haproxyStatusBody').html('<div class="text-danger p-2">' + escHtml(res.msg) + '</div>'); return; }
+          var d = res.data || {};
+          var installed = d.installed ? 'Yes' : 'No';
+          var valid = d.config_valid ? 'OK' : 'Failed';
+          $('#haproxyStatusBody').html(
+            '<div class="row">' +
+              '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + (lang.haproxyInstalled || 'Installed') + '</div><div class="haproxy-status-value">' + escHtml(installed) + '</div></div>' +
+              '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + (lang.haproxyService || 'Service Status') + '</div><div class="haproxy-status-value">' + escHtml(d.service_status || 'unknown') + '</div></div>' +
+              '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + (lang.haproxyConfigValid || 'Config Valid') + '</div><div class="haproxy-status-value">' + escHtml(valid) + '</div></div>' +
+              '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + (lang.haproxyConfigPath || 'Config Path') + '</div><div class="haproxy-status-value" style="font-size:.875rem">' + escHtml(d.config_path || '') + '</div></div>' +
+              '<div class="col-12 mb-2"><div class="sys-card-label">' + (lang.haproxyVersion || 'Version') + '</div><pre class="modal-pre mb-0">' + escHtml(d.version || '') + '</pre></div>' +
+              '<div class="col-12"><div class="sys-card-label">Validation</div><pre class="modal-pre mb-0">' + escHtml(d.validation_output || '') + '</pre></div>' +
+            '</div>'
+          );
+          logger.debug('HAProxy 狀態已載入', d.service_status || '');
+        }, 'json').fail(function (xhr, textStatus, errorThrown) {
+          $('#haproxyStatusBody').html('<div class="text-danger p-2">' + escHtml(juniperAjaxError(xhr, textStatus, errorThrown)) + '</div>');
+        });
+      });
+    }
+    function loadHaproxySaved() {
+      detectHaproxyApi(function () {
+        $.get(haproxyUrl('/lbs'), function (res) {
+          if (res.code !== 0) { $('#haproxySavedBody').html('<div class="text-danger">' + escHtml(res.msg) + '</div>'); return; }
+          var items = res.data || [];
+          if (!items.length) {
+            $('#haproxySavedBody').html('<div class="text-muted">尚未儲存 HAProxy 負載平衡設定</div>');
+            return;
+          }
+          var rows = items.map(function (item) {
+            var servers = (item.servers || []).map(function (server) {
+              return server.name + ' ' + server.ip + ':' + server.port;
+            }).join('<br>');
+            var checked = item.enabled === false ? '' : ' checked';
+            var statusText = item.enabled === false ? '停用' : '啟用';
+            return '<tr>' +
+              '<td><span class="badge bg-label-primary">' + escHtml(item.lb_type || '') + '</span></td>' +
+              '<td class="font-monospace">' + escHtml(item.name || '') + '</td>' +
+              '<td class="font-monospace">' + escHtml(item.bind_port || '') + '</td>' +
+              '<td class="font-monospace">' + escHtml(item.balance_method || '') + '</td>' +
+              '<td><div class="form-check form-switch mb-0"><input type="checkbox" class="form-check-input haproxy-toggle-lb" data-id="' + escHtml(item.id) + '"' + checked + '><label class="form-check-label small">' + statusText + '</label></div></td>' +
+              '<td class="font-monospace">' + servers + '</td>' +
+              '<td><button type="button" class="btn btn-sm btn-outline-danger haproxy-delete-lb" data-id="' + escHtml(item.id) + '"><i class="bx bx-trash me-1"></i>刪除</button></td>' +
+            '</tr>';
+          }).join('');
+          $('#haproxySavedBody').html(
+            '<div class="table-responsive"><table class="table table-sm mb-0">' +
+            '<thead><tr><th>Type</th><th>Name</th><th>Port</th><th>Balance</th><th>Status</th><th>Backend Servers</th><th></th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div>'
+          );
+        }, 'json').fail(function (xhr, textStatus, errorThrown) {
+          $('#haproxySavedBody').html('<div class="text-danger">' + escHtml(juniperAjaxError(xhr, textStatus, errorThrown)) + '</div>');
+        });
+      });
+    }
+    function haproxyPost(path, data, done) {
+      detectHaproxyApi(function () {
+        $.post(haproxyUrl(path), data, function (res) {
+          if (res.code !== 0) { showHaproxyError(res.msg); return; }
+          if (done) done(res);
+        }, 'json').fail(function (xhr, textStatus, errorThrown) { showHaproxyError(juniperAjaxError(xhr, textStatus, errorThrown)); });
+      });
+    }
+    function showHaproxyToast(enabled, detail) {
+      var idx = ++toastIdx;
+      var title = enabled ? 'HAProxy 負載平衡已啟用' : 'HAProxy 負載平衡已停用';
+      var message = enabled ? '設定已寫入並重新載入 HAProxy。' : '設定已保留在資料庫，但不再產生到 HAProxy config。';
+      var icon = enabled ? 'bx-check-circle' : 'bx-pause-circle';
+      var disabledClass = enabled ? '' : ' is-disabled';
+      var html = '<div id="haproxyToast' + idx + '" class="toast haproxy-toast' + disabledClass + '" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="6500">' +
+        '<div class="toast-body d-flex gap-3">' +
+          '<div class="haproxy-toast-icon"><i class="bx ' + icon + '"></i></div>' +
+          '<div class="flex-grow-1">' +
+            '<div class="haproxy-toast-title">' + escHtml(title) + '</div>' +
+            '<div class="haproxy-toast-message">' + escHtml(message) + '</div>' +
+            '<div class="haproxy-toast-detail">' + escHtml(detail || '') + '</div>' +
+          '</div>' +
+          '<button type="button" class="btn-close ms-1" data-bs-dismiss="toast" aria-label="Close"></button>' +
+        '</div>' +
+      '</div>';
+      $('#toastContainer').append(html);
+      var el = document.getElementById('haproxyToast' + idx);
+      var toast = new bootstrap.Toast(el);
+      toast.show();
+      setTimeout(function () { $('#haproxyToast' + idx).remove(); }, 7200);
+    }
+    function generateHaproxy(kind) {
+      var data;
+      if (kind === 'web') {
+        data = haproxyFormData('web');
+        haproxyPost('/web', data, function (res) {
+          $('#haproxyWebPreview').text((res.data && res.data.config) || '');
+        });
+      } else {
+        data = haproxyFormData('sql');
+        haproxyPost('/sql', data, function (res) {
+          $('#haproxySqlPreview').text((res.data && res.data.config) || '');
+        });
+      }
+    }
+    function applyHaproxyConfig(kind, config) {
+      var lang = i18n[currentLang];
+      if (!config.trim()) { layer.msg(lang.haproxyGenerate || 'Generate Preview', { icon: 2 }); return; }
+      layer.open({
+        title: lang.haproxyApply || 'Validate & Apply',
+        content: '<div class="mb-2 text-muted" style="font-size:.8125rem">' + escHtml(lang.haproxyConfirmApply || 'Write config and reload HAProxy?') + '</div><pre class="haproxy-preview">' + escHtml(config) + '</pre>',
+        area: ['760px', '80vh'],
+        btn: [lang.confirm, lang.cancel],
+        btn1: function () {
+          _hideModal();
+          var data = haproxyFormData(kind);
+          data.apply = '1';
+          haproxyPost(kind === 'web' ? '/web' : '/sql', data, function (res) {
+            layer.open({
+              title: lang.haproxyApplied || 'HAProxy config applied',
+              content: '<pre class="modal-pre">' + escHtml(JSON.stringify(res.data || {}, null, 2)) + '</pre>',
+              btn: [lang.btnOk || 'OK']
+            });
+            loadHaproxyStatus();
+            loadHaproxySaved();
+          });
+        },
+        btn2: function () { _hideModal(); }
+      });
+    }
+    function validateHaproxyConfig(config) {
+      var lang = i18n[currentLang];
+      if (!config.trim()) { layer.msg(lang.haproxyGenerate || 'Generate Preview', { icon: 2 }); return; }
+      haproxyPost('/config/validate', { config: config }, function (res) {
+        layer.open({
+          title: lang.haproxyValidate || 'Validate Config',
+          content: '<pre class="modal-pre">' + escHtml((res.data || '').toString()) + '</pre>',
+          area: ['760px', '60vh'],
+          btn: [lang.btnOk || 'OK']
+        });
+      });
+    }
+    $(document).on('click', '#haproxyStatusRefresh', loadHaproxyStatus);
+    $(document).on('click', '#haproxySavedRefresh', loadHaproxySaved);
+    $(document).on('click', '#haproxyReloadBtn', function () {
+      haproxyPost('/reload', {}, function (res) {
+        layer.alert('<pre class="modal-pre">' + escHtml((res.data && res.data.output) || '') + '</pre>', { title: 'HAProxy' });
+        loadHaproxyStatus();
+      });
+    });
+    $(document).on('click', '#haproxyRestartBtn', function () {
+      haproxyPost('/restart', {}, function (res) {
+        layer.alert('<pre class="modal-pre">' + escHtml((res.data && res.data.output) || '') + '</pre>', { title: 'HAProxy' });
+        loadHaproxyStatus();
+      });
+    });
+    $(document).on('click', '#haproxyWebAddServer', function () {
+      $('#haproxyWebServers tbody').append(haproxyServerRow('web', { name: 'web' + ($('#haproxyWebServers tbody tr').length + 1), port: 80 }));
+    });
+    $(document).on('click', '#haproxySqlAddServer', function () {
+      $('#haproxySqlServers tbody').append(haproxyServerRow('sql', { name: 'sql_node' + ($('#haproxySqlServers tbody tr').length + 1), port: 1433 }));
+    });
+    $(document).on('click', '.haproxy-remove-server', function () { $(this).closest('tr').remove(); });
+    $(document).on('click', '#haproxyWebGenerate', function () { generateHaproxy('web'); });
+    $(document).on('click', '#haproxySqlGenerate', function () { generateHaproxy('sql'); });
+    $(document).on('click', '.haproxy-validate-preview', function () {
+      validateHaproxyConfig($($(this).data('target')).text());
+    });
+    $(document).on('click', '.haproxy-apply-preview', function () {
+      applyHaproxyConfig($(this).data('kind'), $($(this).data('target')).text());
+    });
+    $(document).on('change', '.haproxy-toggle-lb', function () {
+      var toggle = $(this);
+      var id = toggle.data('id');
+      var enabled = toggle.is(':checked');
+      toggle.prop('disabled', true);
+      logger.info('切換 HAProxy 負載平衡狀態', 'id=' + id + ', enabled=' + enabled);
+      detectHaproxyApi(function () {
+        $.post(haproxyUrl('/lbs/' + encodeURIComponent(id) + '/enabled'), { enabled: enabled ? '1' : '0' }, function (res) {
+          logger.debug('HAProxy 狀態切換 API 回應', JSON.stringify(res));
+          if (res.code !== 0) {
+            toggle.prop('checked', !enabled).prop('disabled', false);
+            showHaproxyError(res.msg);
+            return;
+          }
+          loadHaproxySaved();
+          loadHaproxyStatus();
+          showHaproxyToast(enabled, 'id=' + id + ', reload=success');
+        }, 'json').fail(function (xhr, textStatus, errorThrown) {
+          toggle.prop('checked', !enabled).prop('disabled', false);
+          showHaproxyError(juniperAjaxError(xhr, textStatus, errorThrown));
+        });
+      });
+    });
+    $(document).on('click', '.haproxy-delete-lb', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var id = $(this).data('id');
+      var btn = $(this);
+      logger.info('按下 HAProxy 刪除按鈕', 'id=' + id);
+      if (!window.confirm('確認刪除這組 HAProxy 負載平衡設定並重新套用？')) return;
+      btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>刪除中');
+      logger.info('刪除 HAProxy 負載平衡設定', 'id=' + id);
+      detectHaproxyApi(function () {
+        $.post(haproxyUrl('/lbs/' + encodeURIComponent(id) + '/delete'), {}, function (res) {
+          logger.debug('HAProxy 刪除 API 回應', JSON.stringify(res));
+          if (res.code !== 0) {
+            btn.prop('disabled', false).html('<i class="bx bx-trash me-1"></i>刪除');
+            showHaproxyError(res.msg);
+            return;
+          }
+          loadHaproxySaved();
+          loadHaproxyStatus();
+          layer.msg('已刪除並重新套用 HAProxy 設定', { icon: 1 });
+        }, 'json').fail(function (xhr, textStatus, errorThrown) {
+          btn.prop('disabled', false).html('<i class="bx bx-trash me-1"></i>刪除');
+          showHaproxyError(juniperAjaxError(xhr, textStatus, errorThrown));
+        });
+      });
+    });
+    $(document).on('shown.bs.tab', '#haproxyTabs .nav-link', function () {
+      if ($(this).attr('data-bs-target') === '#haproxyStatusPane') {
+        loadHaproxyStatus();
+        loadHaproxySaved();
+      }
+    });
+
     // ─── Shell Terminal ───
     let term = null, wsShell = null, termFit = null;
     let lastShellInputAt = 0;
@@ -2471,7 +3002,9 @@
       // ─── Dashboard view toggle & timer ───
       function switchView(mode) {
         $('#juniperView').hide();
+        $('#haproxyView').hide();
         $('#menuJuniper').removeClass('active');
+        $('#menuHaproxy').removeClass('active');
         if (mode === 'dashboard') {
           destroyTerminal();
           if (wsAI) { try { wsAI.close(); } catch(e) {} wsAI = null; aiRunning = false; }
@@ -2543,6 +3076,27 @@
           if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
           loadJuniperAll();
           logger.info('切換至 Juniper 設定');
+        } else if (mode === 'haproxy') {
+          destroyTerminal();
+          if (wsAI) { try { wsAI.close(); } catch(e) {} wsAI = null; aiRunning = false; }
+          $('#shellView').hide();
+          $('#aiView').hide();
+          $('#dashboardView').hide();
+          $('#tablesView').hide();
+          $('#systemView').hide();
+          $('#haproxyView').show();
+          $('.action-buttons').hide();
+          $('#menuHaproxy').addClass('active');
+          $('#menuDash').removeClass('active');
+          $('#menuTables').removeClass('active');
+          $('#menuSys').removeClass('active');
+          $('#menuShell').removeClass('active');
+          $('#menuAI').removeClass('active');
+          if (dashTimer) { clearInterval(dashTimer); dashTimer = null; }
+          ensureHaproxyDefaults();
+          loadHaproxyStatus();
+          loadHaproxySaved();
+          logger.info('切換至 HAProxy 管理');
         } else if (mode === 'system') {
           destroyTerminal();
           if (wsAI) { try { wsAI.close(); } catch(e) {} wsAI = null; aiRunning = false; }
@@ -2581,6 +3135,7 @@
       $('#menuDashLink').on('click', function (e) { e.preventDefault(); switchView('dashboard'); });
       $('#menuTablesLink').on('click', function (e) { e.preventDefault(); switchView('tables'); });
       $('#menuJuniperLink').on('click', function (e) { e.preventDefault(); switchView('juniper'); });
+      $('#menuHaproxyLink').on('click', function (e) { e.preventDefault(); switchView('haproxy'); });
       $('#menuSysLink').on('click', function (e) { e.preventDefault(); switchView('system'); });
       $('#menuShellLink').on('click', function (e) { e.preventDefault(); switchView('shell'); });
       $('#menuAILink').on('click', function (e) { e.preventDefault(); switchView('ai'); });

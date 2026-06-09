@@ -1,6 +1,7 @@
 mod ai;
 mod db;
 mod firewall;
+mod haproxy;
 mod iptables;
 mod juniper;
 mod pfctl;
@@ -12,6 +13,7 @@ mod windows;
 
 use crate::db::AppDb;
 use crate::firewall::FirewallCmd;
+use crate::haproxy::HaproxyClient;
 use crate::iptables::IptablesCmd;
 use crate::juniper::JuniperClient;
 use crate::pfctl::PfctlCmd;
@@ -127,7 +129,9 @@ fn main() {
                     username,
                     password,
                     platform: "linux".to_string(),
+                    db: db.clone(),
                     juniper: Arc::new(JuniperClient::new(db.clone())),
+                    haproxy: Arc::new(HaproxyClient::from_env()),
                 });
 
                 let app = build_router(state);
@@ -162,7 +166,9 @@ fn main() {
                     username,
                     password,
                     platform: "macos".to_string(),
+                    db: db.clone(),
                     juniper: Arc::new(JuniperClient::new(db.clone())),
+                    haproxy: Arc::new(HaproxyClient::from_env()),
                 });
 
                 let app = build_router(state);
@@ -197,7 +203,9 @@ fn main() {
                     username,
                     password,
                     platform: "windows".to_string(),
+                    db: db.clone(),
                     juniper: Arc::new(JuniperClient::new(db.clone())),
+                    haproxy: Arc::new(HaproxyClient::from_env()),
                 });
 
                 let app = build_router(state);

@@ -1,6 +1,9 @@
 use crate::ai;
-use crate::db::JuniperDeviceUpdate;
+use crate::db::{
+    AppDb, HaproxyBackendServerUpdate, HaproxyLoadBalancerUpdate, JuniperDeviceUpdate,
+};
 use crate::firewall::FirewallCmd;
+use crate::haproxy::{BackendServer, HaproxyClient};
 use crate::juniper::{self, JuniperClient};
 use crate::shell;
 use crate::system;
@@ -17,7 +20,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rust_embed::RustEmbed;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::sync::Arc;
 
 static ARGS_VERIFY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[0-9A-z-_]+$").unwrap());
@@ -36,7 +39,9 @@ pub struct AppState {
     pub username: String,
     pub password: String,
     pub platform: String,
+    pub db: AppDb,
     pub juniper: Arc<JuniperClient>,
+    pub haproxy: Arc<HaproxyClient>,
 }
 
 #[derive(Deserialize)]
@@ -105,6 +110,28 @@ pub struct JuniperSettingsForm {
     pub strict_host_key_checking: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct HaproxyConfigForm {
+    pub config: Option<String>,
+    pub apply: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct HaproxyLbForm {
+    pub name: Option<String>,
+    pub bind_port: Option<u16>,
+    pub balance_method: Option<String>,
+    pub health_check_path: Option<String>,
+    pub health_check: Option<String>,
+    pub servers: Option<String>,
+    pub apply: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct HaproxyEnabledForm {
+    pub enabled: Option<String>,
+}
+
 fn pick_firewall(state: &AppState, protocol: Option<&str>) -> Result<Arc<dyn FirewallCmd>, String> {
     match protocol.unwrap_or("ipv4") {
         "ipv4" | "ip4" | "4" | "" => state
@@ -146,6 +173,26 @@ fn parse_form_bool(value: Option<&str>) -> bool {
 
 fn decode_juniper_port_path(port: &str) -> String {
     port.replace('~', "/")
+}
+
+fn parse_backend_servers(raw: Option<String>) -> Result<Vec<HaproxyBackendServerUpdate>, String> {
+    let raw = raw.unwrap_or_default();
+    if raw.trim().is_empty() {
+        return Err("backend server list is required".to_string());
+    }
+    serde_json::from_str(&raw).map_err(|e| format!("invalid backend server JSON: {e}"))
+}
+
+fn haproxy_backend_servers(servers: &[HaproxyBackendServerUpdate]) -> Vec<BackendServer> {
+    servers
+        .iter()
+        .map(|server| BackendServer {
+            name: server.name.clone(),
+            ip: server.ip.clone(),
+            port: server.port,
+            health_check: server.health_check,
+        })
+        .collect()
 }
 
 async fn auth_middleware(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
@@ -540,6 +587,231 @@ async fn handle_juniper_bulk_ports(
     }
 }
 
+// ---- HAProxy Handlers ----
+
+async fn handle_haproxy_status(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let data = state.haproxy.status().await;
+    utils::output(None, Some(serde_json::to_value(data).unwrap_or_default()))
+}
+
+async fn handle_haproxy_reload(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.haproxy.reload().await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_restart(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.haproxy.restart().await {
+        Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_config(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.haproxy.read_config().await {
+        Ok(data) => utils::output(None, Some(Value::String(data))),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_validate(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<HaproxyConfigForm>,
+) -> Json<Value> {
+    let config = form.config.unwrap_or_default();
+    if config.trim().is_empty() {
+        return utils::output(Some("HAProxy config is required"), None);
+    }
+    let apply = parse_form_bool(form.apply.as_deref());
+    if apply {
+        match state.haproxy.apply_config(&config).await {
+            Ok(data) => utils::output(None, Some(serde_json::to_value(data).unwrap_or_default())),
+            Err(e) => utils::output(Some(&e), None),
+        }
+    } else {
+        match state.haproxy.validate_config_text(&config).await {
+            Ok(data) => utils::output(None, Some(Value::String(data))),
+            Err(e) => utils::output(Some(&e), None),
+        }
+    }
+}
+
+async fn handle_haproxy_web(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<HaproxyLbForm>,
+) -> Json<Value> {
+    let servers = match parse_backend_servers(form.servers) {
+        Ok(servers) => servers,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let backend_servers = haproxy_backend_servers(&servers);
+    let name = form.name.as_deref().unwrap_or("web");
+    let bind_port = form.bind_port.unwrap_or(80);
+    let balance_method = form.balance_method.as_deref().unwrap_or("roundrobin");
+    let health_check_path = form.health_check_path.as_deref().unwrap_or("/");
+
+    match state.haproxy.build_web_config(
+        name,
+        bind_port,
+        balance_method,
+        health_check_path,
+        &backend_servers,
+    ) {
+        Ok(data) => {
+            if !parse_form_bool(form.apply.as_deref()) {
+                return utils::output(None, Some(serde_json::to_value(data).unwrap_or_default()));
+            }
+            let update = HaproxyLoadBalancerUpdate {
+                lb_type: "web".to_string(),
+                enabled: true,
+                name: name.to_string(),
+                bind_port,
+                mode: "http".to_string(),
+                balance_method: balance_method.to_string(),
+                health_check_path: Some(health_check_path.to_string()),
+                health_check: true,
+                servers,
+            };
+            match save_and_apply_haproxy(&state, update).await {
+                Ok(value) => utils::output(None, Some(value)),
+                Err(e) => utils::output(Some(&e), None),
+            }
+        }
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_sql(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<HaproxyLbForm>,
+) -> Json<Value> {
+    let servers = match parse_backend_servers(form.servers) {
+        Ok(servers) => servers,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let backend_servers = haproxy_backend_servers(&servers);
+    let name = form.name.as_deref().unwrap_or("msql");
+    let bind_port = form.bind_port.unwrap_or(1433);
+    let balance_method = form.balance_method.as_deref().unwrap_or("source");
+    let health_check = parse_form_bool(form.health_check.as_deref());
+
+    match state.haproxy.build_sql_config(
+        name,
+        bind_port,
+        balance_method,
+        health_check,
+        &backend_servers,
+    ) {
+        Ok(data) => {
+            if !parse_form_bool(form.apply.as_deref()) {
+                return utils::output(None, Some(serde_json::to_value(data).unwrap_or_default()));
+            }
+            let update = HaproxyLoadBalancerUpdate {
+                lb_type: "sql".to_string(),
+                enabled: true,
+                name: name.to_string(),
+                bind_port,
+                mode: "tcp".to_string(),
+                balance_method: balance_method.to_string(),
+                health_check_path: None,
+                health_check,
+                servers,
+            };
+            match save_and_apply_haproxy(&state, update).await {
+                Ok(value) => utils::output(None, Some(value)),
+                Err(e) => utils::output(Some(&e), None),
+            }
+        }
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_lbs(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.list_haproxy_lbs() {
+        Ok(items) => utils::output(None, Some(serde_json::to_value(items).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_delete_lb(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    let items = match state.db.list_haproxy_lbs() {
+        Ok(items) => items,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    if !items.iter().any(|item| item.id == id) {
+        return utils::output(Some("HAProxy load balancer not found"), None);
+    }
+
+    let remaining: Vec<_> = items.into_iter().filter(|item| item.id != id).collect();
+    let preview = match state.haproxy.build_managed_config(&remaining) {
+        Ok(preview) => preview,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let apply = match state.haproxy.apply_config(&preview.config).await {
+        Ok(apply) => apply,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+
+    match state.db.delete_haproxy_lb(id) {
+        Ok(true) => utils::output(
+            None,
+            Some(json!({
+                "config": preview.config,
+                "load_balancers": remaining,
+                "apply": apply
+            })),
+        ),
+        Ok(false) => utils::output(Some("HAProxy load balancer not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_set_enabled(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<HaproxyEnabledForm>,
+) -> Json<Value> {
+    let enabled = parse_form_bool(form.enabled.as_deref());
+    match state.db.set_haproxy_lb_enabled(id, enabled) {
+        Ok(true) => match apply_saved_haproxy_config(&state).await {
+            Ok(value) => utils::output(None, Some(value)),
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("HAProxy load balancer not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn save_and_apply_haproxy(
+    state: &AppState,
+    update: HaproxyLoadBalancerUpdate,
+) -> Result<Value, String> {
+    let saved = state.db.save_haproxy_lb(update)?;
+    let mut value = apply_saved_haproxy_config(state).await?;
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            "saved".to_string(),
+            serde_json::to_value(saved).unwrap_or_default(),
+        );
+    }
+    Ok(value)
+}
+
+async fn apply_saved_haproxy_config(state: &AppState) -> Result<Value, String> {
+    let items = state.db.list_haproxy_lbs()?;
+    let preview = state.haproxy.build_managed_config(&items)?;
+    let apply = state.haproxy.apply_config(&preview.config).await?;
+    Ok(json!({
+        "config": preview.config,
+        "load_balancers": items,
+        "apply": apply
+    }))
+}
+
 // ---- Static File Handlers ----
 
 async fn handle_web_assets(Path(path): Path<String>) -> impl IntoResponse {
@@ -662,6 +934,37 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/exec", post(handle_exec))
         .route("/system/info", get(handle_system_info))
         .route("/system/processes", get(handle_system_processes))
+        .route("/haproxy/status", get(handle_haproxy_status))
+        .route("/haproxy/reload", post(handle_haproxy_reload))
+        .route("/haproxy/restart", post(handle_haproxy_restart))
+        .route("/haproxy/config", get(handle_haproxy_config))
+        .route("/haproxy/config/validate", post(handle_haproxy_validate))
+        .route("/haproxy/lbs", get(handle_haproxy_lbs))
+        .route("/haproxy/lbs/:id", delete(handle_haproxy_delete_lb))
+        .route("/haproxy/lbs/:id/delete", post(handle_haproxy_delete_lb))
+        .route("/haproxy/lbs/:id/enabled", post(handle_haproxy_set_enabled))
+        .route("/haproxy/web", post(handle_haproxy_web))
+        .route("/haproxy/sql", post(handle_haproxy_sql))
+        .route("/api/haproxy/status", get(handle_haproxy_status))
+        .route("/api/haproxy/reload", post(handle_haproxy_reload))
+        .route("/api/haproxy/restart", post(handle_haproxy_restart))
+        .route("/api/haproxy/config", get(handle_haproxy_config))
+        .route(
+            "/api/haproxy/config/validate",
+            post(handle_haproxy_validate),
+        )
+        .route("/api/haproxy/lbs", get(handle_haproxy_lbs))
+        .route("/api/haproxy/lbs/:id", delete(handle_haproxy_delete_lb))
+        .route(
+            "/api/haproxy/lbs/:id/delete",
+            post(handle_haproxy_delete_lb),
+        )
+        .route(
+            "/api/haproxy/lbs/:id/enabled",
+            post(handle_haproxy_set_enabled),
+        )
+        .route("/api/haproxy/web", post(handle_haproxy_web))
+        .route("/api/haproxy/sql", post(handle_haproxy_sql))
         .route("/juniper/info", get(handle_juniper_info))
         .route(
             "/juniper/settings",

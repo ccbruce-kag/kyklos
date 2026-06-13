@@ -9,7 +9,7 @@ node_modules
 
 # Rust
 target/
-Cargo.lock
+backend/Cargo.lock
 
 # Build output
 firewall-man

@@ -1,21 +1,21 @@
 BIN_FILE = firewall-man
 
 release:
-	cargo build --release
-	cp target/release/$(BIN_FILE) .
+	cd backend && cargo build --release
+	cp backend/target/release/$(BIN_FILE) .
 
 run:
-	cargo run
+	cd backend && cargo run
 
 images:
 	docker build -t micopa/firewall-man:0.1.0 .
 
 clean:
-	cargo clean
+	cd backend && cargo clean
 	rm -f $(BIN_FILE)
 
 test:
-	cargo test
+	cd backend && cargo test
 
 check:
-	cargo clippy
+	cd backend && cargo clippy

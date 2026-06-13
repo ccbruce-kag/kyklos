@@ -26,11 +26,11 @@ use std::sync::Arc;
 static ARGS_VERIFY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[0-9A-z-_]+$").unwrap());
 
 #[derive(RustEmbed)]
-#[folder = "web"]
+#[folder = "../web"]
 struct WebAssets;
 
 #[derive(RustEmbed)]
-#[folder = "docs"]
+#[folder = "../docs"]
 struct DocAssets;
 
 pub struct AppState {

@@ -23,10 +23,10 @@ A Rust-based cross-platform firewall web management tool supporting **Linux (ipt
 
 ```bash
 # Build
-cargo build --release
+cd backend && cargo build --release
 
 # Run (requires root / sudo privileges)
-sudo ./target/release/firewall-man
+sudo ./firewall-man
 
 # Custom listen address and credentials
 ./firewall-man -a :8080 -u myuser -p mypass
@@ -42,10 +42,10 @@ export IPT_WEB_ADDRESS=:10001
 
 ```powershell
 # Build
-cargo build --release
+cd backend && cargo build --release
 
 # Run (must run as Administrator)
-.\target\release\firewall-man.exe
+.\firewall-man.exe
 ```
 
 After starting, open your browser and visit `http://<host-ip>:10001`.
@@ -190,22 +190,22 @@ docker run -d --network host --privileged micopa/firewall-man:0.1.0
 
 ```bash
 # Compile
-cargo build --release
+make release
 
 # Run (Linux / macOS requires root / sudo)
-sudo ./target/release/firewall-man
+sudo ./firewall-man
 
 # Windows: run as Administrator
-.\target\release\firewall-man.exe
+.\firewall-man.exe
 
 # Custom listen address and credentials
 ./firewall-man -a :8080 -u myuser -p mypass
 
 # Test
-cargo test
+make test
 
 # Lint
-cargo clippy
+make check
 
 # Docker image (Linux only)
 docker build -t micopa/firewall-man:0.1.0 .

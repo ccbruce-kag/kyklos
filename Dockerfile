@@ -1,8 +1,8 @@
 FROM rust:1.80-alpine AS builder
 RUN apk add --no-cache musl-dev
 WORKDIR /app
-COPY . .
-RUN make release
+COPY backend/ .
+RUN cargo build --release
 
 FROM alpine:3.19
 

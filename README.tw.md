@@ -25,10 +25,10 @@
 
 ```bash
 # 建置
-cargo build --release
+cd backend && cargo build --release
 
 # 執行（需 root / sudo 權限）
-sudo ./target/release/firewall-man
+sudo ./firewall-man
 
 # 自訂監聽位址與認證
 ./firewall-man -a :8080 -u myuser -p mypass
@@ -44,10 +44,10 @@ export IPT_WEB_ADDRESS=:10001
 
 ```powershell
 # 建置
-cargo build --release
+cd backend && cargo build --release
 
 # 執行（需以系統管理員執行）
-.\target\release\firewall-man.exe
+.\firewall-man.exe
 ```
 
 啟動後開啟瀏覽器訪問 `http://<主機IP>:10001`。

@@ -5,16 +5,16 @@ export default function TablesView() {
         <div className="col-12">
           <ul className="nav nav-tabs nav-fill mb-3 iptables-table" id="tableTabs" role="tablist">
             <li className="nav-item" role="presentation">
-              <button className="nav-link" id="tab-raw" data-bs-toggle="tab" data-bs-target="#tabContent" type="button" role="tab">raw</button>
+              <button className="nav-link" id="tab-raw" type="button" role="tab">raw</button>
             </li>
             <li className="nav-item" role="presentation">
-              <button className="nav-link" id="tab-mangle" data-bs-toggle="tab" data-bs-target="#tabContent" type="button" role="tab">mangle</button>
+              <button className="nav-link" id="tab-mangle" type="button" role="tab">mangle</button>
             </li>
             <li className="nav-item" role="presentation">
-              <button className="nav-link" id="tab-nat" data-bs-toggle="tab" data-bs-target="#tabContent" type="button" role="tab">nat</button>
+              <button className="nav-link" id="tab-nat" type="button" role="tab">nat</button>
             </li>
             <li className="nav-item" role="presentation">
-              <button className="nav-link active" id="tab-filter" data-bs-toggle="tab" data-bs-target="#tabContent" type="button" role="tab">filter</button>
+              <button className="nav-link active" id="tab-filter" type="button" role="tab">filter</button>
             </li>
           </ul>
         </div>

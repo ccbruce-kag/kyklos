@@ -1364,6 +1364,38 @@ async fn handle_tools_netstat(State(state): State<Arc<AppState>>) -> Json<Value>
     Json(tools::netstat(&state.platform).await)
 }
 
+#[derive(Deserialize)]
+struct PcapCaptureForm {
+    interface: Option<String>,
+    filter: Option<String>,
+    count: Option<usize>,
+    timeout: Option<u64>,
+}
+
+async fn handle_tools_pcap_interfaces() -> Json<Value> {
+    Json(json!({"code": 0, "data": tools::pcap::list_interfaces()}))
+}
+
+async fn handle_tools_pcap_capture(Form(form): Form<PcapCaptureForm>) -> Json<Value> {
+    let interface = form.interface.unwrap_or_else(|| "en0".to_string());
+    let filter = form.filter.unwrap_or_default();
+    let count = form.count.unwrap_or(50);
+    let timeout = form.timeout.unwrap_or(10);
+
+    let iface = interface.clone();
+    let flt = filter.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        tools::pcap::capture_packets(&iface, &flt, count, timeout)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(packets)) => Json(json!({"code": 0, "data": packets, "count": packets.len()})),
+        Ok(Err(e)) => Json(json!({"code": 1, "msg": e})),
+        Err(e) => Json(json!({"code": 1, "msg": format!("task failed: {}", e)})),
+    }
+}
+
 // ---- Netplan Handlers ----
 
 async fn handle_netplan_interfaces() -> Json<Value> {
@@ -2807,6 +2839,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/tools/nslookup", post(handle_tools_nslookup))
         .route("/tools/ip-location", post(handle_tools_ip_location))
         .route("/tools/netstat", post(handle_tools_netstat))
+        .route("/tools/pcap/interfaces", get(handle_tools_pcap_interfaces))
+        .route("/tools/pcap/capture", post(handle_tools_pcap_capture))
         .route("/api/tools/log/list", get(handle_log_list))
         .route("/api/tools/log/tail", post(handle_log_tail))
         .route("/api/tools/log/content", post(handle_log_content))
@@ -2816,7 +2850,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/tools/traceroute", post(handle_tools_traceroute))
         .route("/api/tools/nslookup", post(handle_tools_nslookup))
         .route("/api/tools/ip-location", post(handle_tools_ip_location))
-        .route("/api/tools/netstat", post(handle_tools_netstat));
+        .route("/api/tools/netstat", post(handle_tools_netstat))
+        .route("/api/tools/pcap/interfaces", get(handle_tools_pcap_interfaces))
+        .route("/api/tools/pcap/capture", post(handle_tools_pcap_capture));
 
     // Auth layer applied to both web and API routes
     let auth_layer = middleware::from_fn_with_state(state.clone(), auth_middleware);

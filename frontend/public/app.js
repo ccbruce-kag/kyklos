@@ -2672,7 +2672,31 @@ var _orig_ready = $;
     var apimanBase = '/apiman';
     var apimanCurrentNodeId = null;
     var apimanWorkspaces = [];
+    var apimanExpanded = {};
     function apimanUrl(path) { return apimanBase + path; }
+    (function () {
+      if (document.getElementById('apiman-style')) return;
+      var s = document.createElement('style');
+      s.id = 'apiman-style';
+      s.textContent = [
+        '.apiman-ws-item{transition:all .12s ease;border:1px solid var(--bs-border-color);cursor:pointer}',
+        '.apiman-ws-item:hover{border-color:var(--bs-primary);background:rgba(var(--bs-primary-rgb),.04)}',
+        '.apiman-folder-header{transition:background .12s ease;border-radius:4px}',
+        '.apiman-folder-header:hover{background:rgba(var(--bs-secondary-rgb),.06)}',
+        '.apiman-req-item{transition:background .12s ease;border-radius:4px}',
+        '.apiman-req-item:hover{background:rgba(var(--bs-secondary-rgb),.05)}',
+        '.apiman-method-badge{font-size:.6rem;font-weight:700;padding:1px 5px;border-radius:3px;letter-spacing:.3px}',
+        '.apiman-fold-toggle{width:18px;display:inline-block;text-align:center;cursor:pointer;user-select:none;font-size:.7rem;color:var(--bs-secondary-color);transition:color .12s}',
+        '.apiman-fold-toggle:hover{color:var(--bs-primary)}',
+        '.apiman-tree-line{border-left:1px solid var(--bs-border-color);margin-left:11px}',
+        '.apiman-drop-hint{background:rgba(var(--bs-primary-rgb),.06);outline:2px dashed var(--bs-primary)}',
+        '.apiman-ws-icon{font-size:.9rem}',
+        '.apiman-folder-icon{font-size:.85rem;color:var(--bs-warning)}',
+        '.apiman-request-icon{font-size:.75rem;color:var(--bs-info)}',
+        '.apiman-empty-dot{width:6px;height:6px;border-radius:50%;background:var(--bs-border-color);display:inline-block;margin-left:11px}',
+      ].join('');
+      document.head.appendChild(s);
+    })();
     function loadApiManWorkspaces(done) {
       $.get(apimanUrl('/workspaces'), function (res) {
         if (res.code === 0) {
@@ -2737,17 +2761,20 @@ var _orig_ready = $;
         var $tree = $('#apimanTreeBody');
         var lang = i18n[currentLang] || i18n.en;
         if (!workspaces.length) {
-          $tree.html('<div class="text-muted text-center p-3" style="font-size:.8125rem">' + escHtml(lang.apimanNoWorkspace || 'No workspaces yet') + '<br><button class="btn btn-sm btn-outline-primary mt-2" id="apimanCreateFirstWs"><i class="bx bx-plus me-1"></i>' + escHtml(lang.apimanCreateFirstWorkspace || 'Create first workspace') + '</button></div>');
+          $tree.html('<div class="text-muted text-center p-4" style="font-size:.8125rem">' +
+            '<i class="bx bx-folder-open" style="font-size:2.2rem;opacity:.25;display:block;margin-bottom:8px"></i>' +
+            escHtml(lang.apimanNoWorkspace || 'No workspaces yet') +
+            '<br><button class="btn btn-sm btn-outline-primary mt-2" id="apimanCreateFirstWs"><i class="bx bx-plus me-1"></i>' +
+            escHtml(lang.apimanCreateFirstWorkspace || 'Create first workspace') + '</button></div>');
           return;
         }
-        // Show workspace list as selectable tabs
         var html = '<div class="d-flex justify-content-end gap-1 px-1 mb-1">' +
           '<button class="btn btn-sm btn-outline-info" id="apimanImportBtn" title="匯入工作區"><i class="bx bx-import"></i></button></div>';
         workspaces.forEach(function (ws) {
-          html += '<div class="apiman-ws-item p-1 mb-1" data-ws-id="' + ws.id + '" style="cursor:pointer;border-radius:4px;background:var(--bs-tertiary-bg)">' +
+          html += '<div class="apiman-ws-item p-1 mb-1 rounded" data-ws-id="' + ws.id + '">' +
             '<div class="d-flex justify-content-between align-items-center px-2 py-1">' +
-            '<strong style="font-size:.8125rem"><i class="bx bx-folder me-1"></i>' + escHtml(ws.name) + '</strong>' +
-            '<div><button class="btn btn-sm btn-outline-danger apiman-del-ws" data-id="' + ws.id + '" title="刪除工作區"><i class="bx bx-trash"></i></button></div>' +
+            '<strong style="font-size:.8125rem"><i class="bx bx-folder apiman-ws-icon me-1"></i>' + escHtml(ws.name) + '</strong>' +
+            '<div><button class="btn btn-sm btn-outline-danger apiman-del-ws border-0" data-id="' + ws.id + '" title="刪除工作區"><i class="bx bx-trash"></i></button></div>' +
             '</div></div>';
         });
         $tree.html(html);
@@ -2762,39 +2789,59 @@ var _orig_ready = $;
         var treeData = res.data || [];
         var html = buildApiManTreeHtml(treeData, 0);
         $('#apimanTreeBody').html(
-          '<div class="d-flex justify-content-between align-items-center px-1 mb-1">' +
-          '<strong style="font-size:.8125rem" id="apimanCurrentWsLabel"></strong>' +
-          '<div><button class="btn btn-sm btn-outline-info apiman-export-ws" data-ws="' + wsId + '"><i class="bx bx-export me-1"></i></button> ' +
-          '<button class="btn btn-sm btn-outline-secondary apiman-back-ws"><i class="bx bx-arrow-back"></i></button></div></div>' +
-          '<div class="mb-2">' +
-          '<button class="btn btn-sm btn-outline-primary apiman-add-folder" data-ws="' + wsId + '"><i class="bx bx-folder-plus me-1"></i>資料夾</button> ' +
-          '<button class="btn btn-sm btn-outline-success apiman-add-req" data-ws="' + wsId + '"><i class="bx bx-plus-circle me-1"></i>Request</button>' +
-          '</div>' +
-          (html || '<div class="text-muted p-2" style="font-size:.8125rem">空的</div>')
+          '<div class="d-flex justify-content-between align-items-center px-1 mb-2">' +
+          '<strong style="font-size:.8125rem" id="apimanCurrentWsLabel"><i class="bx bx-folder apiman-ws-icon me-1"></i></strong>' +
+          '<div class="d-flex gap-1">' +
+          '<button class="btn btn-sm btn-outline-primary apiman-add-folder" data-ws="' + wsId + '" title="新增資料夾"><i class="bx bx-folder-plus"></i></button>' +
+          '<button class="btn btn-sm btn-outline-success apiman-add-req" data-ws="' + wsId + '" title="新增 Request"><i class="bx bx-plus-circle"></i></button>' +
+          '<button class="btn btn-sm btn-outline-info apiman-export-ws" data-ws="' + wsId + '" title="匯出"><i class="bx bx-export"></i></button>' +
+          '<button class="btn btn-sm btn-outline-secondary apiman-back-ws" title="返回"><i class="bx bx-arrow-back"></i></button></div></div>' +
+          (html || '<div class="text-muted p-3 text-center" style="font-size:.8125rem"><i class="bx bx-inbox" style="font-size:1.6rem;opacity:.25;display:block;margin-bottom:4px"></i>空的，點擊上方按鈕新增</div>')
         );
-        $('#apimanCurrentWsLabel').text(ws ? ws.name : '');
+        $('#apimanCurrentWsLabel').html('<i class="bx bx-folder apiman-ws-icon me-1"></i>' + (ws ? escHtml(ws.name) : ''));
       });
     }
     var apimanDragNodeId = null;
     function buildApiManTreeHtml(nodes, depth) {
       var html = '';
-      nodes.forEach(function (item) {
-        var indent = 'padding-left:' + (depth * 16 + 4) + 'px';
+      var sorted = (nodes || []).slice().sort(function (a, b) {
+        var ta = a.node && a.node.node_type;
+        var tb = b.node && b.node.node_type;
+        if (ta === 'folder' && tb !== 'folder') return -1;
+        if (ta !== 'folder' && tb === 'folder') return 1;
+        return 0;
+      });
+      sorted.forEach(function (item) {
+        var nodeId = item.node.id;
+        var isExpanded = apimanExpanded[nodeId] !== false;
+        var indent = depth * 16 + 4;
         if (item.node.node_type === 'folder') {
-          html += '<div class="apiman-folder-item" style="' + indent + ';border-radius:4px">' +
-            '<div class="d-flex justify-content-between align-items-center px-1 py-1 apiman-folder-header" data-node-id="' + item.node.id + '" draggable="true" style="cursor:grab">' +
-            '<span style="font-size:.8125rem"><i class="bx bx-folder me-1"></i>' + escHtml(item.node.name) + '</span>' +
-            '<div><button class="btn btn-sm btn-outline-info apiman-copy-node me-1" data-id="' + item.node.id + '" title="複製"><i class="bx bx-copy"></i></button><button class="btn btn-sm btn-outline-danger apiman-del-node" data-id="' + item.node.id + '"><i class="bx bx-trash"></i></button></div>' +
+          var hasChildren = item.children && item.children.length > 0;
+          html += '<div class="apiman-folder-item" style="padding-left:' + indent + 'px;padding-right:3px">' +
+            '<div class="d-flex justify-content-between align-items-center px-1 py-1 apiman-folder-header" data-node-id="' + nodeId + '" draggable="true" style="cursor:grab">' +
+            '<span style="font-size:.8125rem">' +
+            '<span class="apiman-fold-toggle" data-fold="' + nodeId + '">' + (hasChildren ? (isExpanded ? '▾' : '▸') : '') + '</span>' +
+            '<i class="bx ' + (isExpanded ? 'bx-folder-open' : 'bx-folder') + ' apiman-folder-icon me-1"></i>' +
+            escHtml(item.node.name) + '</span>' +
+            '<div class="d-flex gap-1">' +
+            '<button class="btn btn-sm btn-outline-info apiman-copy-node border-0 px-1" data-id="' + nodeId + '" title="複製"><i class="bx bx-copy" style="font-size:.8rem"></i></button>' +
+            '<button class="btn btn-sm btn-outline-danger apiman-del-node border-0 px-1" data-id="' + nodeId + '"><i class="bx bx-trash" style="font-size:.8rem"></i></button></div>' +
             '</div>' +
-            '<div class="apiman-children apiman-drop-zone" data-parent-id="' + item.node.id + '" style="min-height:4px">' + buildApiManTreeHtml(item.children, depth + 1) + '</div>' +
-            '</div>';
+            '<div class="apiman-children apiman-drop-zone' + (isExpanded ? '' : ' d-none') + '" data-parent-id="' + nodeId + '" style="min-height:2px;padding-left:25px">' +
+            (hasChildren ? buildApiManTreeHtml(item.children, depth + 1) : '<span class="apiman-empty-dot"></span>') +
+            '</div></div>';
         } else {
           var method = item.request ? item.request.method : 'GET';
-          var methodClass = method === 'GET' ? 'text-success' : method === 'POST' ? 'text-warning' : method === 'DELETE' ? 'text-danger' : 'text-info';
-          html += '<div class="apiman-req-item px-1 py-1" style="' + indent + ';cursor:grab;border-radius:4px" data-node-id="' + item.node.id + '" draggable="true">' +
+          var methodBg = method === 'GET' ? 'rgba(102,187,106,.15)' : method === 'POST' ? 'rgba(255,193,7,.2)' : method === 'DELETE' ? 'rgba(234,84,85,.15)' : 'rgba(3,169,244,.15)';
+          var methodColor = method === 'GET' ? '#2e7d32' : method === 'POST' ? '#b8860b' : method === 'DELETE' ? '#c62828' : '#0277bd';
+          html += '<div class="apiman-req-item px-1 py-1" style="padding-left:' + indent + 'px;padding-right:3px;cursor:grab" data-node-id="' + nodeId + '" draggable="true">' +
             '<div class="d-flex justify-content-between align-items-center">' +
-            '<span style="font-size:.75rem"><span class="' + methodClass + ' fw-bold">' + method + '</span> <span class="text-truncate" style="max-width:150px;display:inline-block">' + escHtml(item.request ? item.request.url : '') + '</span></span>' +
-            '<div><button class="btn btn-sm btn-outline-info apiman-copy-node me-1" data-id="' + item.node.id + '" title="複製"><i class="bx bx-copy"></i></button><button class="btn btn-sm btn-outline-danger apiman-del-node" data-id="' + item.node.id + '"><i class="bx bx-trash"></i></button></div>' +
+            '<span style="font-size:.75rem;display:flex;align-items:center;gap:4px;min-width:0">' +
+            '<span class="apiman-method-badge" style="background:' + methodBg + ';color:' + methodColor + '">' + method + '</span> ' +
+            '<span class="text-truncate" style="max-width:140px;display:inline-block;color:var(--bs-body-color)">' + escHtml(item.request ? item.request.url : '') + '</span></span>' +
+            '<div class="d-flex gap-1">' +
+            '<button class="btn btn-sm btn-outline-info apiman-copy-node border-0 px-1" data-id="' + nodeId + '" title="複製"><i class="bx bx-copy" style="font-size:.8rem"></i></button>' +
+            '<button class="btn btn-sm btn-outline-danger apiman-del-node border-0 px-1" data-id="' + nodeId + '"><i class="bx bx-trash" style="font-size:.8rem"></i></button></div>' +
             '</div></div>';
         }
       });
@@ -3124,7 +3171,7 @@ var _orig_ready = $;
         if (res.code === 0 && res.data) {
           currentPlatform = res.data;
           logger.info('平台偵測完成', currentPlatform);
-          if (currentPlatform !== "linux") { $("#protocolSwitch, .iptables-table").hide(); }
+          if (currentPlatform !== "linux") { $("#protocolSwitch").hide(); }
           setLanguage(currentLang, false);
           renderDocContent();
         }
@@ -3159,7 +3206,7 @@ var _orig_ready = $;
           setTimeout(loadLogFiles, 100);
         },
         system: function() { loadSystemInfo(); },
-        tables: function() { $('.action-buttons').show(); },
+        tables: function() { $('.action-buttons').show(); loadListRule(currentTableName()); },
       };
       var viewMenuMap = {
         dashboard: 'menuDash', tables: 'menuTables', juniper: 'menuJuniper',
@@ -3167,16 +3214,6 @@ var _orig_ready = $;
         apiman: 'menuApiManNew', dbman: 'menuDbManNew', security: 'menuSecurityCvs',
         tools: 'menuTools', system: 'menuSys', shell: 'menuShell', ai: 'menuAI',
       };
-      // ─── Restore tabs from localStorage ───
-      loadTabs();
-      if (tabState.tabs.length > 0) {
-        renderTabs();
-        if (tabState.activeId && findTab(tabState.activeId) >= 0) {
-          switchView(tabState.activeId);
-        } else {
-          switchView(tabState.tabs[0].id);
-        }
-      }
       // ─── Rebuild dynamic menus ───
       rebuildApiManMenu();
       rebuildDbManMenu();
@@ -3364,6 +3401,16 @@ var _orig_ready = $;
           });
         },
       };
+      // ─── Restore tabs from localStorage ───
+      loadTabs();
+      if (tabState.tabs.length > 0) {
+        renderTabs();
+        if (tabState.activeId && findTab(tabState.activeId) >= 0) {
+          switchView(tabState.activeId);
+        } else {
+          switchView(tabState.tabs[0].id);
+        }
+      }
       // ─── Load rules ───
       function loadListRule(tableName, chainName) {
         const lang = i18n[currentLang];
@@ -3401,8 +3448,10 @@ var _orig_ready = $;
       }
       renderDocContent();
       // ─── Tab switch ───
-      $(document).on("shown.bs.tab", ".iptables-table .nav-link", function () {
+      $(document).on("click", ".iptables-table .nav-link", function () {
         const t = $(this).attr("id").replace("tab-", "");
+        $(".iptables-table .nav-link").removeClass("active");
+        $(this).addClass("active");
         logger.debug('切換表格', t);
         loadListRule(t);
       });
@@ -3912,7 +3961,7 @@ var _orig_ready = $;
       $(document).on('click', '#dbmanSaveQueryBtn', function () {
         var sql = $('#dbmanSql').val().trim();
         if (!sql) { layer.msg('請輸入 SQL', { icon: 2 }); return; }
-        var name = prompt('查詢名稱:');
+        var name = window.prompt('查詢名稱:');
         if (!name || !name.trim()) return;
         var dbType = dbmanCurrentConn ? dbmanCurrentConn.db_type || 'sqlite' : 'sqlite';
         $.post('/dbman/saved-queries', { name: name.trim(), sql_text: sql, db_type: dbType }, function (res) {
@@ -4540,9 +4589,20 @@ var _orig_ready = $;
         });
         apimanDragNodeId = null;
       });
+      $(document).on('click', '.apiman-folder-header', function (e) {
+        if ($(e.target).closest('button,input,textarea,.apiman-del-node,.apiman-copy-node').length) return;
+        var nodeId = $(this).data('node-id');
+        if (!nodeId) return;
+        apimanExpanded[nodeId] = !(apimanExpanded[nodeId] !== false);
+        var $parent = $(this).closest('.apiman-folder-item');
+        $parent.find('.apiman-children').toggleClass('d-none');
+        var isOpen = !$parent.find('.apiman-children').hasClass('d-none');
+        $parent.find('.apiman-fold-toggle').text(isOpen ? '▾' : '▸');
+        $parent.find('.apiman-folder-icon').toggleClass('bx-folder bx-folder-open');
+      });
       $(document).on('click', '.apiman-add-folder', function () {
         var wsId = $(this).data('ws');
-        var name = prompt('資料夾名稱:');
+        var name = window.prompt('資料夾名稱:');
         if (name && name.trim()) {
           $.post(apimanUrl('/nodes'), { workspace_id: wsId, name: name.trim(), node_type: 'folder' }, function (res) {
             if (res.code === 0) { renderApiManTreeForWs(wsId); }
@@ -4552,7 +4612,7 @@ var _orig_ready = $;
       });
       $(document).on('click', '.apiman-add-req', function () {
         var wsId = $(this).data('ws');
-        var name = prompt('Request 名稱:');
+        var name = window.prompt('Request 名稱:');
         if (name && name.trim()) {
           $.post(apimanUrl('/nodes'), { workspace_id: wsId, name: name.trim(), node_type: 'request' }, function (res) {
             if (res.code === 0) { renderApiManTreeForWs(wsId); }
@@ -4834,6 +4894,82 @@ var _orig_ready = $;
           if (res.command) $('.tools-netstat-cmd-badge').text('命令: ' + res.command);
           logger.debug('Netstat 執行結果', (res.command || '') + ' ' + text.substring(0, 200));
         }, 'json');
+      });
+      // ─── PCAP ───
+      function pcapLoadInterfaces() {
+        $.get('/tools/pcap/interfaces', function (res) {
+          if (res.code !== 0) return;
+          var $sel = $('#toolsPcapInterface').empty().append('<option value="">-- 選擇介面 --</option>');
+          (res.data || []).forEach(function (iface) {
+            $sel.append('<option value="' + iface.name + '">' + iface.name + (iface.description ? ' (' + iface.description + ')' : '') + '</option>');
+          });
+        });
+      }
+      var pcapPackets = [];
+      $('#toolsPcapStartBtn').on('click', function () {
+        var iface = $('#toolsPcapInterface').val();
+        if (!iface) { layer.msg('請選擇網路介面', { icon: 2 }); return; }
+        var filter = $('#toolsPcapFilter').val().trim();
+        var count = parseInt($('#toolsPcapCount').val()) || 50;
+        var timeout = parseInt($('#toolsPcapTimeout').val()) || 10;
+        $('#toolsPcapStatus').text('擷取中...').removeClass('text-muted').addClass('text-primary');
+        $('#toolsPcapStartBtn').prop('disabled', true);
+        $('#toolsPcapTbody').empty();
+        $('#toolsPcapHex').hide().text('');
+        pcapPackets = [];
+        $.post('/tools/pcap/capture', { interface: iface, filter: filter, count: count, timeout: timeout }, function (res) {
+          $('#toolsPcapStartBtn').prop('disabled', false);
+          if (res.code !== 0) { $('#toolsPcapStatus').text('錯誤: ' + res.msg).removeClass('text-primary').addClass('text-danger'); return; }
+          pcapPackets = res.data || [];
+          var $tbody = $('#toolsPcapTbody');
+          (pcapPackets).forEach(function (pkt) {
+            $tbody.append('<tr class="pcap-row" data-idx="' + pkt.index + '" style="cursor:pointer">' +
+              '<td>' + pkt.index + '</td>' +
+              '<td>' + pkt.time + '</td>' +
+              '<td>' + escHtml(pkt.src) + '</td>' +
+              '<td>' + escHtml(pkt.dst) + '</td>' +
+              '<td><span class="badge" style="background:' + protoColor(pkt.proto) + ';font-size:.6rem">' + pkt.proto + '</span></td>' +
+              '<td>' + pkt.len + '</td>' +
+              '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(pkt.info) + '</td></tr>');
+          });
+          $('#toolsPcapStatus').text('完成: ' + pcapPackets.length + ' 個封包').removeClass('text-primary').addClass('text-success');
+          logger.info('PCAP 擷取完成', iface + ' ' + pcapPackets.length + ' packets');
+        }, 'json').fail(function () {
+          $('#toolsPcapStartBtn').prop('disabled', false);
+          $('#toolsPcapStatus').text('請求失敗').removeClass('text-primary').addClass('text-danger');
+        });
+      });
+      $(document).on('click', '.pcap-row', function () {
+        var idx = $(this).data('idx');
+        var pkt = pcapPackets.find(function (p) { return p.index === idx; });
+        if (!pkt || !pkt.hex) { $('#toolsPcapHex').hide(); return; }
+        $('.pcap-row').removeClass('table-active');
+        $(this).addClass('table-active');
+        $('#toolsPcapHex').text('Packet #' + pkt.index + ' (' + pkt.proto + ', ' + pkt.len + ' bytes)\n' +
+          pkt.src + ' → ' + pkt.dst + '\n' + pkt.info + '\n\n' + pkt.hex).show();
+      });
+      $('#toolsPcapClearBtn').on('click', function () {
+        $('#toolsPcapTbody').empty();
+        $('#toolsPcapHex').hide().text('');
+        pcapPackets = [];
+        $('#toolsPcapStatus').text('').removeClass('text-success text-danger text-primary');
+      });
+      function protoColor(proto) {
+        var p = (proto || '').toUpperCase();
+        if (p === 'TCP') return '#0d6efd';
+        if (p === 'UDP') return '#198754';
+        if (p === 'ICMP' || p === 'ICMPV6') return '#dc3545';
+        if (p === 'ARP') return '#6f42c1';
+        return '#6c757d';
+      }
+      var _origToolsActivator = viewActivators.tools;
+      viewActivators.tools = function() {
+        if (_origToolsActivator) _origToolsActivator();
+        setTimeout(pcapLoadInterfaces, 200);
+      };
+      $(document).on('shown.bs.tab', '#toolsTabs .nav-link', function () {
+        var target = $(this).attr('data-bs-target');
+        if (target === '#toolsPcapPane') pcapLoadInterfaces();
       });
       $(document).on('shown.bs.tab', '#nginxTabs .nav-link', function () {
         var target = $(this).attr('data-bs-target');

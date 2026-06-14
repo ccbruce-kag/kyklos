@@ -68,7 +68,24 @@ export default function Layout() {
           </div>
         </div>
       </div>
-      <div className="layout-overlay layout-menu-toggle"></div>
+       <div className="layout-overlay layout-menu-toggle"></div>
+
+      {/* Toast container for layer.msg */}
+      <div id="toastContainer" className="toast-container position-fixed bottom-0 end-0 p-3" style={{ zIndex: 9999 }}></div>
+
+      {/* Common Bootstrap modal for layer polyfill */}
+      <div className="modal fade" id="commonModal" tabIndex={-1} aria-hidden="true">
+        <div className="modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h6 className="modal-title" id="commonModalTitle"></h6>
+              <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div className="modal-body" id="commonModalBody"></div>
+            <div className="modal-footer" id="commonModalFooter"></div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

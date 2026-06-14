@@ -1,7 +1,58 @@
 import { useEffect, useMemo, useState } from 'react'
+import {
+  Input as SemiInput,
+  InputNumber as SemiInputNumber,
+  TextArea as SemiTextArea,
+  Select as SemiSelect,
+  Radio as SemiRadio,
+  Switch as SemiSwitch,
+  DatePicker as SemiDatePicker,
+  TimePicker as SemiTimePicker,
+  Checkbox as SemiCheckbox,
+  Button as SemiButton,
+  Tag as SemiTag,
+  Empty as SemiEmpty,
+  Tooltip as SemiTooltip,
+  Banner as SemiBanner,
+  Tabs as SemiTabs,
+  TabPane as SemiTabPane,
+  Avatar as SemiAvatar,
+  Typography as SemiTypography,
+  Divider as SemiDivider,
+  InputGroup as SemiInputGroup,
+} from '@douyinfe/semi-ui'
+import {
+  IconPlus,
+  IconDelete,
+  IconArrowUp,
+  IconArrowDown,
+  IconSave,
+  IconClose,
+  IconDownload,
+  IconList,
+  IconComponent,
+  IconAlignCenter,
+  IconText,
+  IconCalendar,
+  IconClock,
+  IconSend,
+  IconCheckboxTick,
+  IconFemale,
+  IconPulse,
+  IconBranch,
+  IconBox,
+  IconTextRectangle,
+  IconAlertTriangle,
+  IconColorPalette,
+  IconLoading,
+  IconSetting,
+  IconChevronRight,
+  IconChevronDown,
+} from '@douyinfe/semi-icons'
 import { createForm, onFieldValueChange } from '@formily/core'
 import { FormProvider, createSchemaField, connect, mapProps } from '@formily/react'
 import { getApiBase } from '../../../../utils/api'
+import 'semi-ui-css'
 import './form-editor-layout.css'
 
 export type FormRecord = {
@@ -13,15 +64,38 @@ export type FormRecord = {
   updated_at: string
 }
 
-type FieldType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'date' | 'textarea' | 'email' | 'password' | 'select' | 'radio'
+type FieldType =
+  | 'string' | 'textarea' | 'number' | 'integer' | 'boolean'
+  | 'date' | 'dateRange' | 'time' | 'timeRange' | 'week' | 'month' | 'year' | 'quarter' | 'dateTime'
+  | 'email' | 'password' | 'url' | 'tel' | 'search' | 'color'
+  | 'select' | 'multiSelect' | 'treeSelect' | 'cascader' | 'radio' | 'checkboxGroup' | 'switch'
+  | 'rate' | 'slider' | 'stepper' | 'transfer' | 'tagInput' | 'autoComplete' | 'cascader'
+  | 'upload' | 'avatar' | 'colorPicker' | 'mention' | 'signature'
+  | 'object' | 'list' | 'array' | 'container' | 'tabs' | 'grid' | 'divider' | 'text' | 'html'
+  | 'button' | 'link' | 'image'
 
 type FormField = {
+  id: string
   name: string
   title: string
   type: FieldType
   description?: string
+  placeholder?: string
+  required?: boolean
+  disabled?: boolean
+  hidden?: boolean
+  defaultValue?: unknown
+  options?: Array<{ label: string; value: string }>
   'x-component'?: string
   'x-component-props'?: Record<string, unknown>
+  'x-decorator-props'?: Record<string, unknown>
+}
+
+type FormSchema = {
+  type: 'object'
+  title?: string
+  description?: string
+  properties: Record<string, FormField>
 }
 
 type Props = {
@@ -31,22 +105,95 @@ type Props = {
   onClose: () => void
 }
 
-const fieldTypes: Array<{ value: FieldType; label: string; component: string }> = [
-  { value: 'string', label: '文字', component: 'Input' },
-  { value: 'textarea', label: '多行文字', component: 'Input.TextArea' },
-  { value: 'number', label: '數字', component: 'InputNumber' },
-  { value: 'email', label: 'Email', component: 'Input' },
-  { value: 'password', label: '密碼', component: 'Input' },
-  { value: 'select', label: '下拉選單', component: 'Select' },
-  { value: 'boolean', label: '核取方塊', component: 'Switch' },
-  { value: 'radio', label: '單選', component: 'Radio.Group' },
-  { value: 'date', label: '日期', component: 'DatePicker' },
+type FieldCategory = 'basic' | 'input' | 'select' | 'datetime' | 'layout' | 'media' | 'advanced'
+
+type FieldTemplate = {
+  value: FieldType
+  label: string
+  component: string
+  category: FieldCategory
+  icon: React.ReactNode
+  description: string
+  defaultProps: Record<string, unknown>
+  hasOptions?: boolean
+}
+
+const fieldTemplates: FieldTemplate[] = [
+  // ── basic ──
+  { value: 'string', label: '單行文字', component: 'Input', category: 'basic', icon: <IconText />, description: '最基本的輸入欄位', defaultProps: { placeholder: '請輸入...' } },
+  { value: 'textarea', label: '多行文字', component: 'Input.TextArea', category: 'basic', icon: <IconTextRectangle />, description: '多行輸入 / 描述', defaultProps: { placeholder: '請輸入...' } },
+  { value: 'number', label: '數字', component: 'InputNumber', category: 'basic', icon: <IconLoading />, description: '數值輸入', defaultProps: { placeholder: '請輸入數字' } },
+  { value: 'integer', label: '整數', component: 'InputNumber', category: 'basic', icon: <IconLoading />, description: '整數輸入', defaultProps: { placeholder: '0' } },
+  { value: 'boolean', label: '開關', component: 'Switch', category: 'basic', icon: <IconBranch />, description: '布林值', defaultProps: {} },
+  { value: 'date', label: '日期', component: 'DatePicker', category: 'basic', icon: <IconCalendar />, description: '選擇日期', defaultProps: {} },
+
+  // ── input ──
+  { value: 'email', label: 'Email', component: 'Input', category: 'input', icon: <IconSend />, description: 'Email 格式', defaultProps: { type: 'email', placeholder: 'name@example.com' } },
+  { value: 'password', label: '密碼', component: 'Input', category: 'input', icon: <IconSetting />, description: '密碼輸入', defaultProps: { type: 'password', placeholder: '••••••' } },
+  { value: 'url', label: '網址', component: 'Input', category: 'input', icon: <IconComponent />, description: 'URL 格式', defaultProps: { type: 'url', placeholder: 'https://...' } },
+  { value: 'tel', label: '電話', component: 'Input', category: 'input', icon: <IconFemale />, description: '電話號碼', defaultProps: { type: 'tel', placeholder: '0912-345-678' } },
+  { value: 'search', label: '搜尋', component: 'Input', category: 'input', icon: <IconAlignCenter />, description: '搜尋欄位', defaultProps: { type: 'search' } },
+  { value: 'color', label: '顏色', component: 'Input', category: 'input', icon: <IconAlertTriangle />, description: '顏色選擇', defaultProps: { type: 'color' } },
+  { value: 'rate', label: '評分', component: 'Rate', category: 'input', icon: <IconFemale />, description: '星級評分 (1-5)', defaultProps: { count: 5 } },
+  { value: 'slider', label: '滑桿', component: 'Slider', category: 'input', icon: <IconPulse />, description: '數值滑桿', defaultProps: { min: 0, max: 100, step: 1 } },
+  { value: 'stepper', label: '步進器', component: 'InputNumber', category: 'input', icon: <IconPlus />, description: '增減步進', defaultProps: { min: 0, max: 999, step: 1 } },
+  { value: 'signature', label: '簽名', component: 'Input', category: 'input', icon: <IconText />, description: '簽名欄位', defaultProps: { type: 'text' } },
+  { value: 'mention', label: '@提及', component: 'Input.TextArea', category: 'input', icon: <IconBranch />, description: '@提及輸入', defaultProps: { placeholder: '輸入 @ 提及...' } },
+
+  // ── select ──
+  { value: 'select', label: '下拉選單', component: 'Select', category: 'select', icon: <IconChevronDown />, description: '單選下拉', defaultProps: {}, hasOptions: true },
+  { value: 'multiSelect', label: '多選下拉', component: 'Select', category: 'select', icon: <IconChevronDown />, description: '多選下拉', defaultProps: { multiple: true }, hasOptions: true },
+  { value: 'treeSelect', label: '樹狀選單', component: 'TreeSelect', category: 'select', icon: <IconBox />, description: '樹狀結構選擇', defaultProps: {}, hasOptions: true },
+  { value: 'cascader', label: '層級選擇', component: 'Cascader', category: 'select', icon: <IconBox />, description: '層級聯動選擇', defaultProps: {}, hasOptions: true },
+  { value: 'radio', label: '單選群組', component: 'Radio.Group', category: 'select', icon: <IconCheckboxTick />, description: '單選按鈕群組', defaultProps: {}, hasOptions: true },
+  { value: 'checkboxGroup', label: '複選群組', component: 'Checkbox.Group', category: 'select', icon: <IconCheckboxTick />, description: '多選核取方塊群組', defaultProps: {}, hasOptions: true },
+  { value: 'transfer', label: '穿梭選單', component: 'Select', category: 'select', icon: <IconBranch />, description: '雙欄穿梭選單', defaultProps: { multiple: true }, hasOptions: true },
+  { value: 'tagInput', label: '標籤輸入', component: 'TagInput', category: 'select', icon: <IconFemale />, description: '標籤式多選輸入', defaultProps: {}, hasOptions: true },
+  { value: 'autoComplete', label: '自動完成', component: 'AutoComplete', category: 'select', icon: <IconAlignCenter />, description: '輸入即建議', defaultProps: {}, hasOptions: true },
+
+  // ── datetime ──
+  { value: 'dateRange', label: '日期區間', component: 'DatePicker', category: 'datetime', icon: <IconCalendar />, description: '起訖日期', defaultProps: { type: 'dateRange' } },
+  { value: 'time', label: '時間', component: 'TimePicker', category: 'datetime', icon: <IconClock />, description: '選擇時間', defaultProps: {} },
+  { value: 'timeRange', label: '時間區間', component: 'TimePicker', category: 'datetime', icon: <IconClock />, description: '起訖時間', defaultProps: { type: 'timeRange' } },
+  { value: 'week', label: '週', component: 'DatePicker', category: 'datetime', icon: <IconCalendar />, description: '週選擇', defaultProps: { type: 'week' } },
+  { value: 'month', label: '月', component: 'DatePicker', category: 'datetime', icon: <IconCalendar />, description: '月份選擇', defaultProps: { type: 'month' } },
+  { value: 'year', label: '年', component: 'DatePicker', category: 'datetime', icon: <IconCalendar />, description: '年份選擇', defaultProps: { type: 'year' } },
+  { value: 'quarter', label: '季', component: 'DatePicker', category: 'datetime', icon: <IconCalendar />, description: '季度選擇', defaultProps: { type: 'quarter' } },
+  { value: 'dateTime', label: '日期時間', component: 'DatePicker', category: 'datetime', icon: <IconCalendar />, description: '日期 + 時間', defaultProps: { type: 'dateTime' } },
+
+  // ── media ──
+  { value: 'upload', label: '上傳', component: 'Upload', category: 'media', icon: <IconSend />, description: '檔案上傳', defaultProps: {} },
+  { value: 'avatar', label: '頭像', component: 'Avatar', category: 'media', icon: <IconFemale />, description: '頭像上傳', defaultProps: {} },
+  { value: 'colorPicker', label: '色彩選擇器', component: 'ColorPicker', category: 'media', icon: <IconColorPalette />, description: '色彩挑選', defaultProps: {} },
+
+  // ── layout ──
+  { value: 'object', label: '群組容器', component: 'ObjectField', category: 'layout', icon: <IconBox />, description: '巢狀欄位群組', defaultProps: {} },
+  { value: 'list', label: '陣列容器', component: 'ArrayField', category: 'layout', icon: <IconAlignCenter />, description: '重複欄位組', defaultProps: {} },
+  { value: 'array', label: '靜態陣列', component: 'Input', category: 'layout', icon: <IconAlignCenter />, description: 'JSON 陣列', defaultProps: {} },
+  { value: 'container', label: '容器', component: 'div', category: 'layout', icon: <IconBox />, description: '純容器', defaultProps: {} },
+  { value: 'tabs', label: '分頁', component: 'Tabs', category: 'layout', icon: <IconBranch />, description: '分頁容器', defaultProps: {} },
+  { value: 'grid', label: '格狀', component: 'div', category: 'layout', icon: <IconBox />, description: '格狀佈局', defaultProps: {} },
+  { value: 'divider', label: '分隔線', component: 'Divider', category: 'layout', icon: <IconAlertTriangle />, description: '水平分隔線', defaultProps: {} },
+  { value: 'text', label: '純文字', component: 'Typography.Text', category: 'layout', icon: <IconText />, description: '純文字標籤', defaultProps: {} },
+  { value: 'html', label: 'HTML', component: 'div', category: 'layout', icon: <IconComponent />, description: '自訂 HTML', defaultProps: {} },
+  { value: 'button', label: '按鈕', component: 'Button', category: 'layout', icon: <IconBranch />, description: '動作按鈕', defaultProps: { children: '按鈕' } },
+  { value: 'link', label: '連結', component: 'Typography.Text', category: 'layout', icon: <IconBranch />, description: '超連結', defaultProps: { link: { href: '#', target: '_blank' } } },
+  { value: 'image', label: '圖片', component: 'Avatar', category: 'media', icon: <IconFemale />, description: '顯示圖片', defaultProps: {} },
 ]
 
-const FIELD_TYPE_MAP = new Map(fieldTypes.map((item) => [item.value, item]))
+const CATEGORIES: Array<{ value: FieldCategory; label: string }> = [
+  { value: 'basic', label: '基本輸入' },
+  { value: 'input', label: '進階輸入' },
+  { value: 'select', label: '選擇' },
+  { value: 'datetime', label: '日期時間' },
+  { value: 'layout', label: '佈局' },
+  { value: 'media', label: '媒體' },
+]
 
-function toComponentType(fieldType: FieldType): string {
-  return FIELD_TYPE_MAP.get(fieldType)?.component || 'Input'
+const TEMPLATE_MAP = new Map(fieldTemplates.map((t) => [t.value, t]))
+
+function getTemplate(fieldType: FieldType): FieldTemplate {
+  return TEMPLATE_MAP.get(fieldType) || fieldTemplates[0]
 }
 
 async function formApi<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
@@ -65,13 +212,21 @@ async function formApi<T = unknown>(path: string, options: RequestInit = {}): Pr
   return json.data as T
 }
 
-function newField(index: number): FormField {
+function newField(index: number, type: FieldType = 'string'): FormField {
+  const tpl = getTemplate(type)
+  const id = `f_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`
   return {
+    id,
     name: `field_${index + 1}`,
     title: `欄位 ${index + 1}`,
-    type: 'string',
-    'x-component': 'Input',
-    'x-component-props': { placeholder: '' },
+    type,
+    description: tpl.description,
+    placeholder: typeof tpl.defaultProps.placeholder === 'string' ? tpl.defaultProps.placeholder : '',
+    required: false,
+    disabled: false,
+    hidden: false,
+    'x-component': tpl.component,
+    'x-component-props': { ...tpl.defaultProps },
   }
 }
 
@@ -81,14 +236,26 @@ function parseFields(schema: string | null | undefined): { fields: FormField[]; 
     const parsed = JSON.parse(schema)
     if (parsed?.type === 'object' && parsed.properties) {
       const fields = Object.entries<Record<string, unknown>>(parsed.properties as Record<string, Record<string, unknown>>).map(
-        ([name, field]) => ({
-          name,
-          title: typeof field.title === 'string' ? field.title : name,
-          type: (typeof field.type === 'string' ? field.type : 'string') as FieldType,
-          description: typeof field.description === 'string' ? field.description : undefined,
-          'x-component': typeof field['x-component'] === 'string' ? field['x-component'] : toComponentType(field.type as FieldType),
-          'x-component-props': typeof field['x-component-props'] === 'object' && field['x-component-props'] ? field['x-component-props'] as Record<string, unknown> : {},
-        }),
+        ([name, field]) => {
+          const rawType = (typeof field.type === 'string' ? field.type : 'string') as FieldType
+          const tpl = getTemplate(rawType)
+          const props = typeof field['x-component-props'] === 'object' && field['x-component-props']
+            ? field['x-component-props'] as Record<string, unknown>
+            : {}
+          return {
+            id: typeof field.id === 'string' ? field.id : `legacy_${name}`,
+            name,
+            title: typeof field.title === 'string' ? field.title : name,
+            type: rawType,
+            description: typeof field.description === 'string' ? field.description : undefined,
+            placeholder: typeof props.placeholder === 'string' ? props.placeholder : '',
+            required: Boolean(field.required),
+            disabled: Boolean(field.disabled),
+            hidden: Boolean(field.hidden),
+            'x-component': typeof field['x-component'] === 'string' ? field['x-component'] : tpl.component,
+            'x-component-props': props,
+          }
+        },
       )
       return { fields, title: parsed.title as string | undefined, description: parsed.description as string | undefined }
     }
@@ -98,31 +265,33 @@ function parseFields(schema: string | null | undefined): { fields: FormField[]; 
   }
 }
 
-function stringifySchema(fields: FormField[], title?: string, description?: string): string {
+function stringifySchema(fields: FormField[]): string {
   const properties: Record<string, Record<string, unknown>> = {}
   fields.forEach((field) => {
-    const { name, type, title: fTitle, description: fDesc, 'x-component': comp, 'x-component-props': props } = field
+    if (!field.name.trim()) return
+    const tpl = getTemplate(field.type)
+    const { id, name, type, title, description, placeholder, required, disabled, hidden, 'x-component': comp, 'x-component-props': props } = field
+    const cleanProps: Record<string, unknown> = {}
+    if (placeholder && placeholder !== tpl.defaultProps.placeholder) cleanProps.placeholder = placeholder
+    if (comp && comp !== tpl.component) cleanProps['x-component'] = comp
     const entry: Record<string, unknown> = {
       type,
-      title: fTitle || name,
+      title: title || name,
       'x-decorator': 'FormItem',
-      'x-component': comp || toComponentType(type),
+      'x-component': comp || tpl.component,
     }
-    if (fDesc) entry.description = fDesc
-    if (props && Object.keys(props).length > 0) entry['x-component-props'] = props
+    if (id && !id.startsWith('legacy_')) entry.id = id
+    if (description) entry.description = description
+    if (required) entry.required = true
+    if (disabled) entry.disabled = true
+    if (hidden) entry.hidden = true
+    if (Object.keys(cleanProps).length > 0) entry['x-component-props'] = cleanProps
     properties[name] = entry
   })
-  const schema: Record<string, unknown> = { type: 'object', properties }
-  if (title) schema.title = title
-  if (description) schema.description = description
-  return JSON.stringify(schema, null, 2)
+  return JSON.stringify({ type: 'object', properties }, null, 2)
 }
 
-function needsOptions(type: FieldType): boolean {
-  return type === 'select' || type === 'radio'
-}
-
-/* ---------- Formily Bootstrap 元件（以 connect 注入 Formily 狀態） ---------- */
+/* ---------- Formily 預覽：Semi UI 元件（以 connect 接入 Formily 狀態） ---------- */
 
 type FieldProps = {
   value?: unknown
@@ -130,69 +299,65 @@ type FieldProps = {
   placeholder?: string
   required?: boolean
   disabled?: boolean
-  options?: string[] | Array<{ label: string; value: string }>
-  className?: string
-  style?: React.CSSProperties
+  options?: Array<{ label: string; value: string }> | string[]
   type?: string
-  id?: string
+  text?: string
 }
 
 const PreviewInput = connect(
   (props: FieldProps) => (
-    <input
-      className={`form-control form-control-sm ${props.className || ''}`}
+    <SemiInput
       value={typeof props.value === 'string' || typeof props.value === 'number' ? String(props.value) : ''}
-      onChange={(e) => props.onChange?.(e.target.value)}
+      onChange={(v: string) => props.onChange?.(v)}
       placeholder={props.placeholder}
-      type={props.type || 'text'}
+      type={props.type as 'text' | 'password' | 'email' | 'number' | undefined}
       disabled={props.disabled}
-      readOnly
+      readonly
     />
   ),
-  mapProps({
-    value: true,
-    placeholder: true,
-    type: true,
-    disabled: true,
-  }),
+  mapProps({ value: true, placeholder: true, type: true, disabled: true }),
 )
 
 const PreviewTextArea = connect(
   (props: FieldProps) => (
-    <textarea
-      className="form-control form-control-sm"
+    <SemiTextArea
       value={typeof props.value === 'string' || typeof props.value === 'number' ? String(props.value) : ''}
-      onChange={(e) => props.onChange?.(e.target.value)}
+      onChange={(v: string) => props.onChange?.(v)}
       placeholder={props.placeholder}
       disabled={props.disabled}
-      readOnly
+      readonly
       rows={3}
     />
   ),
-  mapProps({
-    value: true,
-    placeholder: true,
-    disabled: true,
-  }),
+  mapProps({ value: true, placeholder: true, disabled: true }),
 )
 
 const PreviewInputNumber = connect(
   (props: FieldProps) => (
-    <input
-      className="form-control form-control-sm"
-      value={typeof props.value === 'string' || typeof props.value === 'number' ? String(props.value) : ''}
-      onChange={(e) => props.onChange?.(e.target.value === '' ? undefined : Number(e.target.value))}
+    <SemiInputNumber
+      value={typeof props.value === 'number' ? props.value : undefined}
+      onChange={(v: number) => props.onChange?.(v)}
       placeholder={props.placeholder}
-      type="number"
       disabled={props.disabled}
-      readOnly
     />
   ),
-  mapProps({
-    value: true,
-    placeholder: true,
-    disabled: true,
-  }),
+  mapProps({ value: true, placeholder: true, disabled: true }),
+)
+
+const PreviewSwitch = connect(
+  (props: FieldProps) => (
+    <SemiSwitch checked={Boolean(props.value)} onChange={(v: boolean) => props.onChange?.(v)} disabled={props.disabled} text={props.text} />
+  ),
+  mapProps({ value: true, disabled: true, text: true }),
+)
+
+const PreviewCheckbox = connect(
+  (props: FieldProps) => (
+    <SemiCheckbox checked={Boolean(props.value)} onChange={(e) => props.onChange?.(e.target.checked)} disabled={props.disabled}>
+      {props.text}
+    </SemiCheckbox>
+  ),
+  mapProps({ value: true, disabled: true, text: true }),
 )
 
 const PreviewSelect = connect(
@@ -201,39 +366,17 @@ const PreviewSelect = connect(
       if (typeof item === 'string') return { label: item, value: item }
       return item
     })
-    const value = typeof props.value === 'string' || typeof props.value === 'number' ? String(props.value) : ''
     return (
-      <select className="form-select form-select-sm" value={value} onChange={(e) => props.onChange?.(e.target.value)} disabled={props.disabled}>
-        <option value="">{props.placeholder || '請選擇'}</option>
-        {opts.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-      </select>
+      <SemiSelect
+        value={typeof props.value === 'string' || props.value === 'number' ? String(props.value) : ''}
+        onChange={(v: string) => props.onChange?.(v)}
+        placeholder={props.placeholder}
+        disabled={props.disabled}
+        optionList={opts}
+      />
     )
   },
-  mapProps({
-    value: true,
-    placeholder: true,
-    options: true,
-    disabled: true,
-  }),
-)
-
-const PreviewSwitch = connect(
-  (props: FieldProps) => (
-    <div className="form-check form-switch">
-      <input
-        className="form-check-input"
-        type="checkbox"
-        checked={Boolean(props.value)}
-        onChange={(e) => props.onChange?.(e.target.checked)}
-        disabled={props.disabled}
-        readOnly
-      />
-    </div>
-  ),
-  mapProps({
-    value: true,
-    disabled: true,
-  }),
+  mapProps({ value: true, placeholder: true, options: true, disabled: true }),
 )
 
 const PreviewRadioGroup = connect(
@@ -243,57 +386,59 @@ const PreviewRadioGroup = connect(
       return item
     })
     return (
-      <div>
-        {opts.map((item) => (
-          <div className="form-check form-check-inline" key={item.value}>
-            <input
-              className="form-check-input"
-              type="radio"
-              checked={props.value === item.value}
-              onChange={() => props.onChange?.(item.value)}
-              disabled={props.disabled}
-              readOnly
-            />
-            <label className="form-check-label small">{item.label}</label>
-          </div>
-        ))}
-      </div>
+      <SemiRadio.Group
+        value={typeof props.value === 'string' || props.value === 'number' ? String(props.value) : ''}
+        onChange={(e) => props.onChange?.(e.target.value)}
+        disabled={props.disabled}
+        options={opts}
+      />
     )
   },
-  mapProps({
-    value: true,
-    options: true,
-    disabled: true,
-  }),
+  mapProps({ value: true, options: true, disabled: true }),
 )
 
 const PreviewDatePicker = connect(
   (props: FieldProps) => (
-    <input
-      className="form-control form-control-sm"
-      type="date"
-      value={typeof props.value === 'string' ? props.value : ''}
-      onChange={(e) => props.onChange?.(e.target.value)}
+    <SemiDatePicker
+      value={typeof props.value === 'string' ? props.value : undefined}
+      onChange={(v: string) => props.onChange?.(v)}
       disabled={props.disabled}
-      readOnly
+      type="date"
     />
   ),
-  mapProps({
-    value: true,
-    disabled: true,
-  }),
+  mapProps({ value: true, disabled: true }),
 )
 
+const PreviewTimePicker = connect(
+  (props: FieldProps) => (
+    <SemiTimePicker
+      value={typeof props.value === 'string' ? props.value : undefined}
+      onChange={(v: string) => props.onChange?.(v)}
+      disabled={props.disabled}
+    />
+  ),
+  mapProps({ value: true, disabled: true }),
+)
+
+const PreviewText = connect(
+  (props: { text?: string; value?: string; children?: React.ReactNode }) => (
+    <SemiTypography.Text disabled={false}>{props.text || props.value || (props.children as string) || '文字'}</SemiTypography.Text>
+  ),
+)
+
+const PreviewDivider = connect(() => <SemiDivider />)
+
 const PreviewFormItem = connect(
-  (props: { title?: string; required?: boolean; children?: React.ReactNode }) => (
-    <div className="mb-2">
+  (props: { title?: string; required?: boolean; description?: string; children?: React.ReactNode }) => (
+    <div className="kyklos-form-item">
       {props.title && (
-        <label className="form-label mb-1 small">
+        <label className="kyklos-form-item-label">
           {props.title}
           {props.required && <span className="text-danger ms-1">*</span>}
         </label>
       )}
-      {props.children}
+      {props.description && <div className="kyklos-form-item-desc">{props.description}</div>}
+      <div className="kyklos-form-item-control">{props.children}</div>
     </div>
   ),
 )
@@ -305,8 +450,13 @@ const { SchemaField } = createSchemaField({
     InputNumber: PreviewInputNumber,
     Select: PreviewSelect,
     Switch: PreviewSwitch,
+    Checkbox: PreviewCheckbox,
     'Radio.Group': PreviewRadioGroup,
     DatePicker: PreviewDatePicker,
+    TimePicker: PreviewTimePicker,
+    Typography: PreviewText,
+    Text: PreviewText,
+    Divider: PreviewDivider,
     FormItem: PreviewFormItem,
   },
 })
@@ -315,27 +465,42 @@ function buildFormSchema(fields: FormField[]): Record<string, unknown> {
   const properties: Record<string, Record<string, unknown>> = {}
   fields.forEach((field) => {
     if (!field.name.trim() || !field.title.trim()) return
-    const comp = field['x-component'] || toComponentType(field.type)
+    const tpl = getTemplate(field.type)
+    const comp = field['x-component'] || tpl.component
+    const baseProps = (field['x-component-props'] && Object.keys(field['x-component-props']).length > 0)
+      ? field['x-component-props']
+      : tpl.defaultProps
+    const props = { ...baseProps }
+    if (field.placeholder) props.placeholder = field.placeholder
+    if (field.options && field.options.length > 0) {
+      const optArr = (props.options as string[] | undefined)?.length
+        ? (props.options as string[]).map((o) => ({ label: o, value: o }))
+        : field.options
+      props.options = optArr
+    }
     const entry: Record<string, unknown> = {
       type: field.type,
       title: field.title,
       'x-decorator': 'FormItem',
       'x-component': comp,
       'x-decorator-props': {},
+      'x-component-props': props,
     }
     if (field.description) entry.description = field.description
-    if (field['x-component-props']) {
-      const props = { ...field['x-component-props'] }
-      if (Boolean(props.required)) {
-        entry.required = true
-        delete props.required
-      }
-      if (Object.keys(props).length > 0) entry['x-component-props'] = props
-    }
+    if (field.required) entry.required = true
+    if (field.disabled) entry.disabled = true
+    if (field.hidden) entry.hidden = true
+    if (field.id) entry.id = field.id
     properties[field.name] = entry
   })
   return { type: 'object', properties }
 }
+
+function safeUid(prefix = 'f'): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+const DEFAULT_OPTIONS_TEXT = '選項1, 選項2, 選項3'
 
 export default function FormEditorModal({ record, visible, onSaved, onClose }: Props) {
   const [name, setName] = useState(record?.name || '')
@@ -345,19 +510,27 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   const [fields, setFields] = useState<FormField[]>([])
   const [jsonText, setJsonText] = useState('{}')
   const [jsonDirty, setJsonDirty] = useState(false)
+  const [activeCategory, setActiveCategory] = useState<FieldCategory>('basic')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [searchTemplate, setSearchTemplate] = useState('')
+  const [dragState, setDragState] = useState<{ fromIndex: number | null; type: FieldType | null }>({ fromIndex: null, type: null })
 
   useEffect(() => {
-    if (!visible) return
+    if (!visible) {
+      setSelectedId(null)
+      setSearchTemplate('')
+      return
+    }
     const result = parseFields(record?.form_schema_json)
     setName(record?.name || '')
     setDescription(record?.description || '')
     setFields(result.fields)
-    setJsonText(stringifySchema(result.fields, result.title, result.description))
+    setJsonText(stringifySchema(result.fields))
     setJsonDirty(false)
   }, [visible, record])
 
   useEffect(() => {
-    if (!jsonDirty) setJsonText(stringifySchema(fields, undefined, undefined))
+    if (!jsonDirty) setJsonText(stringifySchema(fields))
   }, [fields, jsonDirty])
 
   const form = useMemo(
@@ -370,21 +543,108 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
     [],
   )
 
-  const previewFields = useMemo(
-    () => fields.filter((field) => field.title.trim() && field.name.trim()),
-    [fields],
+  const selectedField = useMemo(
+    () => (selectedId ? fields.find((f) => f.id === selectedId) || null : null),
+    [selectedId, fields],
   )
 
-  const setField = (index: number, patch: Partial<FormField>) => {
-    setFields((current) => current.map((field, i) => {
-      if (i !== index) return field
+  const filteredTemplates = useMemo(() => {
+    const q = searchTemplate.trim().toLowerCase()
+    return fieldTemplates.filter((t) => {
+      if (t.category !== activeCategory && q === '') return false
+      if (q === '') return true
+      return t.label.includes(q) || t.description.includes(q) || t.value.toLowerCase().includes(q)
+    })
+  }, [activeCategory, searchTemplate])
+
+  const schemaForSave = () => {
+    if (!jsonDirty) return stringifySchema(fields)
+    return jsonText
+  }
+
+  /* ---------- Drag and Drop handlers ---------- */
+
+  const handlePaletteDragStart = (e: React.DragEvent<HTMLDivElement>, type: FieldType) => {
+    setDragState({ fromIndex: null, type })
+    e.dataTransfer.setData('application/x-formily-field-type', type)
+    e.dataTransfer.effectAllowed = 'copy'
+  }
+
+  const handleFieldDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    setDragState({ fromIndex: index, type: null })
+    e.dataTransfer.setData('application/x-formily-field-index', String(index))
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleFieldDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = e.dataTransfer.types.includes('application/x-formily-field-type') ? 'copy' : 'move'
+  }
+
+  const handleFieldDrop = (e: React.DragEvent<HTMLDivElement>, targetIndex: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const newType = e.dataTransfer.getData('application/x-formily-field-type') as FieldType | null
+    const fromIndexStr = e.dataTransfer.getData('application/x-formily-field-index')
+
+    if (newType) {
+      // 從 palette 拖入新欄位
+      setFields((current) => {
+        const insertAt = Math.min(targetIndex, current.length)
+        const next = [...current]
+        next.splice(insertAt, 0, newField(insertAt, newType))
+        return next.map((f, i) => ({ ...f, name: f.name.startsWith('field_') ? `field_${i + 1}` : f.name, title: f.title.startsWith('欄位 ') && /^欄位 \d+$/.test(f.title) ? `欄位 ${i + 1}` : f.title }))
+      })
+    } else if (fromIndexStr !== '') {
+      const fromIndex = Number(fromIndexStr)
+      if (Number.isNaN(fromIndex) || fromIndex === targetIndex) return
+      setFields((current) => {
+        if (fromIndex < 0 || fromIndex >= current.length) return current
+        const next = [...current]
+        const [item] = next.splice(fromIndex, 1)
+        const insertAt = fromIndex < targetIndex ? targetIndex - 1 : targetIndex
+        next.splice(Math.min(insertAt, next.length), 0, item)
+        return next
+      })
+    }
+    setJsonDirty(false)
+    setDragState({ fromIndex: null, type: null })
+  }
+
+  const handleCanvasDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }
+
+  const handleCanvasDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const newType = e.dataTransfer.getData('application/x-formily-field-type') as FieldType | null
+    if (newType) {
+      setFields((current) => {
+        const insertAt = current.length
+        const next = [...current]
+        next.splice(insertAt, 0, newField(insertAt, newType))
+        return next
+      })
+      setJsonDirty(false)
+    }
+    setDragState({ fromIndex: null, type: null })
+  }
+
+  /* ---------- Field operations ---------- */
+
+  const setField = (id: string, patch: Partial<FormField>) => {
+    setFields((current) => current.map((field) => {
+      if (field.id !== id) return field
       const next = { ...field, ...patch }
       if (patch.type) {
-        next['x-component'] = toComponentType(patch.type)
-        if (!needsOptions(patch.type)) {
-          const props = { ...next['x-component-props'] }
-          delete (props as Record<string, unknown>).options
-          next['x-component-props'] = props
+        const tpl = getTemplate(patch.type)
+        next['x-component'] = tpl.component
+        next['x-component-props'] = { ...tpl.defaultProps, ...(next['x-component-props'] || {}) }
+        if (!tpl.hasOptions && next['x-component-props'] && Array.isArray((next['x-component-props'] as Record<string, unknown>).options)) {
+          const np = { ...next['x-component-props'] } as Record<string, unknown>
+          delete np.options
+          next['x-component-props'] = np
         }
       }
       return next
@@ -392,22 +652,25 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
     setJsonDirty(false)
   }
 
-  const addField = () => {
-    setFields((current) => [...current, newField(current.length)])
+  const addField = (type: FieldType = 'string') => {
+    setFields((current) => [...current, newField(current.length, type)])
     setJsonDirty(false)
   }
 
-  const removeField = (index: number) => {
-    setFields((current) => current.filter((_, i) => i !== index))
+  const removeField = (id: string) => {
+    setFields((current) => current.filter((f) => f.id !== id))
+    if (selectedId === id) setSelectedId(null)
     setJsonDirty(false)
   }
 
-  const moveField = (index: number, offset: number) => {
+  const moveFieldBy = (id: string, offset: number) => {
     setFields((current) => {
-      const target = index + offset
+      const idx = current.findIndex((f) => f.id === id)
+      if (idx < 0) return current
+      const target = idx + offset
       if (target < 0 || target >= current.length) return current
       const next = [...current]
-      const [item] = next.splice(index, 1)
+      const [item] = next.splice(idx, 1)
       next.splice(target, 0, item)
       return next
     })
@@ -419,6 +682,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
       JSON.parse(jsonText)
       const result = parseFields(jsonText)
       setFields(result.fields)
+      setSelectedId(null)
       setJsonDirty(false)
       setErrMsg('')
     } catch (err) {
@@ -426,14 +690,13 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
     }
   }
 
-  const schemaForSave = () => {
-    if (!jsonDirty) return stringifySchema(fields, undefined, undefined)
-    return jsonText
-  }
-
   const handleSave = async () => {
     if (!name.trim()) {
       setErrMsg('請輸入名稱')
+      return
+    }
+    if (fields.some((f) => !f.name.trim())) {
+      setErrMsg('所有欄位都必須有欄位名')
       return
     }
     setBusy(true)
@@ -454,7 +717,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   }
 
   const handleExportJson = () => {
-    const schema = jsonDirty ? jsonText : stringifySchema(fields, undefined, undefined)
+    const schema = jsonDirty ? jsonText : stringifySchema(fields)
     const blob = new Blob([schema], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -465,134 +728,318 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   }
 
   if (!visible) return null
+  const SafeSchemaField = typeof SchemaField !== 'undefined' ? SchemaField : null
 
   return (
     <>
       <div className="modal-backdrop fade show"></div>
       <div className="modal fade show" tabIndex={-1} style={{ display: 'block' }}>
-        <div className="modal-dialog modal-xl" style={{ maxWidth: '95vw' }}>
-          <div className="modal-content" style={{ height: '92vh' }}>
+        <div className="modal-dialog modal-xxl" style={{ maxWidth: '99vw' }}>
+          <div className="modal-content" style={{ height: '94vh' }}>
             <div className="modal-header py-2">
               <h6 className="modal-title d-flex align-items-center gap-2">
-                <i className="bx bx-list-check"></i>
+                <IconList />
                 {record ? `編輯 Form #${record.id}` : '新增 Form'}
               </h6>
               <button type="button" className="btn-close" onClick={onClose} aria-label="Close"></button>
             </div>
-            <div className="modal-body p-2 d-flex flex-column" style={{ overflow: 'hidden' }}>
+            <div className="modal-body p-3" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <div className="row g-2 mb-2">
-                <div className="col-md-5">
+                <div className="col-md-4">
                   <label className="form-label mb-1" style={{ fontSize: '.7rem' }}>名稱 *</label>
-                  <input className="form-control form-control-sm" value={name} onChange={(e) => setName(e.target.value)} />
+                  <SemiInput value={name} onChange={(v: string) => setName(v)} placeholder="例如 訂單表單" />
                 </div>
-                <div className="col-md-5">
+                <div className="col-md-6">
                   <label className="form-label mb-1" style={{ fontSize: '.7rem' }}>描述</label>
-                  <input className="form-control form-control-sm" value={description} onChange={(e) => setDescription(e.target.value)} />
+                  <SemiInput value={description} onChange={(v: string) => setDescription(v)} placeholder="表單說明（選填）" />
                 </div>
                 <div className="col-md-2 d-flex align-items-end">
-                  <span className="badge bg-label-info">{fields.length} 欄位</span>
+                  <SemiTag color="blue" type="solid" size="large">{fields.length} 個欄位</SemiTag>
                 </div>
               </div>
-              {errMsg && <div className="alert alert-danger py-1 mb-2" style={{ fontSize: '.75rem' }}>{errMsg}</div>}
-              <div className="kyklos-form-layout">
-                <div className="kyklos-form-fields">
-                  <div className="d-flex align-items-center mb-2">
-                    <strong style={{ fontSize: '.8125rem' }}>欄位設定</strong>
-                    <button type="button" className="btn btn-sm btn-primary ms-auto" onClick={addField}>
-                      <i className="bx bx-plus me-1"></i>新增欄位
-                    </button>
+              {errMsg && (
+                <SemiBanner type="danger" className="mb-2" closeIcon={null}>{errMsg}</SemiBanner>
+              )}
+              <div className="kyklos-form-builder">
+                {/* 左：元件庫 */}
+                <div className="kyklos-form-palette">
+                  <strong className="kyklos-form-palette-title">
+                    <IconComponent style={{ marginRight: 4 }} />
+                    元件庫
+                  </strong>
+                  <SemiInput
+                    size="small"
+                    placeholder="搜尋元件..."
+                    prefix={<IconComponent />}
+                    value={searchTemplate}
+                    onChange={(v: string) => setSearchTemplate(v)}
+                    style={{ marginBottom: 8 }}
+                  />
+                  <div className="kyklos-form-palette-tabs">
+                    {CATEGORIES.map((cat) => {
+                      const count = fieldTemplates.filter((t) => t.category === cat.value).length
+                      return (
+                        <div
+                          key={cat.value}
+                          className={`kyklos-form-palette-tab ${activeCategory === cat.value ? 'active' : ''}`}
+                          onClick={() => setActiveCategory(cat.value)}
+                        >
+                          {cat.label} <span className="count">{count}</span>
+                        </div>
+                      )
+                    })}
                   </div>
-                  <div className="table-responsive kyklos-form-table">
-                    <table className="table table-sm align-middle mb-0">
-                      <thead className="table-light">
-                        <tr>
-                          <th style={{ width: '8%' }}>排序</th>
-                          <th style={{ width: '14%' }}>類型</th>
-                          <th style={{ width: '18%' }}>標籤</th>
-                          <th style={{ width: '18%' }}>欄位名</th>
-                          <th style={{ width: '18%' }}>提示</th>
-                          <th style={{ width: '16%' }}>選項</th>
-                          <th style={{ width: '8%' }} className="text-end">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {fields.length === 0 ? (
-                          <tr><td colSpan={7} className="text-center text-muted py-4">尚無欄位，點擊「新增欄位」開始。</td></tr>
-                        ) : fields.map((field, index) => (
-                          <tr key={index}>
-                            <td>
-                              <div className="btn-group btn-group-sm">
-                                <button type="button" className="btn btn-outline-secondary" onClick={() => moveField(index, -1)} disabled={index === 0} title="上移"><i className="bx bx-up-arrow-alt"></i></button>
-                                <button type="button" className="btn btn-outline-secondary" onClick={() => moveField(index, 1)} disabled={index === fields.length - 1} title="下移"><i className="bx bx-down-arrow-alt"></i></button>
-                              </div>
-                            </td>
-                            <td>
-                              <select className="form-select form-select-sm" value={field.type} onChange={(e) => setField(index, { type: e.target.value as FieldType })}>
-                                {fieldTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                              </select>
-                            </td>
-                            <td><input className="form-control form-control-sm" value={field.title} onChange={(e) => setField(index, { title: e.target.value })} /></td>
-                            <td><input className="form-control form-control-sm" value={field.name} onChange={(e) => setField(index, { name: e.target.value })} /></td>
-                            <td>
-                              <input className="form-control form-control-sm" value={String(field['x-component-props']?.placeholder ?? '')} onChange={(e) => setField(index, { 'x-component-props': { ...field['x-component-props'], placeholder: e.target.value } })} />
-                            </td>
-                            <td>
-                              {needsOptions(field.type) ? (
-                                <input className="form-control form-control-sm" value={Array.isArray(field['x-component-props']?.options) ? (field['x-component-props']?.options as string[]).join(', ') : ''} onChange={(e) => setField(index, { 'x-component-props': { ...field['x-component-props'], options: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) } })} placeholder="A, B, C" />
-                              ) : (
-                                <div className="form-check">
-                                  <input className="form-check-input" type="checkbox" checked={Boolean(field['x-component-props']?.required)} onChange={(e) => setField(index, { 'x-component-props': { ...field['x-component-props'], required: e.target.checked } })} id={`field-required-${index}`} />
-                                  <label className="form-check-label small" htmlFor={`field-required-${index}`}>必填</label>
-                                </div>
-                              )}
-                            </td>
-                            <td className="text-end">
-                              <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeField(index)} title="刪除"><i className="bx bx-trash"></i></button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="kyklos-form-palette-items">
+                    {filteredTemplates.map((tpl) => (
+                      <div
+                        key={tpl.value}
+                        className="kyklos-form-palette-item"
+                        draggable
+                        onDragStart={(e) => handlePaletteDragStart(e, tpl.value)}
+                        onClick={() => addField(tpl.value)}
+                        title={`拖曳到畫布，或點擊加入：${tpl.label}`}
+                      >
+                        <span className="kyklos-form-palette-item-icon">{tpl.icon}</span>
+                        <span className="kyklos-form-palette-item-label">{tpl.label}</span>
+                        <span className="kyklos-form-palette-item-comp">{tpl.component}</span>
+                      </div>
+                    ))}
+                    {filteredTemplates.length === 0 && (
+                      <SemiEmpty description="沒有符合的元件" style={{ padding: 12 }} />
+                    )}
                   </div>
                 </div>
+
+                {/* 中：拖放畫布 */}
+                <div className="kyklos-form-canvas">
+                  <div className="d-flex align-items-center mb-2">
+                    <strong style={{ fontSize: '.8125rem' }}>畫布（拖放元件到此）</strong>
+                    <div className="ms-auto d-flex align-items-center gap-1">
+                      <SemiButton size="small" type="tertiary" icon={<IconPlus />} onClick={() => addField('string')}>
+                        快速新增
+                      </SemiButton>
+                    </div>
+                  </div>
+                  <div
+                    className={`kyklos-form-canvas-body ${dragState.type ? 'is-drop-target' : ''}`}
+                    onDragOver={handleCanvasDragOver}
+                    onDrop={handleCanvasDrop}
+                  >
+                    {fields.length === 0 ? (
+                      <div className="kyklos-form-canvas-empty">
+                        <div className="text-muted">
+                          <IconComponent style={{ fontSize: '2.5rem', opacity: 0.3 }} />
+                          <div className="mt-2">拖曳左側元件到這裡</div>
+                          <div style={{ fontSize: '.7rem' }}>或點擊元件加入</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="kyklos-form-canvas-list">
+                        {fields.map((field, index) => {
+                          const tpl = getTemplate(field.type)
+                          return (
+                            <div
+                              key={field.id}
+                              className={`kyklos-form-canvas-item ${selectedId === field.id ? 'selected' : ''} ${dragState.fromIndex === index ? 'dragging' : ''}`}
+                              draggable
+                              onDragStart={(e) => handleFieldDragStart(e, index)}
+                              onDragOver={handleFieldDragOver}
+                              onDrop={(e) => handleFieldDrop(e, index)}
+                              onClick={() => setSelectedId(field.id)}
+                            >
+                              <div className="kyklos-form-canvas-item-handle" title="拖曳以重新排序">
+                                <IconLoading />
+                              </div>
+                              <div className="kyklos-form-canvas-item-icon">{tpl.icon}</div>
+                              <div className="kyklos-form-canvas-item-info">
+                                <div className="kyklos-form-canvas-item-title">
+                                  {field.title || '(未命名)'}
+                                  {field.required && <span className="text-danger ms-1">*</span>}
+                                </div>
+                                <div className="kyklos-form-canvas-item-meta">
+                                  <SemiTag size="small" color="grey">{tpl.label}</SemiTag>
+                                  <code className="ms-1">{field.name}</code>
+                                  {field.placeholder && <span className="ms-2 text-muted">= "{field.placeholder}"</span>}
+                                </div>
+                              </div>
+                              <div className="kyklos-form-canvas-item-actions" onClick={(e) => e.stopPropagation()}>
+                                <SemiTooltip content="上移">
+                                  <SemiButton size="small" type="tertiary" icon={<IconArrowUp />} onClick={() => moveFieldBy(field.id, -1)} />
+                                </SemiTooltip>
+                                <SemiTooltip content="下移">
+                                  <SemiButton size="small" type="tertiary" icon={<IconArrowDown />} onClick={() => moveFieldBy(field.id, 1)} />
+                                </SemiTooltip>
+                                <SemiTooltip content="刪除">
+                                  <SemiButton size="small" type="danger" theme="borderless" icon={<IconDelete />} onClick={() => removeField(field.id)} />
+                                </SemiTooltip>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <div
+                          className="kyklos-form-canvas-dropzone"
+                          onDragOver={handleFieldDragOver}
+                          onDrop={(e) => handleFieldDrop(e, fields.length)}
+                        >
+                          + 拖曳至此或點擊加入
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 右：屬性 / 預覽 */}
                 <div className="kyklos-form-side">
-                  <div className="kyklos-form-preview">
-                    <strong style={{ fontSize: '.8125rem' }}>預覽 (Formily)</strong>
-                    <div className="mt-2">
-                      {previewFields.length === 0 ? (
-                        <div className="text-muted small">尚無可預覽欄位</div>
-                      ) : (
-                        <FormProvider form={form}>
-                          <SchemaField schema={buildFormSchema(fields)} />
-                        </FormProvider>
-                      )}
-                    </div>
-                  </div>
-                  <div className="kyklos-form-json">
-                    <div className="d-flex align-items-center mb-2">
-                      <strong style={{ fontSize: '.8125rem' }}>JSON Schema</strong>
-                      <button type="button" className="btn btn-sm btn-outline-secondary ms-auto" onClick={applyJson}>套用 JSON</button>
-                    </div>
-                    <textarea className="form-control form-control-sm" style={{ height: 320 }} value={jsonText} onChange={(e) => { setJsonText(e.target.value); setJsonDirty(true) }} spellCheck={false}></textarea>
-                  </div>
+                  <SemiTabs type="line" activeKey="props" tabPosition="top" size="small" style={{ flexShrink: 0 }}>
+                    <SemiTabPane tab={<span><IconSetting /> 屬性</span>} itemKey="props">
+                      <div className="kyklos-form-props">
+                        {!selectedField ? (
+                          <SemiEmpty description="點擊畫布中的欄位以編輯屬性" style={{ padding: 24 }} />
+                        ) : (
+                          <FieldPropsEditor
+                            field={selectedField}
+                            onChange={(patch) => setField(selectedField.id, patch)}
+                            onDelete={() => removeField(selectedField.id)}
+                          />
+                        )}
+                      </div>
+                    </SemiTabPane>
+                    <SemiTabPane tab={<span><IconAlignCenter /> Formily 預覽</span>} itemKey="preview">
+                      <div className="kyklos-form-preview-body">
+                        {fields.length === 0 ? (
+                          <SemiEmpty description="尚無可預覽欄位" style={{ padding: 24 }} />
+                        ) : SafeSchemaField ? (
+                          <FormProvider form={form}>
+                            <SafeSchemaField schema={buildFormSchema(fields)} />
+                          </FormProvider>
+                        ) : (
+                          <SemiEmpty description="Formily 載入失敗" style={{ padding: 24 }} />
+                        )}
+                      </div>
+                    </SemiTabPane>
+                    <SemiTabPane tab={<span>JSON</span>} itemKey="json">
+                      <div className="d-flex align-items-center mb-2">
+                        <strong style={{ fontSize: '.75rem' }}>JSON Schema</strong>
+                        <SemiButton size="small" type="tertiary" onClick={applyJson} style={{ marginLeft: 'auto' }}>
+                          套用 JSON
+                        </SemiButton>
+                      </div>
+                      <SemiTextArea
+                        value={jsonText}
+                        onChange={(v: string) => { setJsonText(v); setJsonDirty(true) }}
+                        spellCheck={false}
+                        style={{ minHeight: 360, fontFamily: 'Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '.7rem' }}
+                      />
+                    </SemiTabPane>
+                  </SemiTabs>
                 </div>
               </div>
             </div>
             <div className="modal-footer py-2">
               <span className="text-muted me-auto" style={{ fontSize: '.7rem' }}>
-                <i className="bx bx-info-circle me-1"></i>Formily JSON Schema 表單編輯器
+                <IconList style={{ marginRight: 4 }} />
+                Form Builder · @formily/react + @douyinfe/semi-ui（{fieldTemplates.length} 種元件，拖拉式）
               </span>
-              <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleExportJson}>
-                <i className="bx bx-download me-1"></i>匯出 JSON
-              </button>
-              <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose} disabled={busy}>取消</button>
-              <button type="button" className="btn btn-primary btn-sm" onClick={handleSave} disabled={busy}>
-                <i className="bx bx-save me-1"></i>{busy ? '儲存中...' : '儲存'}
-              </button>
+              <SemiButton type="tertiary" icon={<IconDownload />} onClick={handleExportJson} disabled={busy}>
+                匯出 JSON
+              </SemiButton>
+              <SemiButton type="secondary" icon={<IconClose />} onClick={onClose} disabled={busy}>
+                取消
+              </SemiButton>
+              <SemiButton type="primary" theme="solid" icon={<IconSave />} onClick={handleSave} loading={busy}>
+                {busy ? '儲存中...' : '儲存'}
+              </SemiButton>
             </div>
           </div>
         </div>
       </div>
     </>
+  )
+}
+
+function FieldPropsEditor({ field, onChange, onDelete }: { field: FormField; onChange: (patch: Partial<FormField>) => void; onDelete: () => void }) {
+  const tpl = getTemplate(field.type)
+  const props = field['x-component-props'] || {}
+  const updateProp = (key: string, value: unknown) => {
+    onChange({ 'x-component-props': { ...props, [key]: value } })
+  }
+  const optionsText = Array.isArray(props.options)
+    ? (props.options as Array<{ label?: string; value?: string } | string>).map((o) => typeof o === 'string' ? o : o.label || '').join(', ')
+    : ''
+
+  return (
+    <div className="kyklos-form-props-grid">
+      <div className="kyklos-form-props-row">
+        <label>類型</label>
+        <select className="form-select form-select-sm" value={field.type} onChange={(e) => onChange({ type: e.target.value as FieldType })}>
+          {CATEGORIES.map((cat) => (
+            <optgroup key={cat.value} label={cat.label}>
+              {fieldTemplates.filter((t) => t.category === cat.value).map((tpl) => (
+                <option key={tpl.value} value={tpl.value}>{tpl.label} ({tpl.component})</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+      <div className="kyklos-form-props-row">
+        <label>標籤</label>
+        <SemiInput value={field.title} onChange={(v: string) => onChange({ title: v })} />
+      </div>
+      <div className="kyklos-form-props-row">
+        <label>欄位名</label>
+        <SemiInput value={field.name} onChange={(v: string) => onChange({ name: v })} />
+      </div>
+      <div className="kyklos-form-props-row">
+        <label>提示文字</label>
+        <SemiInput value={field.placeholder || ''} onChange={(v: string) => onChange({ placeholder: v })} />
+      </div>
+      <div className="kyklos-form-props-row">
+        <label>描述</label>
+        <SemiTextArea value={field.description || ''} onChange={(v: string) => onChange({ description: v })} rows={2} />
+      </div>
+      {tpl.hasOptions && (
+        <div className="kyklos-form-props-row">
+          <label>選項（逗號分隔）</label>
+          <SemiTextArea
+            value={optionsText}
+            onChange={(v: string) => updateProp('options', v.split(',').map((s) => ({ label: s.trim(), value: s.trim() })).filter((s) => s.value))}
+            rows={3}
+          />
+        </div>
+      )}
+      <div className="kyklos-form-props-row">
+        <label>預設值</label>
+        <SemiInput
+          value={field.defaultValue === undefined ? '' : String(field.defaultValue)}
+          onChange={(v: string) => onChange({ defaultValue: v })}
+          placeholder="選填"
+        />
+      </div>
+      <div className="kyklos-form-props-row kyklos-form-props-toggles">
+        <label>選項</label>
+        <div className="d-flex flex-wrap gap-3">
+          <SemiSwitch checked={Boolean(field.required)} onChange={(v: boolean) => onChange({ required: v })} text="必填" />
+          <SemiSwitch checked={Boolean(field.disabled)} onChange={(v: boolean) => onChange({ disabled: v })} text="停用" />
+          <SemiSwitch checked={Boolean(field.hidden)} onChange={(v: boolean) => onChange({ hidden: v })} text="隱藏" />
+        </div>
+      </div>
+      <div className="kyklos-form-props-row kyklos-form-props-raw">
+        <label>進階（x-component-props）</label>
+        <SemiTextArea
+          value={JSON.stringify(props, null, 2)}
+          onChange={(v: string) => {
+            try { onChange({ 'x-component-props': JSON.parse(v) || {} }) } catch { /* ignore parse error */ }
+          }}
+          spellCheck={false}
+          rows={4}
+          style={{ fontFamily: 'Menlo, Monaco, Consolas, monospace', fontSize: '.65rem' }}
+        />
+      </div>
+      <div className="kyklos-form-props-actions">
+        <SemiButton type="danger" theme="borderless" block icon={<IconDelete />} onClick={onDelete}>
+          刪除此欄位
+        </SemiButton>
+      </div>
+    </div>
   )
 }

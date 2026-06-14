@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@douyinfe/semi-icons": "^2.100.0",
+    "@douyinfe/semi-ui": "^2.100.0",
     "@excalidraw/excalidraw": "^0.18.1",
     "@formily/core": "^2.3.7",
     "@formily/json-schema": "^2.3.7",

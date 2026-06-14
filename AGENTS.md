@@ -43,6 +43,16 @@ kyklos/
 ├── frontend/             # 前端靜態資源（待移入）
 ├── web/                  # 前端靜態資源（index.html + sneat/ Bootstrap 5 UI）
 ├── docs/                 # 文件（命令參考 HTML / MD）
+├── k8s/                  # Kubernetes 部署 manifest + CI/CD pipeline
+│   ├── base/             # 基礎 manifest（namespace / deployment / pvc / rbac / networkpolicy…）
+│   ├── overlays/prod/    # 正式環境 overlay（映像、資源、Service 覆寫）
+│   ├── ci/gitlab-ci.yml  # GitLab CI 對等設定（可選）
+│   ├── argocd/application.yaml # ArgoCD GitOps Application
+│   └── README.md         # 部署指南、Secret 管理、備份、故障排除
+├── .github/workflows/    # GitHub Actions CI/CD
+│   ├── ci.yml            # Lint + Test + k8s manifest 驗證
+│   ├── build-image.yml   # Docker buildx 多架構映像推送 GHCR
+│   └── deploy.yml        # Staging 自動 / Production 手動核准
 ├── AGENTS.md
 ├── README.md
 ├── Makefile
@@ -253,3 +263,109 @@ make images
 ```
 
 > **注意**：macOS 上執行 pfctl 操作需要 `sudo` 權限；Windows 上執行 PowerShell NetSecurity cmdlet 需要系統管理員權限。
+
+## Kubernetes 部署與 CI/CD
+
+`k8s/` 目錄提供完整的 Kubernetes 部署 manifest 與 CI/CD pipeline 設定。kyklos 為防火牆管理工具，**必須具備 CAP_NET_ADMIN 等系統權限**才能操作 iptables / pfctl，因此部署僅適用於 Linux 邊緣 / 網路閘道節點，並需綁定 host network + privileged 模式。
+
+### 部署拓樸
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  GitHub Actions / GitLab CI                                │
+│  ┌─────────┐  ┌──────────────┐  ┌──────────────────┐      │
+│  │ ci.yml  │→│ build-image  │→│ deploy.yml         │      │
+│  │ Lint    │  │ 多架構映像    │  │ Staging 自動       │      │
+│  │ Test    │  │ + SBOM       │  │ Prod 手動核准      │      │
+│  └─────────┘  └──────────────┘  └──────────────────┘      │
+└──────────────────┬───────────────────────────────────────┘
+                   │ 映像推送
+                   ▼
+┌──────────────────────────────────────────────────────────┐
+│  GHCR / GitLab Registry                                    │
+│  ghcr.io/<org>/kyklos:<tag>                                │
+└──────────────────┬───────────────────────────────────────┘
+                   │ kubectl apply / kustomize / ArgoCD
+                   ▼
+┌──────────────────────────────────────────────────────────┐
+│  Kubernetes 叢集（Linux 邊緣節點）                         │
+│  ┌──────────────────────────────────────────────────────┐ │
+│  │ Namespace: kyklos                                    │ │
+│  │ ┌────────────┐  ┌────────┐  ┌─────┐  ┌──────────┐    │ │
+│  │ │Deployment  │  │Service │  │PVC  │  │Ingress   │    │ │
+│  │ │replicas=1  │  │NodePort│  │1Gi  │  │+ TLS     │    │ │
+│  │ │privileged: │  │hostNet │  │SQL  │  │nginx-    │    │ │
+│  │ │  true      │  │:10001 │  │ite3 │  │ingress   │    │ │
+│  │ └────────────┘  └────────┘  └─────┘  └──────────┘    │ │
+│  │ + NetworkPolicy + PDB + RBAC + ConfigMap + Secret   │ │
+│  └──────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
+```
+
+### 部署關鍵設計
+
+- **單實例 + Recreate 策略**：iptables 同節點唯一持有者，避免多 pod 互相覆蓋規則造成衝突
+- **hostNetwork + privileged**：直接使用節點網路命名空間，避免 Service NAT 干擾 firewall 規則判斷
+- **Capabilities**：`NET_ADMIN / NET_RAW / SYS_ADMIN / SYS_PTRACE / DAC_OVERRIDE` 操作 iptables 與載入核心模組
+- **節點選擇**：`nodeSelector: kubernetes.io/os: linux` 與容忍污點，僅排程到 Linux 邊緣節點
+- **PVC 持久化**：SQLite 1Gi，部署前自動 snapshot（`sqlite3 .backup`）
+- **NetworkPolicy**：限制 ingress 僅來自 ingress-nginx，egress 排除私有 CIDR
+
+### CI/CD 流程
+
+| Pipeline | 觸發 | 內容 |
+|----------|------|------|
+| `ci.yml` | push to main / develop, PR | 前後端 lint、test、build、k8s manifest 驗證（kubeconform） |
+| `build-image.yml` | push to main, tag `v*.*.*` | Docker buildx 多架構（amd64/arm64）映像，SBOM + provenance，GHCR 推送 |
+| `deploy.yml` | push to main, tag, manual | Staging 自動部署（健康檢查失敗自動回滾），Production 需 GitHub Environment 手動核准 |
+
+### 必要 GitHub Secrets
+
+| Secret | 說明 |
+|--------|------|
+| `STAGING_KUBECONFIG` | Staging 叢集 kubeconfig（base64） |
+| `PRODUCTION_KUBECONFIG` | Production 叢集 kubeconfig（base64） |
+| `STAGING_ADMIN_USER` / `STAGING_ADMIN_PASS` | 部署後健康檢查 |
+| `PROD_ADMIN_USER` / `PROD_ADMIN_PASS` | Production 健康檢查 |
+| `SLACK_WEBHOOK` | 部署結果通知（可選） |
+
+### ArgoCD GitOps 模式（可選）
+
+`k8s/argocd/application.yaml` 定義 GitOps 自動同步應用：
+
+- `automated.prune: true`：自動刪除 Git 中已不存在的資源
+- `automated.selfHeal: true`：自動修補運行環境與 Git 的偏差
+- `retry`：部署失敗自動重試 3 次（指數退避）
+
+修改 `spec.source.repoURL` 為實際倉庫後，套用即可進入 GitOps 模式。
+
+### 部署前必做
+
+1. 替換 `k8s/base/secret.yaml` 的 `IPT_WEB_PASSWORD_HASH` 為 BCrypt 雜湊（cost ≥ 10）
+2. 建立 `kyklos-tls` TLS secret（或由 cert-manager 自動管理）
+3. 標記邊緣節點：`kubectl label node <node> kyklos=allowed`
+4. 設定上述 GitHub Secrets
+5. 確認目標節點已安裝 iptables（Linux 環境）
+6. 建議正式環境改用 Sealed Secrets / External Secrets Operator 管理敏感資料
+
+### 故障排除
+
+```bash
+# 查看 Pod 日誌
+kubectl logs -n kyklos -l app.kubernetes.io/name=kyklos --previous
+
+# 進入容器檢查 iptables
+kubectl exec -n kyklos deploy/kyklos -- iptables -L -n
+
+# 手動備份資料庫
+kubectl exec -n kyklos deploy/kyklos -- \
+  sqlite3 /app/data/kyklos.sqlite3 ".backup /app/data/manual-backup-$(date +%Y%m%d).sqlite3"
+
+# 還原資料庫
+kubectl scale deployment/kyklos -n kyklos --replicas=0
+kubectl cp ./backup.sqlite3 kyklos/<pod>:/tmp/
+kubectl exec -n kyklos <pod> -- cp /tmp/backup.sqlite3 /app/data/kyklos.sqlite3
+kubectl scale deployment/kyklos -n kyklos --replicas=1
+```
+
+完整部署指南請參閱 [`k8s/README.md`](k8s/README.md)。

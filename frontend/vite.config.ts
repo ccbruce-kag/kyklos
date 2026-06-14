@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 
 const backend = 'http://localhost:10002'
 const proxyToBackend = { target: backend, changeOrigin: true }
@@ -49,6 +50,16 @@ export default defineConfig({
       '/ai': wsProxyToBackend,
       '/ai/': wsProxyToBackend,
     }
+  },
+  resolve: {
+    alias: [
+      // Semi UI CSS isn't in the package.json exports field
+      // Provide a direct path to the dist css
+      {
+        find: 'semi-ui-css',
+        replacement: fileURLToPath(new URL('./node_modules/@douyinfe/semi-ui/dist/css/semi.min.css', import.meta.url)),
+      },
+    ],
   },
   build: {
     outDir: 'dist',

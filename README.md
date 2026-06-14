@@ -237,5 +237,6 @@ Apache License 2.0
   [rustcached](https://github.com/ketralnis/rustcached)
   [rust-oauth2-server](https://github.com/kuwala-io/rust-oauth2-server)
   [hyper-reverse-proxy](https://github.com/hyperium/hyper-reverse-proxy)
-  [Formily](https://github.com/alibaba/formily)
+  [Formily](https://github.com/alibaba/formily) — Form builder 表單管理（Schema 驅動，JSON Schema 格式）
+  [Semi Design](https://github.com/DouyinFE/semi-design) — @douyinfe/semi-ui，Formily 表單元件呈現層
   [Puck](https://github.com/puckeditor/puck)

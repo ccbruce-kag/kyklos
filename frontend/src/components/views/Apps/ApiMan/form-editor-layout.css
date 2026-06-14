@@ -152,6 +152,18 @@
   background: #eff6ff;
 }
 
+.kyklos-form-canvas-body.is-palette-drag {
+  border-color: #2563eb;
+  background: #eff6ff;
+  cursor: copy;
+}
+
+.kyklos-form-canvas-body.is-reorder-drag {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  cursor: move;
+}
+
 .kyklos-form-canvas-empty {
   display: flex;
   flex-direction: column;
@@ -293,6 +305,27 @@
   overflow: hidden;
 }
 
+.kyklos-form-side .semi-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.kyklos-form-side .semi-tabs-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.kyklos-form-side .semi-tabs-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .kyklos-form-props {
   flex: 1 1 auto;
   min-height: 0;
@@ -344,6 +377,11 @@
   margin: 8px;
 }
 
+.kyklos-form-preview-header {
+  flex-shrink: 0;
+  padding: 8px 12px 0;
+}
+
 /* ── Formily 預覽元件 ── */
 .kyklos-form-item {
   margin-bottom: 12px;
@@ -365,6 +403,16 @@
 
 .kyklos-form-item-control {
   width: 100%;
+}
+
+.kyklos-form-item.has-error .kyklos-form-item-label {
+  color: #dc2626;
+}
+
+.kyklos-form-item-error {
+  margin-top: 4px;
+  font-size: .7rem;
+  color: #dc2626;
 }
 
 @media (max-width: 1400px) {

@@ -106,7 +106,7 @@ export default function NetworkArchitectureView() {
 
   return (
     <>
-      <div id="networkArchView" style={{ display: 'none' }}>
+      <div id="netArchView" style={{ display: 'none' }}>
         <div className="row mb-3">
           <div className="col-12">
             <div className="card">

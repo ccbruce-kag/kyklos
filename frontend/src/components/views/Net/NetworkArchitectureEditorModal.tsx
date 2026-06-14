@@ -38,13 +38,13 @@ type DeviceKind = 'router' | 'switch' | 'firewall' | 'server' | 'cloud' | 'clien
 
 const DEVICE_KINDS: { kind: DeviceKind; label: string; color: string; icon: string }[] = [
   { kind: 'router',   label: '路由器',     color: '#3b82f6', icon: 'bx-router'         },
-  { kind: 'switch',   label: '交換器',     color: '#06b6d4', icon: 'bx-network-chart'  },
-  { kind: 'firewall', label: '防火牆',     color: '#ef4444', icon: 'bx-shield'         },
+  { kind: 'switch',   label: '交換器',     color: '#06b6d4', icon: 'bx-hub'            },
+  { kind: 'firewall', label: '防火牆',     color: '#ef4444', icon: 'bx-shield-alt-2'   },
   { kind: 'server',   label: '伺服器',     color: '#22c55e', icon: 'bx-server'         },
-  { kind: 'database', label: '資料庫',     color: '#f59e0b', icon: 'bx-data'           },
+  { kind: 'database', label: '資料庫',     color: '#f59e0b', icon: 'bx-hdd'            },
   { kind: 'lb',       label: '負載平衡',   color: '#a855f7', icon: 'bx-transfer'       },
-  { kind: 'ap',       label: '無線 AP',    color: '#ec4899', icon: 'bx-wifi'           },
-  { kind: 'client',   label: '終端',       color: '#94a3b8', icon: 'bx-laptop'         },
+  { kind: 'ap',       label: '無線 AP',    color: '#ec4899', icon: 'bx-broadcast'      },
+  { kind: 'client',   label: '終端',       color: '#94a3b8', icon: 'bx-desktop'        },
   { kind: 'cloud',    label: '雲端',       color: '#0ea5e9', icon: 'bx-cloud'          },
   { kind: 'internet', label: '網際網路',   color: '#64748b', icon: 'bx-globe'          },
 ]
@@ -105,10 +105,14 @@ function DeviceNode({ data, selected }: { data: NodeData; selected?: boolean }) 
         color: '#fff',
         border: `2px solid ${def.color}`,
         borderRadius: 8,
-        padding: '8px 12px',
+        padding: '12px 14px',
         minWidth: 150,
         fontSize: 13,
         fontWeight: 500,
+        textAlign: 'center',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
         boxShadow: selected
           ? `0 0 0 3px ${def.color}55, 0 4px 12px rgba(0,0,0,.35)`
           : '0 4px 12px rgba(0,0,0,.35)',
@@ -122,10 +126,11 @@ function DeviceNode({ data, selected }: { data: NodeData; selected?: boolean }) 
       <Handle id="t-bottom-source" type="source" position={Position.Bottom} style={handleStyle} />
       <Handle id="t-left-target" type="target" position={Position.Left}   style={handleStyle} />
       <Handle id="t-left-source" type="source" position={Position.Left}   style={handleStyle} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <i className={`bx ${def.icon}`} style={{ color: def.color, fontSize: '1.1rem' }}></i>
-        <span>{data.label}</span>
-      </div>
+      <i
+        className={`bx ${def.icon}`}
+        style={{ color: def.color, fontSize: '4.8rem', lineHeight: 1, display: 'block', marginBottom: 6 }}
+      ></i>
+      <div>{data.label}</div>
       {data.ip && (
         <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4, fontFamily: 'monospace' }}>{data.ip}</div>
       )}
@@ -352,18 +357,18 @@ function EditorInner({ onSaved }: Props) {
                   <button
                     key={d.kind}
                     type="button"
-                    className="btn btn-sm d-flex align-items-center gap-2 mb-2 w-100 text-start"
+                    className="btn btn-sm d-flex flex-column align-items-center justify-content-center gap-1 mb-2 w-100"
                     style={{
                       background: d.color + '22',
                       borderColor: d.color,
                       color: d.color,
-                      fontSize: '.75rem',
-                      padding: '6px 10px',
+                      fontSize: '.7rem',
+                      padding: '4px 4px',
                       fontWeight: 500,
                     }}
                     onClick={() => addNodeOfKind(d.kind)}
                   >
-                    <i className={`bx ${d.icon}`} style={{ fontSize: '1rem' }}></i>
+                    <i className={`bx ${d.icon}`} style={{ fontSize: '2.2rem', lineHeight: 1 }}></i>
                     <span>{d.label}</span>
                   </button>
                 ))}

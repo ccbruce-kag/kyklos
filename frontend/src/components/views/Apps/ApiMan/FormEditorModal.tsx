@@ -291,7 +291,9 @@ function stringifySchema(fields: FormField[]): string {
   return JSON.stringify({ type: 'object', properties }, null, 2)
 }
 
-/* ---------- Formily 預覽：Semi UI 元件（以 connect 接入 Formily 狀態） ---------- */
+/* ---------- Formily 預覽：Semi UI 元件（以 connect 接入 Formily 狀態）
+   注意：這些不是 disabled / readonly —— Formily 編輯器
+   預設就是可互動的表單，可即時看到實際運作效果。 */
 
 type FieldProps = {
   value?: unknown
@@ -302,6 +304,7 @@ type FieldProps = {
   options?: Array<{ label: string; value: string }> | string[]
   type?: string
   text?: string
+  multiple?: boolean
 }
 
 const PreviewInput = connect(
@@ -312,7 +315,6 @@ const PreviewInput = connect(
       placeholder={props.placeholder}
       type={props.type as 'text' | 'password' | 'email' | 'number' | undefined}
       disabled={props.disabled}
-      readonly
     />
   ),
   mapProps({ value: true, placeholder: true, type: true, disabled: true }),
@@ -325,7 +327,6 @@ const PreviewTextArea = connect(
       onChange={(v: string) => props.onChange?.(v)}
       placeholder={props.placeholder}
       disabled={props.disabled}
-      readonly
       rows={3}
     />
   ),
@@ -369,14 +370,15 @@ const PreviewSelect = connect(
     return (
       <SemiSelect
         value={typeof props.value === 'string' || props.value === 'number' ? String(props.value) : ''}
-        onChange={(v: string) => props.onChange?.(v)}
+        onChange={(v: string | string[]) => props.onChange?.(v)}
         placeholder={props.placeholder}
         disabled={props.disabled}
         optionList={opts}
+        multiple={props.multiple}
       />
     )
   },
-  mapProps({ value: true, placeholder: true, options: true, disabled: true }),
+  mapProps({ value: true, placeholder: true, options: true, disabled: true, multiple: true }),
 )
 
 const PreviewRadioGroup = connect(
@@ -403,7 +405,6 @@ const PreviewDatePicker = connect(
       value={typeof props.value === 'string' ? props.value : undefined}
       onChange={(v: string) => props.onChange?.(v)}
       disabled={props.disabled}
-      type="date"
     />
   ),
   mapProps({ value: true, disabled: true }),
@@ -422,25 +423,31 @@ const PreviewTimePicker = connect(
 
 const PreviewText = connect(
   (props: { text?: string; value?: string; children?: React.ReactNode }) => (
-    <SemiTypography.Text disabled={false}>{props.text || props.value || (props.children as string) || '文字'}</SemiTypography.Text>
+    <SemiTypography.Text>{props.text || props.value || (props.children as string) || '文字'}</SemiTypography.Text>
   ),
 )
 
 const PreviewDivider = connect(() => <SemiDivider />)
 
+/* FormItem decorator：標題 + 必填星號 + 描述 + 錯誤訊息（與 Formily 編輯器一致） */
 const PreviewFormItem = connect(
-  (props: { title?: string; required?: boolean; description?: string; children?: React.ReactNode }) => (
-    <div className="kyklos-form-item">
-      {props.title && (
-        <label className="kyklos-form-item-label">
-          {props.title}
-          {props.required && <span className="text-danger ms-1">*</span>}
-        </label>
-      )}
-      {props.description && <div className="kyklos-form-item-desc">{props.description}</div>}
-      <div className="kyklos-form-item-control">{props.children}</div>
-    </div>
-  ),
+  (props: { title?: string; required?: boolean; description?: string; children?: React.ReactNode; errors?: string[]; decoratorProps?: Record<string, unknown> }) => {
+    const showError = Array.isArray(props.errors) && props.errors.length > 0
+    return (
+      <div className={`kyklos-form-item ${showError ? 'has-error' : ''}`} style={props.decoratorProps as React.CSSProperties}>
+        {props.title && (
+          <label className="kyklos-form-item-label">
+            <span>{props.title}</span>
+            {props.required && <span style={{ color: '#dc2626', marginLeft: 2 }}>*</span>}
+          </label>
+        )}
+        {props.description && <div className="kyklos-form-item-desc">{props.description}</div>}
+        <div className="kyklos-form-item-control">{props.children}</div>
+        {showError && <div className="kyklos-form-item-error">{props.errors![0]}</div>}
+      </div>
+    )
+  },
+  mapProps({ title: true, required: true, description: true, decoratorProps: true }),
 )
 
 const { SchemaField } = createSchemaField({
@@ -466,18 +473,39 @@ function buildFormSchema(fields: FormField[]): Record<string, unknown> {
   fields.forEach((field) => {
     if (!field.name.trim() || !field.title.trim()) return
     const tpl = getTemplate(field.type)
-    const comp = field['x-component'] || tpl.component
+    // 將不在 Preview 元件中的型別，fallback 到最接近的 Semi UI 元件
+    const supportedComponents = new Set(['Input', 'Input.TextArea', 'InputNumber', 'Select', 'Switch', 'Checkbox', 'Radio.Group', 'DatePicker', 'TimePicker', 'Typography', 'Text', 'Divider', 'FormItem'])
+    let comp = field['x-component'] || tpl.component
+    if (!supportedComponents.has(comp)) {
+      const fallbackMap: Record<string, string> = {
+        Rate: 'InputNumber', Slider: 'InputNumber', Stepper: 'InputNumber',
+        Upload: 'Input', Avatar: 'Input', ColorPicker: 'Input',
+        TagInput: 'Select', Transfer: 'Select', AutoComplete: 'Input', TreeSelect: 'Select', Cascader: 'Select',
+        Image: 'Input', Tabs: 'Typography', Grid: 'Typography',
+        Container: 'Typography', ObjectField: 'Typography', ArrayField: 'Typography', Array: 'Input',
+        Divider: 'Divider', Text: 'Text', HTML: 'Typography', Button: 'Typography', Link: 'Typography',
+        Signature: 'Input', Mention: 'Input.TextArea', Hidden: 'Input',
+      }
+      comp = fallbackMap[comp] || 'Input'
+    }
     const baseProps = (field['x-component-props'] && Object.keys(field['x-component-props']).length > 0)
       ? field['x-component-props']
       : tpl.defaultProps
     const props = { ...baseProps }
     if (field.placeholder) props.placeholder = field.placeholder
     if (field.options && field.options.length > 0) {
-      const optArr = (props.options as string[] | undefined)?.length
-        ? (props.options as string[]).map((o) => ({ label: o, value: o }))
-        : field.options
+      const optArr = (Array.isArray(props.options) ? (props.options as string[]).map((o) => ({ label: o, value: o })) : field.options)
       props.options = optArr
     }
+    if (comp === 'Select' && field.type === 'multiSelect') props.multiple = true
+    // 對應 Semi UI 元件實際 prop name
+    if (comp === 'Input' && field.type === 'password') props.type = 'password'
+    if (comp === 'Input' && field.type === 'email') props.type = 'email'
+    if (comp === 'Input' && field.type === 'url') props.type = 'url'
+    if (comp === 'Input' && field.type === 'tel') props.type = 'tel'
+    if (comp === 'Input' && field.type === 'search') props.type = 'search'
+    if (comp === 'Input' && field.type === 'color') props.type = 'color'
+    if (comp === 'Input' && (field.type === 'number' || field.type === 'integer' || field.type === 'stepper')) comp = 'InputNumber'
     const entry: Record<string, unknown> = {
       type: field.type,
       title: field.title,
@@ -534,13 +562,53 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   }, [fields, jsonDirty])
 
   const form = useMemo(
-    () => createForm({
-      values: {},
-      effects() {
-        onFieldValueChange('*', () => {})
-      },
-    }),
-    [],
+    () => {
+      // 為每個欄位提供示例預設值，讓 Formily 預覽看起來像真實的編輯表單
+      const sampleValues: Record<string, unknown> = {}
+      fields.forEach((field, i) => {
+        if (field.name && field.defaultValue !== undefined) {
+          sampleValues[field.name] = field.defaultValue
+        } else if (field.name) {
+          const tpl = getTemplate(field.type)
+          switch (field.type) {
+            case 'string': case 'textarea': case 'email': case 'url': case 'tel': case 'search':
+              sampleValues[field.name] = `範例 ${field.title || field.name}`.slice(0, 20)
+              break
+            case 'number': case 'integer': case 'stepper':
+              sampleValues[field.name] = (i + 1) * 10
+              break
+            case 'boolean': case 'switch':
+              sampleValues[field.name] = i % 2 === 0
+              break
+            case 'select': case 'multiSelect': case 'treeSelect': case 'cascader': case 'radio': case 'checkboxGroup':
+              if (field.options && field.options.length > 0) {
+                const firstOpt = field.options[0]
+                sampleValues[field.name] = typeof firstOpt === 'string' ? firstOpt : (firstOpt as { value: string }).value
+              }
+              break
+            case 'date': case 'dateTime': case 'dateRange':
+              sampleValues[field.name] = new Date().toISOString().split('T')[0]
+              break
+            case 'time': case 'timeRange':
+              sampleValues[field.name] = '12:00'
+              break
+            case 'rate': sampleValues[field.name] = 4; break
+            case 'slider': sampleValues[field.name] = 50; break
+            case 'color': sampleValues[field.name] = '#3b82f6'; break
+            default:
+              if (tpl.component === 'Switch' || tpl.component === 'Checkbox') sampleValues[field.name] = false
+              break
+          }
+        }
+      })
+      return createForm({
+        values: sampleValues,
+        effects() {
+          onFieldValueChange('*', () => {})
+        },
+      })
+    },
+    [fields],
   )
 
   const selectedField = useMemo(
@@ -562,42 +630,63 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
     return jsonText
   }
 
-  /* ---------- Drag and Drop handlers ---------- */
+  /* ---------- Drag and Drop handlers
+     注意：HTML5 Drag and Drop 的 dataTransfer.types 在 dragover 階段
+     行為不一致（部分瀏覽器拿不到自訂 MIME），所以用 component state（dragState）
+     與 CSS class（is-palette-drag / is-reorder-drag）做視覺與邏輯判斷。
+     ---------- */
+
+  const [dragMode, setDragMode] = useState<'palette' | 'reorder' | null>(null)
 
   const handlePaletteDragStart = (e: React.DragEvent<HTMLDivElement>, type: FieldType) => {
     setDragState({ fromIndex: null, type })
+    setDragMode('palette')
     e.dataTransfer.setData('application/x-formily-field-type', type)
+    e.dataTransfer.setData('text/plain', type) // 兼容部分瀏覽器
     e.dataTransfer.effectAllowed = 'copy'
   }
 
   const handleFieldDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
     setDragState({ fromIndex: index, type: null })
+    setDragMode('reorder')
     e.dataTransfer.setData('application/x-formily-field-index', String(index))
+    e.dataTransfer.setData('text/plain', String(index))
     e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragEnd = () => {
+    setDragState({ fromIndex: null, type: null })
+    setDragMode(null)
   }
 
   const handleFieldDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = e.dataTransfer.types.includes('application/x-formily-field-type') ? 'copy' : 'move'
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = dragMode === 'palette' ? 'copy' : 'move'
   }
 
   const handleFieldDrop = (e: React.DragEvent<HTMLDivElement>, targetIndex: number) => {
     e.preventDefault()
     e.stopPropagation()
-    const newType = e.dataTransfer.getData('application/x-formily-field-type') as FieldType | null
-    const fromIndexStr = e.dataTransfer.getData('application/x-formily-field-index')
+    const newType = (e.dataTransfer.getData('application/x-formily-field-type') ||
+      (dragMode === 'palette' ? e.dataTransfer.getData('text/plain') : '')) as FieldType | null
+    const fromIndexStr = e.dataTransfer.getData('application/x-formily-field-index') ||
+      (dragMode === 'reorder' ? e.dataTransfer.getData('text/plain') : '')
 
-    if (newType) {
+    if (newType && fieldTemplates.some((t) => t.value === newType)) {
       // 從 palette 拖入新欄位
       setFields((current) => {
         const insertAt = Math.min(targetIndex, current.length)
         const next = [...current]
-        next.splice(insertAt, 0, newField(insertAt, newType))
+        next.splice(insertAt, 0, newField(insertAt, newType as FieldType))
         return next.map((f, i) => ({ ...f, name: f.name.startsWith('field_') ? `field_${i + 1}` : f.name, title: f.title.startsWith('欄位 ') && /^欄位 \d+$/.test(f.title) ? `欄位 ${i + 1}` : f.title }))
       })
     } else if (fromIndexStr !== '') {
       const fromIndex = Number(fromIndexStr)
-      if (Number.isNaN(fromIndex) || fromIndex === targetIndex) return
+      if (Number.isNaN(fromIndex) || fromIndex === targetIndex) {
+        handleDragEnd()
+        return
+      }
       setFields((current) => {
         if (fromIndex < 0 || fromIndex >= current.length) return current
         const next = [...current]
@@ -608,27 +697,45 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
       })
     }
     setJsonDirty(false)
-    setDragState({ fromIndex: null, type: null })
+    handleDragEnd()
   }
 
   const handleCanvasDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
+    e.dataTransfer.dropEffect = dragMode === 'palette' ? 'copy' : 'move'
   }
 
   const handleCanvasDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
-    const newType = e.dataTransfer.getData('application/x-formily-field-type') as FieldType | null
-    if (newType) {
+    const newType = (e.dataTransfer.getData('application/x-formily-field-type') ||
+      (dragMode === 'palette' ? e.dataTransfer.getData('text/plain') : '')) as FieldType | null
+    if (newType && fieldTemplates.some((t) => t.value === newType)) {
       setFields((current) => {
         const insertAt = current.length
         const next = [...current]
-        next.splice(insertAt, 0, newField(insertAt, newType))
+        next.splice(insertAt, 0, newField(insertAt, newType as FieldType))
         return next
       })
       setJsonDirty(false)
+    } else {
+      // 處理重排序（拖到畫布空白處 = 移到最尾）
+      const fromIndexStr = e.dataTransfer.getData('application/x-formily-field-index') ||
+        (dragMode === 'reorder' ? e.dataTransfer.getData('text/plain') : '')
+      if (fromIndexStr !== '') {
+        const fromIndex = Number(fromIndexStr)
+        if (!Number.isNaN(fromIndex)) {
+          setFields((current) => {
+            if (fromIndex < 0 || fromIndex >= current.length) return current
+            const next = [...current]
+            const [item] = next.splice(fromIndex, 1)
+            next.push(item)
+            return next
+          })
+          setJsonDirty(false)
+        }
+      }
     }
-    setDragState({ fromIndex: null, type: null })
+    handleDragEnd()
   }
 
   /* ---------- Field operations ---------- */
@@ -821,7 +928,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                     </div>
                   </div>
                   <div
-                    className={`kyklos-form-canvas-body ${dragState.type ? 'is-drop-target' : ''}`}
+                    className={`kyklos-form-canvas-body ${dragMode === 'palette' ? 'is-drop-target is-palette-drag' : ''} ${dragMode === 'reorder' ? 'is-reorder-drag' : ''}`}
                     onDragOver={handleCanvasDragOver}
                     onDrop={handleCanvasDrop}
                   >
@@ -843,6 +950,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                               className={`kyklos-form-canvas-item ${selectedId === field.id ? 'selected' : ''} ${dragState.fromIndex === index ? 'dragging' : ''}`}
                               draggable
                               onDragStart={(e) => handleFieldDragStart(e, index)}
+                              onDragEnd={handleDragEnd}
                               onDragOver={handleFieldDragOver}
                               onDrop={(e) => handleFieldDrop(e, index)}
                               onClick={() => setSelectedId(field.id)}
@@ -905,6 +1013,12 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                       </div>
                     </SemiTabPane>
                     <SemiTabPane tab={<span><IconAlignCenter /> Formily 預覽</span>} itemKey="preview">
+                      <div className="kyklos-form-preview-header">
+                        <SemiTypography.Text type="secondary" style={{ fontSize: '.7rem' }}>
+                          <IconAlignCenter style={{ marginRight: 4, fontSize: '.8rem' }} />
+                          這是實際的 Formily 即時編輯表單 — 與 Formily 設計工具渲染一致，可即時輸入測試
+                        </SemiTypography.Text>
+                      </div>
                       <div className="kyklos-form-preview-body">
                         {fields.length === 0 ? (
                           <SemiEmpty description="尚無可預覽欄位" style={{ padding: 24 }} />

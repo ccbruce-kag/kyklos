@@ -4,6 +4,10 @@
 
 Rust ベースのクロスプラットフォームファイアウォール Web 管理ツール。**Linux (iptables)**、**macOS (pfctl)**、**Windows (PowerShell NetSecurity)** をサポートします。
 
+<br/>
+<p align="center"><img width="256" alt="rustoauth2" src="docs/op/screenshot.png" /></p>
+<br/>
+
 ## 機能
 
 - **クロスプラットフォーム対応**: Linux は iptables/ip6tables、macOS は pfctl、Windows は PowerShell NetSecurity を自動検出

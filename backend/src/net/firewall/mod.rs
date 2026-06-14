@@ -1,6 +1,14 @@
 use async_trait::async_trait;
 
-use crate::iptables::types::TableListData;
+use crate::net::firewall::linux::types::TableListData;
+
+pub mod linux;
+pub mod macos;
+pub mod windows;
+
+pub use linux::IptablesCmd;
+pub use macos::PfctlCmd;
+pub use windows::WindowsCmd;
 
 #[async_trait]
 pub trait FirewallCmd: Send + Sync {

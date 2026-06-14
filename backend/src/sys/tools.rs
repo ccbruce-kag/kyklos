@@ -1,8 +1,6 @@
 use serde_json::{json, Value};
 use tokio::process::Command;
 
-pub mod pcap;
-
 async fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new(cmd)
         .args(args)

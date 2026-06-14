@@ -4,6 +4,10 @@
 
 A Rust-based cross-platform firewall web management tool supporting **Linux (iptables)**, **macOS (pfctl)**, and **Windows (PowerShell NetSecurity)**.
 
+<br/>
+<p align="center"><img width="256" alt="rustoauth2" src="docs/op/screenshot.png" /></p>
+<br/>
+
 ## Features
 
 - **Cross-platform**: Linux uses iptables/ip6tables, macOS uses pfctl, Windows uses PowerShell NetSecurity – auto-detected at startup

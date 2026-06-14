@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
-use crate::firewall::FirewallCmd;
-use crate::iptables::{
+use crate::net::firewall::FirewallCmd;
+use crate::net::firewall::linux::{
     parse_column, parse_custom_title, parse_system_title, CustomTable, Protocol, SystemTable,
     TableListData,
 };

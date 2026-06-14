@@ -1,4 +1,4 @@
-use crate::iptables::types::*;
+use crate::net::firewall::linux::types::*;
 use once_cell::sync::Lazy;
 use regex::Regex;
 

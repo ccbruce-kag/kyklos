@@ -1,19 +1,20 @@
 use crate::ai;
+use crate::apps::apiman::{ApiManNodeInput, ApiManRequestInput, ApiManWorkspaceInput};
 use crate::bapi_log;
 use crate::db::{
     AppDb, HaproxyBackendServerUpdate, HaproxyLoadBalancerUpdate, JuniperDeviceUpdate,
 };
-use crate::apiman::{ApiManNodeInput, ApiManRequestInput, ApiManWorkspaceInput};
-use crate::dbman::DbConnectionInput;
+use crate::apps::dbman::DbConnectionInput;
+use crate::net::firewall::FirewallCmd;
+use crate::net::haproxy::{BackendServer, HaproxyClient};
+use crate::net::juniper::{self, JuniperClient};
+use crate::net::netplan::{NetplanConfig, NetplanConfigInput};
+use crate::net::nginx::{NginxClient, NginxSettings, NginxSiteUpdate};
+use crate::net::pcap;
 use crate::security::{CvsSourceInput, ScanTaskInput};
-use crate::firewall::FirewallCmd;
-use crate::haproxy::{BackendServer, HaproxyClient};
-use crate::juniper::{self, JuniperClient};
-use crate::netplan::{NetplanConfig, NetplanConfigInput};
-use crate::nginx::{NginxClient, NginxSettings, NginxSiteUpdate};
-use crate::shell;
-use crate::system;
-use crate::tools;
+use crate::sys::shell;
+use crate::sys::system;
+use crate::sys::tools;
 use crate::utils;
 use axum::body::Body;
 use axum::extract::{Form, Path, Request, State};
@@ -1302,7 +1303,7 @@ pub struct PingClasscForm {
 
 async fn handle_tools_ping_classc(Form(form): Form<PingClasscForm>) -> Json<Value> {
     let network = match form.network { Some(ref n) if !n.trim().is_empty() => n.trim().to_string(), _ => return utils::output(Some("network is required"), None) };
-    Json(crate::tools::ping_classc(&network, 1, 3).await)
+    Json(crate::sys::tools::ping_classc(&network, 1, 3).await)
 }
 
 async fn handle_tools_ping(Form(form): Form<PingForm>) -> Json<Value> {
@@ -1374,7 +1375,7 @@ struct PcapCaptureForm {
 }
 
 async fn handle_tools_pcap_interfaces() -> Json<Value> {
-    Json(json!({"code": 0, "data": tools::pcap::list_interfaces()}))
+    Json(json!({"code": 0, "data": pcap::list_interfaces()}))
 }
 
 async fn handle_tools_pcap_capture(Form(form): Form<PcapCaptureForm>) -> Json<Value> {
@@ -1387,7 +1388,7 @@ async fn handle_tools_pcap_capture(Form(form): Form<PcapCaptureForm>) -> Json<Va
     let iface = interface.clone();
     let flt = filter.clone();
     let result = tokio::task::spawn_blocking(move || {
-        tools::pcap::capture_packets(&iface, &flt, count, timeout)
+        pcap::capture_packets(&iface, &flt, count, timeout)
     })
     .await;
 
@@ -1419,7 +1420,7 @@ async fn handle_snmp_get(Form(form): Form<SnmpRequestForm>) -> Json<Value> {
     bapi_log!("info", "snmp.get", &format!("host={}:{}, community={}, oid={}", host, port, community, oid));
     let h = host.clone(); let c = community.clone(); let o = oid.clone();
     let result = tokio::task::spawn_blocking(move || {
-        crate::snmp::snmp_get(&h, port, &c, &o)
+        crate::net::snmp::snmp_get(&h, port, &c, &o)
     }).await;
     match &result {
         Ok(Ok(data)) => bapi_log!("info", "snmp.get", &format!("ok, {} results", data["results"].as_array().map(|a| a.len()).unwrap_or(0)), ""),
@@ -1441,7 +1442,7 @@ async fn handle_snmp_walk(Form(form): Form<SnmpRequestForm>) -> Json<Value> {
     bapi_log!("info", "snmp.walk", &format!("host={}:{}, community={}, oid={}", host, port, community, oid));
     let h = host.clone(); let c = community.clone(); let o = oid.clone();
     let result = tokio::task::spawn_blocking(move || {
-        crate::snmp::snmp_walk(&h, port, &c, &o)
+        crate::net::snmp::snmp_walk(&h, port, &c, &o)
     }).await;
     match &result {
         Ok(Ok(data)) => bapi_log!("info", "snmp.walk", &format!("ok, {} results", data["results"].as_array().map(|a| a.len()).unwrap_or(0)), ""),
@@ -1470,7 +1471,7 @@ async fn handle_samba_shares(Form(form): Form<SambaConnectForm>) -> Json<Value> 
     let port = form.port.unwrap_or(445);
     let username = form.username.unwrap_or_else(|| "guest".into());
     let password = form.password.unwrap_or_default();
-    Json(crate::samba::list_shares(&host, port, &username, &password).await)
+    Json(crate::net::samba::list_shares(&host, port, &username, &password).await)
 }
 
 async fn handle_samba_ls(Form(form): Form<SambaConnectForm>) -> Json<Value> {
@@ -1481,7 +1482,7 @@ async fn handle_samba_ls(Form(form): Form<SambaConnectForm>) -> Json<Value> {
     let share = form.share.unwrap_or_else(|| "IPC$".into());
     let path = form.path.unwrap_or_default();
     bapi_log!("info", "samba.ls", &format!("host={}:{}, share={}, path={}", host, port, share, path));
-    Json(crate::samba::list_directory(&host, port, &username, &password, &share, &path).await)
+    Json(crate::net::samba::list_directory(&host, port, &username, &password, &share, &path).await)
 }
 
 async fn handle_samba_download(Form(form): Form<SambaConnectForm>) -> Json<Value> {
@@ -1492,7 +1493,7 @@ async fn handle_samba_download(Form(form): Form<SambaConnectForm>) -> Json<Value
     let share = form.share.unwrap_or_else(|| "IPC$".into());
     let path = form.path.unwrap_or_default();
     bapi_log!("info", "samba.download", &format!("host={}:{}, share={}, path={}", host, port, share, path));
-    let result = crate::samba::download_file(&host, port, &username, &password, &share, &path).await;
+    let result = crate::net::samba::download_file(&host, port, &username, &password, &share, &path).await;
     match &result {
         Ok(data) => bapi_log!("info", "samba.download", &format!("ok, {} bytes", data.len()), ""),
         Err(e) => bapi_log!("error", "samba.download", e, ""),
@@ -1529,7 +1530,7 @@ async fn handle_samba_upload(Form(form): Form<SambaUploadForm>) -> Json<Value> {
         Err(e) => return Json(json!({"code": 1, "msg": format!("base64 decode failed: {}", e)})),
     };
     bapi_log!("info", "samba.upload", &format!("host={}:{}, share={}, path={}, size={}", host, port, share, path, data.len()));
-    Json(crate::samba::upload_file(&host, port, &username, &password, &share, &path, &data).await)
+    Json(crate::net::samba::upload_file(&host, port, &username, &password, &share, &path, &data).await)
 }
 
 async fn handle_samba_mkdir(Form(form): Form<SambaConnectForm>) -> Json<Value> {
@@ -1540,7 +1541,7 @@ async fn handle_samba_mkdir(Form(form): Form<SambaConnectForm>) -> Json<Value> {
     let share = form.share.unwrap_or_else(|| "IPC$".into());
     let path = form.path.unwrap_or_default();
     bapi_log!("info", "samba.mkdir", &format!("host={}:{}, share={}, path={}", host, port, share, path));
-    Json(crate::samba::create_directory(&host, port, &username, &password, &share, &path).await)
+    Json(crate::net::samba::create_directory(&host, port, &username, &password, &share, &path).await)
 }
 
 async fn handle_samba_rm(Form(form): Form<SambaConnectForm>) -> Json<Value> {
@@ -1551,7 +1552,7 @@ async fn handle_samba_rm(Form(form): Form<SambaConnectForm>) -> Json<Value> {
     let share = form.share.unwrap_or_else(|| "IPC$".into());
     let path = form.path.unwrap_or_default();
     bapi_log!("info", "samba.rm", &format!("host={}:{}, share={}, path={}", host, port, share, path));
-    Json(crate::samba::remove_file(&host, port, &username, &password, &share, &path).await)
+    Json(crate::net::samba::remove_file(&host, port, &username, &password, &share, &path).await)
 }
 
 #[derive(Deserialize)]
@@ -1572,7 +1573,7 @@ async fn handle_sftp_ls(Form(form): Form<SftpForm>) -> Json<Value> {
     let password = form.password.unwrap_or_default();
     let path = form.path.unwrap_or_else(|| "/".into());
     bapi_log!("info", "sftp.ls", &format!("host={}:{}, user={}, path={}", host, port, username, path));
-    Json(crate::sftp::list_directory(&host, port, &username, &password, &path).await)
+    Json(crate::net::sftp::list_directory(&host, port, &username, &password, &path).await)
 }
 
 async fn handle_sftp_download(Form(form): Form<SftpForm>) -> Json<Value> {
@@ -1582,7 +1583,7 @@ async fn handle_sftp_download(Form(form): Form<SftpForm>) -> Json<Value> {
     let password = form.password.unwrap_or_default();
     let path = form.path.unwrap_or_default();
     bapi_log!("info", "sftp.download", &format!("host={}:{}, user={}, path={}", host, port, username, path));
-    let result = crate::sftp::download_file(&host, port, &username, &password, &path).await;
+    let result = crate::net::sftp::download_file(&host, port, &username, &password, &path).await;
     match result {
         Ok(data) => Json(json!({"code": 0, "data": base64::encode(&data)})),
         Err(e) => Json(json!({"code": 1, "msg": e})),
@@ -1597,7 +1598,7 @@ async fn handle_sftp_upload(Form(form): Form<SftpForm>) -> Json<Value> {
     let path = format!("{}/{}", form.path.unwrap_or_default().trim_end_matches('/'), form.filename.unwrap_or_else(|| "upload".into()));
     let data = base64::decode(&form.content.unwrap_or_default()).unwrap_or_default();
     bapi_log!("info", "sftp.upload", &format!("host={}:{}, user={}, path={}, size={}", host, port, username, path, data.len()));
-    Json(crate::sftp::upload_file(&host, port, &username, &password, &path, &data).await)
+    Json(crate::net::sftp::upload_file(&host, port, &username, &password, &path, &data).await)
 }
 
 async fn handle_sftp_mkdir(Form(form): Form<SftpForm>) -> Json<Value> {
@@ -1607,7 +1608,7 @@ async fn handle_sftp_mkdir(Form(form): Form<SftpForm>) -> Json<Value> {
     let password = form.password.unwrap_or_default();
     let path = form.path.unwrap_or_default();
     bapi_log!("info", "sftp.mkdir", &format!("host={}:{}, user={}, path={}", host, port, username, path));
-    Json(crate::sftp::create_directory(&host, port, &username, &password, &path).await)
+    Json(crate::net::sftp::create_directory(&host, port, &username, &password, &path).await)
 }
 
 async fn handle_sftp_rm(Form(form): Form<SftpForm>) -> Json<Value> {
@@ -1617,17 +1618,17 @@ async fn handle_sftp_rm(Form(form): Form<SftpForm>) -> Json<Value> {
     let password = form.password.unwrap_or_default();
     let path = form.path.unwrap_or_default();
     bapi_log!("info", "sftp.rm", &format!("host={}:{}, user={}, path={}", host, port, username, path));
-    Json(crate::sftp::remove_file(&host, port, &username, &password, &path).await)
+    Json(crate::net::sftp::remove_file(&host, port, &username, &password, &path).await)
 }
 
 // ---- Netplan Handlers ----
 
 async fn handle_netplan_interfaces() -> Json<Value> {
-    Json(crate::netplan::list_interfaces().await)
+    Json(crate::net::netplan::list_interfaces().await)
 }
 
 async fn handle_netplan_current(Path(iface): Path<String>) -> Json<Value> {
-    Json(crate::netplan::get_current_config(&iface).await)
+    Json(crate::net::netplan::get_current_config(&iface).await)
 }
 
 async fn handle_netplan_configs(State(state): State<Arc<AppState>>) -> Json<Value> {
@@ -1666,7 +1667,7 @@ async fn handle_netplan_apply(
         dns_servers: form.dns_servers.filter(|v| !v.is_empty()),
     };
 
-    let config_yaml = form.config_yaml.unwrap_or_else(|| crate::netplan::generate_yaml(&input));
+    let config_yaml = form.config_yaml.unwrap_or_else(|| crate::net::netplan::generate_yaml(&input));
 
     // Save to DB
     let db_config = NetplanConfig {
@@ -1687,7 +1688,7 @@ async fn handle_netplan_apply(
     };
 
     // Apply
-    match crate::netplan::apply_yaml(&config_yaml).await {
+    match crate::net::netplan::apply_yaml(&config_yaml).await {
         Ok(output) => utils::output(
             None,
             Some(serde_json::json!({
@@ -1715,7 +1716,7 @@ async fn handle_netplan_preview(
         gateway: form.gateway.filter(|v| !v.is_empty()),
         dns_servers: form.dns_servers.filter(|v| !v.is_empty()),
     };
-    let yaml = crate::netplan::generate_yaml(&input);
+    let yaml = crate::net::netplan::generate_yaml(&input);
     utils::output(None, Some(serde_json::json!({"config": yaml})))
 }
 
@@ -1801,7 +1802,7 @@ async fn handle_apiman_nodes(
         Ok(r) => r,
         Err(e) => return utils::output(Some(&e), None),
     };
-    let tree = crate::apiman::build_tree(&nodes, &requests, None);
+    let tree = crate::apps::apiman::build_tree(&nodes, &requests, None);
     utils::output(None, Some(serde_json::to_value(&tree).unwrap_or_default()))
 }
 
@@ -1870,7 +1871,7 @@ async fn handle_apiman_copy_node(
             let ws_id = node.workspace_id;
             let nodes = state.db.list_apiman_nodes(ws_id).unwrap_or_default();
             let requests = state.db.list_apiman_requests(ws_id).unwrap_or_default();
-            let tree = crate::apiman::build_tree(&nodes, &requests, None);
+            let tree = crate::apps::apiman::build_tree(&nodes, &requests, None);
             utils::output(None, Some(json!({"node": node, "tree": tree})))
         }
         Ok(None) => utils::output(Some("node not found"), None),
@@ -1975,7 +1976,7 @@ async fn handle_apiman_send_request(
     let node = state.db.get_apiman_node(node_id).ok().flatten();
     let variables = node.as_ref().map(|n| state.db.list_apiman_variables(n.workspace_id).unwrap_or_default()).unwrap_or_default();
 
-    let url = crate::apiman::substitute_variables(&req.url, &variables);
+    let url = crate::apps::apiman::substitute_variables(&req.url, &variables);
     if url.is_empty() {
         return utils::output(Some("URL is empty"), None);
     }
@@ -2039,7 +2040,7 @@ async fn handle_apiman_send_request(
                 ) {
                     let enabled = item.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
                     if enabled {
-                        let substituted_val = crate::apiman::substitute_variables(val, &variables);
+                        let substituted_val = crate::apps::apiman::substitute_variables(val, &variables);
                         header_strs.push(format!("{}: {}", key, substituted_val));
                     }
                 }
@@ -2056,7 +2057,7 @@ async fn handle_apiman_send_request(
     if req.body_type != "none" {
         if let Some(ref body) = req.body_content {
             if !body.is_empty() {
-                body_str = crate::apiman::substitute_variables(body, &variables);
+                body_str = crate::apps::apiman::substitute_variables(body, &variables);
                 curl_args.push("-d");
                 curl_args.push(&body_str);
             }
@@ -2225,7 +2226,7 @@ async fn handle_dbman_test_connection(
         "sqlite" => {
             let path = form.file_path.as_deref().unwrap_or("");
             if path.is_empty() { return utils::output(Some("file path is required for SQLite"), None); }
-            match crate::dbman::test_sqlite(path).await {
+            match crate::apps::dbman::test_sqlite(path).await {
                 Ok(v) => utils::output(None, Some(json!({"version": v}))),
                 Err(e) => utils::output(Some(&e), None),
             }
@@ -2236,7 +2237,7 @@ async fn handle_dbman_test_connection(
             let user = form.username.as_deref().unwrap_or("root");
             let pass = form.password.as_deref().unwrap_or("");
             let db = form.database_name.as_deref().unwrap_or("mysql");
-            match crate::dbman::test_mysql(host, port, user, pass, db).await {
+            match crate::apps::dbman::test_mysql(host, port, user, pass, db).await {
                 Ok(v) => utils::output(None, Some(json!({"version": v}))),
                 Err(e) => utils::output(Some(&e), None),
             }
@@ -2248,7 +2249,7 @@ async fn handle_dbman_test_connection(
             let pass = form.password.as_deref().unwrap_or("");
             let db = form.database_name.as_deref().unwrap_or("master");
             let trust = parse_form_bool(form.trust_server_cert.as_deref());
-            match crate::dbman::test_sqlserver(host, port, user, pass, db, trust).await {
+            match crate::apps::dbman::test_sqlserver(host, port, user, pass, db, trust).await {
                 Ok(v) => utils::output(None, Some(json!({"version": v}))),
                 Err(e) => utils::output(Some(&e), None),
             }
@@ -2264,7 +2265,7 @@ async fn handle_dbman_tables(
     match db_type {
         "sqlite" => {
             let path = form.file_path.as_deref().unwrap_or("");
-            match crate::dbman::list_sqlite_tables(path).await {
+            match crate::apps::dbman::list_sqlite_tables(path).await {
                 Ok(tables) => utils::output(None, Some(serde_json::to_value(&tables).unwrap_or_default())),
                 Err(e) => utils::output(Some(&e), None),
             }
@@ -2276,7 +2277,7 @@ async fn handle_dbman_tables(
             let pass = form.password.as_deref().unwrap_or("");
             let db = form.database_name.as_deref().unwrap_or("");
             let trust = parse_form_bool(form.trust_server_cert.as_deref());
-            match crate::dbman::list_cli_tables(db_type, host, port, user, pass, db, trust).await {
+            match crate::apps::dbman::list_cli_tables(db_type, host, port, user, pass, db, trust).await {
                 Ok(tables) => utils::output(None, Some(serde_json::to_value(&tables).unwrap_or_default())),
                 Err(e) => utils::output(Some(&e), None),
             }
@@ -2306,7 +2307,7 @@ async fn handle_dbman_query(
     match db_type {
         "sqlite" => {
             let path = form.file_path.as_deref().unwrap_or("");
-            match crate::dbman::query_sqlite(path, &sql).await {
+            match crate::apps::dbman::query_sqlite(path, &sql).await {
                 Ok(result) => utils::output(None, Some(serde_json::to_value(&result).unwrap_or_default())),
                 Err(e) => utils::output(Some(&e), None),
             }
@@ -2318,7 +2319,7 @@ async fn handle_dbman_query(
             let pass = form.password.as_deref().unwrap_or("");
             let db = form.database_name.as_deref().unwrap_or("");
             let trust = parse_form_bool(form.trust_server_cert.as_deref());
-            match crate::dbman::exec_cli_sql(db_type, host, port, user, pass, db, &sql, trust).await {
+            match crate::apps::dbman::exec_cli_sql(db_type, host, port, user, pass, db, &sql, trust).await {
                 Ok(result) => utils::output(None, Some(serde_json::to_value(&result).unwrap_or_default())),
                 Err(e) => utils::output(Some(&e), None),
             }
@@ -2348,7 +2349,7 @@ async fn handle_dbman_table_columns(
     match db_type {
         "sqlite" => {
             let path = form.file_path.as_deref().unwrap_or("");
-            match crate::dbman::get_sqlite_columns(path, table).await {
+            match crate::apps::dbman::get_sqlite_columns(path, table).await {
                 Ok(cols) => utils::output(None, Some(serde_json::to_value(&cols).unwrap_or_default())),
                 Err(e) => utils::output(Some(&e), None),
             }
@@ -2360,7 +2361,7 @@ async fn handle_dbman_table_columns(
             let pass = form.password.as_deref().unwrap_or("");
             let db = form.database_name.as_deref().unwrap_or("");
             let trust = parse_form_bool(form.trust_server_cert.as_deref());
-            match crate::dbman::list_cli_columns(db_type, host, port, user, pass, db, table, trust).await {
+            match crate::apps::dbman::list_cli_columns(db_type, host, port, user, pass, db, table, trust).await {
                 Ok(cols) => utils::output(None, Some(serde_json::to_value(&cols).unwrap_or_default())),
                 Err(e) => utils::output(Some(&e), None),
             }
@@ -2563,7 +2564,7 @@ async fn handle_apiman_upsert_variable(
     Form(form): Form<ApiManVarForm>,
 ) -> Json<Value> {
     let key = match form.key { Some(ref k) if !k.trim().is_empty() => k.trim().to_string(), _ => return utils::output(Some("key is required"), None) };
-    let input = crate::apiman::ApiManVariableInput {
+    let input = crate::apps::apiman::ApiManVariableInput {
         key,
         value: form.value.unwrap_or_default(),
         enabled: Some(parse_form_bool(form.enabled.as_deref())),

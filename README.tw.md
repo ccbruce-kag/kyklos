@@ -4,6 +4,10 @@
 
 基於 Rust 實作的防火牆 Web 管理工具，支援 **Linux (iptables)**、**macOS (pfctl)** 與 **Windows (PowerShell NetSecurity)** 三平台。
 
+<br/>
+<p align="center"><img width="256" alt="rustoauth2" src="docs/op/screenshot.png" /></p>
+<br/>
+
 ## 功能特色
 
 - **跨平台支援**：Linux 使用 iptables / ip6tables，macOS 使用 pfctl，Windows 使用 PowerShell NetSecurity，啟動時自動偵測

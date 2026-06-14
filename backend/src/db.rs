@@ -1,12 +1,12 @@
-use crate::dbman::{DbConnection, DbConnectionInput};
-use crate::security::{CvsSource, CvsSourceInput, ScanResult, ScanTask, ScanTaskInput};
-use crate::apiman::{
+use crate::apps::apiman::{
     ApiManNode, ApiManNodeInput, ApiManRequest, ApiManRequestInput, ApiManWorkspace,
     ApiManWorkspaceInput,
 };
-use crate::juniper::JuniperConfig;
-use crate::netplan::NetplanConfig;
-use crate::nginx::{NginxModule, NginxSettings, NginxSite, NginxSiteUpdate};
+use crate::apps::dbman::{DbConnection, DbConnectionInput};
+use crate::net::juniper::JuniperConfig;
+use crate::net::netplan::NetplanConfig;
+use crate::net::nginx::{NginxModule, NginxSettings, NginxSite, NginxSiteUpdate};
+use crate::security::{CvsSource, CvsSourceInput, ScanResult, ScanTask, ScanTaskInput};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -953,7 +953,7 @@ impl AppDb {
 
         // Prune old configs (keep newest 3)
         let all = self.list_netplan_configs()?;
-        let to_delete = crate::netplan::prune_old_configs(&all);
+        let to_delete = crate::net::netplan::prune_old_configs(&all);
         for del_id in to_delete {
             let _ = conn.execute("DELETE FROM netplan_configs WHERE id = ?1", rusqlite::params![del_id]);
         }
@@ -1149,7 +1149,7 @@ impl AppDb {
             Ok(DbConnection {
                 id: row.get(0)?, name: row.get(1)?, db_type: row.get(2)?,
                 file_path: row.get(3)?, host: row.get(4)?, port: row.get::<_, Option<i64>>(5)?.map(|v| v as u16),
-                username: row.get(6)?, password: enc.as_deref().map(crate::dbman::decrypt_password).or(enc),
+                username: row.get(6)?, password: enc.as_deref().map(crate::apps::dbman::decrypt_password).or(enc),
                 database_name: row.get(8)?,
                 trust_server_cert: row.get::<_, i64>(9)? != 0,
                 created_at: row.get(10)?, updated_at: row.get(11)?,
@@ -1165,7 +1165,7 @@ impl AppDb {
         if !matches!(input.db_type.as_str(), "sqlite" | "mysql" | "sqlserver") {
             return Err("invalid db type".to_string());
         }
-        let enc_password = input.password.as_deref().map(crate::dbman::encrypt_password);
+        let enc_password = input.password.as_deref().map(crate::apps::dbman::encrypt_password);
         let conn = self.connect()?;
         conn.execute(
             "INSERT INTO dbman_connections (name, db_type, file_path, host, port, username, password, database_name, trust_server_cert)
@@ -1181,7 +1181,7 @@ impl AppDb {
     }
 
     pub fn update_dbman_connection(&self, id: i64, input: DbConnectionInput) -> Result<Option<DbConnection>, String> {
-        let enc_password = input.password.as_deref().map(crate::dbman::encrypt_password);
+        let enc_password = input.password.as_deref().map(crate::apps::dbman::encrypt_password);
         let conn = self.connect()?;
         let affected = conn.execute(
             "UPDATE dbman_connections SET name = ?1, db_type = ?2, file_path = ?3, host = ?4, port = ?5,
@@ -1214,7 +1214,7 @@ impl AppDb {
                 Ok(DbConnection {
                     id: row.get(0)?, name: row.get(1)?, db_type: row.get(2)?,
                     file_path: row.get(3)?, host: row.get(4)?, port: row.get::<_, Option<i64>>(5)?.map(|v| v as u16),
-                    username: row.get(6)?, password: enc.as_deref().map(crate::dbman::decrypt_password).or(enc),
+                    username: row.get(6)?, password: enc.as_deref().map(crate::apps::dbman::decrypt_password).or(enc),
                     database_name: row.get(8)?,
                     trust_server_cert: row.get::<_, i64>(9)? != 0,
                     created_at: row.get(10)?, updated_at: row.get(11)?,
@@ -1472,14 +1472,14 @@ impl AppDb {
         Ok(())
     }
 
-    pub fn list_apiman_response_history(&self, node_id: i64) -> Result<Vec<crate::apiman::ResponseHistory>, String> {
+    pub fn list_apiman_response_history(&self, node_id: i64) -> Result<Vec<crate::apps::apiman::ResponseHistory>, String> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
             "SELECT id, node_id, status, headers, body, elapsed_ms, created_at
              FROM apiman_response_history WHERE node_id = ?1 ORDER BY id DESC LIMIT 20"
         ).map_err(|e| format!("prepare history query failed: {e}"))?;
         let rows = stmt.query_map(params![node_id], |row| {
-            Ok(crate::apiman::ResponseHistory {
+            Ok(crate::apps::apiman::ResponseHistory {
                 id: row.get(0)?, node_id: row.get(1)?, status: row.get(2)?,
                 headers: row.get(3)?, body: row.get(4)?,
                 elapsed_ms: row.get::<_, Option<i64>>(5)?,
@@ -1499,14 +1499,14 @@ impl AppDb {
     }
 
     // ---- ApiMan Variables ----
-    pub fn list_apiman_variables(&self, workspace_id: i64) -> Result<Vec<crate::apiman::ApiManVariable>, String> {
+    pub fn list_apiman_variables(&self, workspace_id: i64) -> Result<Vec<crate::apps::apiman::ApiManVariable>, String> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
             "SELECT id, workspace_id, key, value, enabled, created_at, updated_at
              FROM apiman_variables WHERE workspace_id = ?1 ORDER BY key"
         ).map_err(|e| format!("prepare variables query failed: {e}"))?;
         let rows = stmt.query_map(params![workspace_id], |row| {
-            Ok(crate::apiman::ApiManVariable {
+            Ok(crate::apps::apiman::ApiManVariable {
                 id: row.get(0)?, workspace_id: row.get(1)?, key: row.get(2)?,
                 value: row.get(3)?, enabled: row.get::<_, i64>(4)? != 0,
                 created_at: row.get(5)?, updated_at: row.get(6)?,
@@ -1517,7 +1517,7 @@ impl AppDb {
         Ok(items)
     }
 
-    pub fn upsert_apiman_variable(&self, workspace_id: i64, input: crate::apiman::ApiManVariableInput) -> Result<crate::apiman::ApiManVariable, String> {
+    pub fn upsert_apiman_variable(&self, workspace_id: i64, input: crate::apps::apiman::ApiManVariableInput) -> Result<crate::apps::apiman::ApiManVariable, String> {
         if input.key.trim().is_empty() { return Err("variable key is required".to_string()); }
         let conn = self.connect()?;
         conn.execute(
@@ -1535,7 +1535,7 @@ impl AppDb {
         conn.query_row(
             "SELECT id, workspace_id, key, value, enabled, created_at, updated_at FROM apiman_variables WHERE id = ?1",
             params![actual_id], |row| {
-                Ok(crate::apiman::ApiManVariable {
+                Ok(crate::apps::apiman::ApiManVariable {
                     id: row.get(0)?, workspace_id: row.get(1)?, key: row.get(2)?,
                     value: row.get(3)?, enabled: row.get::<_, i64>(4)? != 0,
                     created_at: row.get(5)?, updated_at: row.get(6)?,

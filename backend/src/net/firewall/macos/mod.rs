@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
-use crate::firewall::FirewallCmd;
-use crate::iptables::types::{Column, SystemTable, SystemTitle, TableListData};
+use crate::net::firewall::linux::types::{Column, SystemTable, SystemTitle, TableListData};
+use crate::net::firewall::FirewallCmd;
 use crate::utils;
 use tokio::process::Command;
 

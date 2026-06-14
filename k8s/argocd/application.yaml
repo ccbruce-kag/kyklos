@@ -1,0 +1,49 @@
+# ArgoCD Application 定義（GitOps 部署）
+# 啟用方式：
+#   1. 安裝 ArgoCD: kubectl create namespace argocd && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#   2. 修改下方 spec.source.repoURL 為你的 git 倉庫
+#   3. 套用：kubectl apply -f k8s/argocd/application.yaml
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyklos
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: kyklos
+  # 自動刪除孤兒資源（已不在 Git 中的 k8s 物件）
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/kingasiagroup/kyklos.git
+    targetRevision: HEAD
+    path: k8s/overlays/prod
+    # 若使用私倉
+    # helm:
+    #   valueFiles:
+    #     - values.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyklos
+
+  syncPolicy:
+    # 自動同步（GitOps 模式）
+    automated:
+      prune: true       # 刪除 Git 中已不存在的資源
+      selfHeal: true    # 自動修補偏差
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false  # namespace 已預先建立
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    # 防呆：deployment 修改需手動確認
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

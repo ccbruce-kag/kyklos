@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# 取消相同 branch / PR 先前尚未跑完的 CI
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  NODE_VERSION: "20"
+
+jobs:
+  # 1. 前端 Lint + Build
+  frontend:
+    name: Frontend Lint & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 使用 Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安裝 npm 依賴
+        run: npm ci --no-audit --no-fund
+
+      - name: 程式碼檢查（ESLint）
+        run: npm run lint
+
+      - name: 型別檢查（tsc）
+        run: npx tsc --noEmit
+
+      - name: 建置前端
+        run: npm run build
+
+      - name: 上傳建置產物
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  # 2. 後端 Lint + Test + Build
+  backend:
+    name: Backend Lint & Test
+    runs-on: ubuntu-latest
+    services:
+      # kyklos 不需要外部服務，但保留 mysql 範例以備將來遷移
+      # mysql:
+      #   image: mysql:8.0
+      #   env:
+      #     MYSQL_ROOT_PASSWORD: test
+      #   ports: ['3306:3306']
+      #   options: --health-cmd="mysqladmin ping" --health-interval=10s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 使用 Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: 設定 Cargo 快取
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend -> target
+
+      - name: 檢查格式
+        working-directory: backend
+        run: cargo fmt --all -- --check
+
+      - name: Clippy 靜態分析
+        working-directory: backend
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: 單元測試
+        working-directory: backend
+        run: cargo test --locked --all-features
+
+      - name: 發佈測試（無 iptables）
+        working-directory: backend
+        run: cargo build --locked --release
+        env:
+          CARGO_BUILD_JOBS: 4
+
+      - name: 上傳後端 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: kyklos-binary
+          path: backend/target/release/kyklos
+          retention-days: 7
+          if-no-files-found: error
+
+  # 3. kustomize 驗證
+  k8s-validate:
+    name: k8s Manifest 驗證
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: 安裝 kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: 驗證 kustomize build（base）
+        run: kustomize build k8s/base > /tmp/base.yaml && echo "OK base"
+
+      - name: 驗證 kustomize build（prod）
+        run: kustomize build k8s/overlays/prod > /tmp/prod.yaml && echo "OK prod"
+
+      - name: kubeconform 驗證
+        uses: docker://ghcr.io/yannh/kubeconform:latest
+        with:
+          args: "-summary -strict -kubernetes-version 1.30.0 /tmp/prod.yaml"

@@ -1,0 +1,92 @@
+name: Build & Push Image
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag"
+        required: true
+        default: "latest"
+
+# 並行上鎖：同時間只有一個 build 推映像
+concurrency:
+  group: build-image-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 決定映像 tag
+        id: meta
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG=${{ inputs.tag }}
+          else
+            TAG=${GITHUB_SHA::8}
+          fi
+          echo "TAG=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "FULL_IMAGE=${REGISTRY}/${IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: 設定 QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 設定 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登入 GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 注入 build metadata
+        id: meta-info
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: 建置並推送映像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.FULL_IMAGE }}
+          labels: ${{ steps.meta-info.outputs.labels }}
+          annotations: ${{ steps.meta-info.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          provenance: true
+          sbom: true
+
+      - name: 映像 SBOM 摘要
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "✅ Image pushed: ${{ steps.meta.outputs.FULL_IMAGE }}"
+          echo "查看：https://github.com/${{ github.repository }}/pkgs/container/${{ env.IMAGE_NAME }}"

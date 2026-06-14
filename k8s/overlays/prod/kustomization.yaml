@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: kyklos
+
+resources:
+  - ../../base
+
+# 正式環境覆寫
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: kyklos
+    path: patch-replicas.yaml
+  - target:
+      group: v1
+      kind: Service
+      name: kyklos
+    path: patch-service.yaml
+
+# 正式環境的 image tag 覆寫
+images:
+  - name: Miitai/kyklos
+    newName: ghcr.io/kingasiagroup/kyklos
+    newTag: "0.1.0"  # 由 CI/CD 覆寫

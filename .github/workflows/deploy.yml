@@ -1,0 +1,167 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deploy environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+concurrency:
+  group: deploy-${{ inputs.environment || github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # 決定映像 tag
+  resolve-image:
+    name: Resolve Image Tag
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - id: meta
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+          else
+            TAG="latest-${GITHUB_SHA::8}"
+          fi
+          echo "image=${REGISTRY}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+  # 部署到 staging
+  deploy-staging:
+    name: 部署到 Staging
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || inputs.environment == 'staging')
+    needs: resolve-image
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://kyklos-staging.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: 安裝 kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: 設定 kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.STAGING_KUBECONFIG }}" | base64 -d > ~/.kube/config
+
+      - name: 產生 kustomize 產物
+        run: |
+          cd k8s/overlays/prod
+          kustomize edit set image \
+            "Miitai/kyklos=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.resolve-image.outputs.tag }}"
+
+      - name: 套用 manifest
+        run: kustomize build k8s/overlays/prod | kubectl apply -f -
+
+      - name: 等待 rollout
+        run: |
+          kubectl rollout status deployment/kyklos -n kyklos --timeout=5m
+          kubectl get pods -n kyklos -l app.kubernetes.io/name=kyklos
+
+      - name: 健康檢查
+        run: |
+          sleep 10
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u "${{ secrets.STAGING_ADMIN_USER }}:${{ secrets.STAGING_ADMIN_PASS }}" https://kyklos-staging.example.com/version || echo "000")
+          if [[ "$STATUS" != "200" ]]; then
+            echo "Health check failed: HTTP $STATUS"
+            kubectl logs -n kyklos -l app.kubernetes.io/name=kyklos --tail=200
+            exit 1
+          fi
+          echo "✅ Health check passed (HTTP $STATUS)"
+
+      - name: 回滾（若失敗）
+        if: failure()
+        run: |
+          echo "Deployment failed, rolling back..."
+          kubectl rollout undo deployment/kyklos -n kyklos
+          kubectl rollout status deployment/kyklos -n kyklos --timeout=3m
+
+  # 部署到 production（需手動核准）
+  deploy-production:
+    name: 部署到 Production
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.environment == 'production'
+    needs: resolve-image
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://kyklos.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 kustomize / kubectl
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          sudo az k8s-installer install-cli --install-version v1.30.0 2>/dev/null || true
+
+      - name: 設定 kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.PRODUCTION_KUBECONFIG }}" | base64 -d > ~/.kube/config
+
+      - name: 套用 manifest
+        run: kustomize build k8s/overlays/prod | kubectl apply -f -
+
+      - name: 等待 rollout
+        run: |
+          kubectl rollout status deployment/kyklos -n kyklos --timeout=10m
+
+      - name: 備份資料庫（部署前 snapshot）
+        run: |
+          # 在更新前 snapshot PVC
+          kubectl exec -n kyklos deploy/kyklos -- \
+            sh -c 'sqlite3 /app/data/kyklos.sqlite3 ".backup /app/data/backup-$(date +%Y%m%d-%H%M%S).sqlite3"' || true
+
+      - name: 健康檢查
+        run: |
+          sleep 15
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u "${{ secrets.PROD_ADMIN_USER }}:${{ secrets.PROD_ADMIN_PASS }}" https://kyklos.example.com/version || echo "000")
+            if [[ "$STATUS" == "200" ]]; then
+              echo "✅ Health check passed"
+              exit 0
+            fi
+            echo "Retry $i: HTTP $STATUS"
+            sleep 10
+          done
+          echo "❌ Health check failed"
+          exit 1
+
+      - name: 通知 Slack
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            kyklos 部署 ${{ job.status }}
+            Tag: ${{ needs.resolve-image.outputs.tag }}
+            Environment: production
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}

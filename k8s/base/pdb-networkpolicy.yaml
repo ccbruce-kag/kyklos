@@ -1,0 +1,69 @@
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kyklos
+  namespace: kyklos
+spec:
+  # 由於單實例（replicas: 1），無論如何都不能自願驅逐，
+  # 此處設定 maxUnavailable: 0 確保自願中斷永遠拒絕
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kyklos
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kyklos
+  namespace: kyklos
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kyklos
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 允許來自 ingress-nginx 命名空間的流量
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - port: 10001
+          protocol: TCP
+    # 允許來自相同 namespace 的 Pod 存取（監控 / 內部工具）
+    - from:
+        - podSelector: {}
+      ports:
+        - port: 10001
+          protocol: TCP
+  egress:
+    # 允許 DNS 解析
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # 允許與 Kubernetes API 通訊
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 443
+          protocol: TCP
+    # 允許對外（iptables / backend API 呼叫時對外的連線）
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP

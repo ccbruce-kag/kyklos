@@ -1,0 +1,123 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyklos
+  namespace: kyklos
+  labels:
+    app.kubernetes.io/name: kyklos
+    app.kubernetes.io/component: app
+  annotations:
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # kyklos 是防火牆管理工具，必須能在節點上操作 iptables/pfctl。
+  # 多副本需要每個 pod 都能操作節點，強烈建議單實例 + 維護性停機。
+  # 若需要 HA，建議搭配 Argo Rollouts 或由外部資料庫（PostgreSQL）取代 SQLite。
+  replicas: 1
+  strategy:
+    type: Recreate
+    # Recreate 是因為 PVC 為 RWO，且 firewall 管理須唯一持有者
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kyklos
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kyklos
+        app.kubernetes.io/component: app
+    spec:
+      serviceAccountName: kyklos
+      # 由於需要直接操作 iptables / pfctl，必須有 CAP_NET_ADMIN
+      # 註：hostNetwork: true + privileged 是最簡做法，僅適用於單節點或邊緣節點
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: kyklos
+          image: Miitai/kyklos:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 10001
+              protocol: TCP
+              hostPort: 10001
+          envFrom:
+            - configMapRef:
+                name: kyklos-config
+            - secretRef:
+                name: kyklos-secret
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+          # 必須 privileged 才能執行 iptables / 載入核心模組 / 變更網路
+          securityContext:
+            privileged: true
+            runAsNonRoot: false
+            runAsUser: 0
+            allowPrivilegeEscalation: true
+            readOnlyRootFilesystem: false
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+                - SYS_ADMIN
+                - SYS_PTRACE
+                - DAC_OVERRIDE
+          # SQLite 與 logs 持久化
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
+          # 健康檢查：透過 HTTP 介面（/version 回傳 200）
+          # 注意：/version 端點需要 Basic Auth 認證，需另外處理
+          # 這裡先使用 TCP 探針，避免認證問題
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # 滾動更新時先 sleep 讓 conntrack 老化
+          lifecycle:
+            preStop:
+              exec:
+                # 給 iptables 連線追蹤表一點時間收尾
+                command: ["/bin/sh", "-c", "sleep 5"]
+          terminationGracePeriodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kyklos-data
+        - name: tmp
+          emptyDir: {}
+      # 安全：限定只在 Linux 節點執行（macOS/Windows 無 iptables）
+      nodeSelector:
+        kubernetes.io/os: linux
+      # 容忍污點：允許排程到有 NoSchedule 污點的邊緣節點
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: kyklos
+          operator: Exists
+          effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 300

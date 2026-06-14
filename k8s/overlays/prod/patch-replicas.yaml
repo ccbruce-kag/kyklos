@@ -1,0 +1,19 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyklos
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: kyklos
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 1Gi
+          # 正式環境：加入節點親和性，傾向排程到指定的邊緣節點

@@ -1,0 +1,37 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kyklos
+  namespace: kyklos
+  labels:
+    app.kubernetes.io/name: kyklos
+  annotations:
+    # 假設使用 nginx-ingress-controller
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    # 大檔案 / API 逾時
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    # 上傳限制
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+spec:
+  ingressClassName: nginx
+  # 部署至主節點（hostNetwork 的服務只能由主節點提供 Ingress）
+  # 若使用 externalTrafficPolicy: Local 的 Service 就不需此限制
+  tls:
+    - hosts:
+        - kyklos.example.com
+      secretName: kyklos-tls
+  rules:
+    - host: kyklos.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kyklos
+                port:
+                  number: 10001

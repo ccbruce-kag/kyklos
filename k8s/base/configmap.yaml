@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kyklos-config
+  namespace: kyklos
+  labels:
+    app.kubernetes.io/name: kyklos
+data:
+  # 監聽位址（需 privileged 才能操作 iptables/pfctl）
+  # host network 模式下 0.0.0.0:10001 對應到節點的 10001
+  IPT_WEB_ADDRESS: ":10001"
+  # Rust log 等級
+  RUST_LOG: "info"
+  # 時區
+  TZ: "Asia/Taipei"

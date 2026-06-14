@@ -1,0 +1,25 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kyklos-pod-logs
+  namespace: kyklos
+rules:
+  # 允許 kyklkos 服務帳號讀取自己的 Pod logs
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kyklos-pod-logs
+  namespace: kyklos
+subjects:
+  - kind: ServiceAccount
+    name: kyklos
+    namespace: kyklos
+roleRef:
+  kind: Role
+  name: kyklos-pod-logs
+  apiGroup: rbac.authorization.k8s.io

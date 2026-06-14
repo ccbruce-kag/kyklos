@@ -1,7 +1,7 @@
 use crate::apps::apiman::{
-    ApiManForm, ApiManFormInput, ApiManNode, ApiManNodeInput, ApiManReport, ApiManReportInput,
-    ApiManRequest, ApiManRequestInput, ApiManVariableInput, ApiManWireframe,
-    ApiManWireframeInput, ApiManWorkspace, ApiManWorkspaceInput,
+    ApiManContent, ApiManContentInput, ApiManForm, ApiManFormInput, ApiManNode, ApiManNodeInput,
+    ApiManReport, ApiManReportInput, ApiManRequest, ApiManRequestInput, ApiManVariableInput,
+    ApiManWireframe, ApiManWireframeInput, ApiManWorkspace, ApiManWorkspaceInput,
 };
 use crate::apps::dbman::{DbConnection, DbConnectionInput, ErdDiagram, ErdDiagramInput};
 use crate::apps::network::{NetworkArchitecture, NetworkArchitectureInput};
@@ -647,6 +647,14 @@ impl AppDb {
                 name TEXT NOT NULL UNIQUE,
                 description TEXT NOT NULL DEFAULT '',
                 form_schema_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            );
+            CREATE TABLE IF NOT EXISTS apiman_contents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL DEFAULT '',
+                data_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             );
@@ -4015,6 +4023,97 @@ impl AppDb {
         let conn = self.connect()?;
         let affected = conn.execute("DELETE FROM apiman_forms WHERE id = ?1", params![id])
             .map_err(|e| format!("delete form failed: {e}"))?;
+        Ok(affected > 0)
+    }
+}
+
+// ---- ApiMan Contents (Puck) ----
+
+fn map_content_row(row: &rusqlite::Row) -> rusqlite::Result<ApiManContent> {
+    Ok(ApiManContent {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        data_json: row.get(3)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+    })
+}
+
+impl AppDb {
+    pub fn list_contents(&self) -> Result<Vec<ApiManContent>, String> {
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, description, data_json, created_at, updated_at
+                 FROM apiman_contents ORDER BY updated_at DESC, id DESC",
+            )
+            .map_err(|e| format!("prepare content list failed: {e}"))?;
+        let rows = stmt
+            .query_map([], map_content_row)
+            .map_err(|e| format!("query contents failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("read content row failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn content(&self, id: i64) -> Result<Option<ApiManContent>, String> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT id, name, description, data_json, created_at, updated_at
+             FROM apiman_contents WHERE id = ?1",
+            params![id],
+            map_content_row,
+        )
+        .optional()
+        .map_err(|e| format!("load content failed: {e}"))
+    }
+
+    pub fn create_content(&self, input: ApiManContentInput) -> Result<ApiManContent, String> {
+        let name = input.name.trim();
+        if name.is_empty() || name.len() > 128 {
+            return Err("content name is required and must be 128 characters or less".to_string());
+        }
+        let conn = self.connect()?;
+        let exists: Option<i64> = conn
+            .query_row("SELECT id FROM apiman_contents WHERE name = ?1", params![name], |row| row.get(0))
+            .optional()
+            .map_err(|e| format!("lookup content name failed: {e}"))?;
+        if exists.is_some() { return Err(format!("content name already exists: {}", name)); }
+        conn.execute(
+            "INSERT INTO apiman_contents (name, description, data_json) VALUES (?1, ?2, ?3)",
+            params![name, input.description.unwrap_or_default().trim(), input.data_json],
+        )
+        .map_err(|e| format!("insert content failed: {e}"))?;
+        let id = conn.last_insert_rowid();
+        self.content(id)?
+            .ok_or_else(|| "created content not found".to_string())
+    }
+
+    pub fn update_content(&self, id: i64, input: ApiManContentInput) -> Result<Option<ApiManContent>, String> {
+        let name = input.name.trim();
+        if name.is_empty() || name.len() > 128 {
+            return Err("content name is required and must be 128 characters or less".to_string());
+        }
+        let conn = self.connect()?;
+        let exists: Option<i64> = conn
+            .query_row("SELECT id FROM apiman_contents WHERE name = ?1 AND id != ?2", params![name, id], |row| row.get(0))
+            .optional().map_err(|e| format!("lookup content name failed: {e}"))?;
+        if exists.is_some() { return Err(format!("content name already exists: {}", name)); }
+        let affected = conn.execute(
+            "UPDATE apiman_contents SET name = ?1, description = ?2, data_json = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?4",
+            params![name, input.description.unwrap_or_default().trim(), input.data_json, id],
+        ).map_err(|e| format!("update content failed: {e}"))?;
+        if affected == 0 { return Ok(None); }
+        self.content(id)
+    }
+
+    pub fn delete_content(&self, id: i64) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let affected = conn.execute("DELETE FROM apiman_contents WHERE id = ?1", params![id])
+            .map_err(|e| format!("delete content failed: {e}"))?;
         Ok(affected > 0)
     }
 }

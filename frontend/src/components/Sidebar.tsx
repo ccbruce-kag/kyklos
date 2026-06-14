@@ -209,6 +209,12 @@ export default function Sidebar() {
                 <div className="text-truncate" id="menuFormEditorLabel">Form 編輯器</div>
               </a>
             </li>
+            <li className="menu-item" id="menuContentEditor">
+              <a href="#" className="menu-link" id="menuContentEditorLink">
+                <i className="menu-icon tf-icons bx bx-layout"></i>
+                <div className="text-truncate" id="menuContentEditorLabel">Content 編輯器</div>
+              </a>
+            </li>
             <div id="menuApiManWsItems"></div>
           </ul>
         </li>

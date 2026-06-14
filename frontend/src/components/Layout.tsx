@@ -23,6 +23,7 @@ import ApiManView from './views/Apps/ApiMan/ApiManView'
 import WireframeView from './views/Apps/ApiMan/WireframeView'
 import ReportView from './views/Apps/ApiMan/ReportView'
 import FormEditorView from './views/Apps/ApiMan/FormEditorView'
+import ContentEditorView from './views/Apps/ApiMan/ContentEditorView'
 import DbManView from './views/Apps/DbMan/DbManView'
 import ErdDiagramView from './views/Apps/DbMan/ErdDiagramView'
 import SecurityView from './views/Security/SecurityView'
@@ -79,6 +80,7 @@ export default function Layout() {
                 <WireframeView />
                 <ReportView />
                 <FormEditorView />
+                <ContentEditorView />
                 <DbManView />
                 <ErdDiagramView />
                 <RolesView />

@@ -15,3 +15,6 @@ backend/Cargo.lock
 kyklos
 .private
 run/web
+run/web/**/*
+run/web/sneat/assets
+run/web/sneat/assets/**/*

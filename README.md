@@ -1,3 +1,4 @@
+English | [繁體中文](./README.zh-tw.md) | [日文(翻譯)](./README.ja.md) 
 # Kyklos
 Kyklos (Greek: Κύκλος) means “circle” or “cycle”, and in modern tech branding it is often interpreted as continuous flow, loop, and interconnected systems.
 
@@ -236,3 +237,5 @@ Apache License 2.0
   [rustcached](https://github.com/ketralnis/rustcached)
   [rust-oauth2-server](https://github.com/kuwala-io/rust-oauth2-server)
   [hyper-reverse-proxy](https://github.com/hyperium/hyper-reverse-proxy)
+  [Formily](https://github.com/alibaba/formily)
+  [Puck](https://github.com/puckeditor/puck)

@@ -1,3 +1,4 @@
+[English](./README.md) | [繁體中文](./README.zh-tw.md) | 日文(翻譯)
 # Kyklos 在網路伺服器中的日文應用說明
 循環型ネットワークアーキテクチャ
 

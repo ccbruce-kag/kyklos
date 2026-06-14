@@ -1,0 +1,22 @@
+/* Puck 編輯器自訂容器：撐滿 modal 高度 */
+
+.kyklos-content-puck {
+  flex-grow: 1;
+  min-height: 0;
+  position: relative;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #f9fafb;
+}
+
+.kyklos-content-puck .Puck,
+.kyklos-content-puck [class*="Puck"] {
+  height: 100% !important;
+}
+
+/* Puck 預設外層需要明確高度，否則內容會塌縮 */
+.kyklos-content-puck > div,
+.kyklos-content-puck > div > div {
+  height: 100%;
+}

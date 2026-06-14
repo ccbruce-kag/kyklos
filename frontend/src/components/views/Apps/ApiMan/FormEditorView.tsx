@@ -123,8 +123,8 @@ export default function FormEditorView() {
         </div></div></div>
         <div className="row mb-3"><div className="col-12"><div className="card"><div className="card-header py-2"><strong style={{ fontSize: '.8125rem' }}>關於 Form 表單編輯</strong></div>
           <div className="card-body p-2" style={{ fontSize: '.75rem' }}>
-            <p className="mb-2">Form 模組使用內建 schema 編輯器，提供常用欄位維護與 JSON schema 匯出：</p>
-            <ul className="mb-0 ps-3"><li>Input / TextArea / Dropdown / Checkbox / Radio / DatePicker 等欄位</li><li>欄位排序、新增、修改、刪除</li><li>JSON schema 編輯、套用與匯出</li><li>搭配後端生成對應表單</li></ul>
+            <p className="mb-2">Form 模組基於 <a href="https://github.com/alibaba/formily" target="_blank" rel="noreferrer">Formily</a> JSON Schema 格式，提供常用欄位維護與 JSON schema 匯出：</p>
+            <ul className="mb-0 ps-3"><li>Input / TextArea / Number / Select / Switch / Radio / DatePicker 等欄位</li><li>欄位排序、新增、修改、刪除</li><li>Formily JSON Schema 編輯、套用與匯出</li><li>搭配後端生成對應表單</li></ul>
           </div>
         </div></div></div>
       </div>

@@ -1,5 +1,5 @@
 use crate::ai;
-use crate::apps::apiman::{ApiManFormInput, ApiManNodeInput, ApiManReportInput, ApiManRequestInput, ApiManWireframeInput, ApiManWorkspaceInput};
+use crate::apps::apiman::{ApiManContentInput, ApiManFormInput, ApiManNodeInput, ApiManReportInput, ApiManRequestInput, ApiManWireframeInput, ApiManWorkspaceInput};
 use crate::apps::dbman::{DbConnectionInput, ErdDiagramInput};
 use crate::apps::network::NetworkArchitectureInput;
 use crate::apps::settings::{
@@ -3814,6 +3814,42 @@ async fn handle_apiman_form_delete(State(state): State<Arc<AppState>>, Path(id):
     match state.db.delete_form(id) { Ok(true) => utils::output(None, Some(json!({ "deleted": true }))), Ok(false) => utils::output(Some("form not found"), None), Err(e) => utils::output(Some(&e), None) }
 }
 
+// ---- ApiMan: Contents (Puck) ----
+
+async fn handle_apiman_content_list(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.list_contents() {
+        Ok(items) => utils::output(None, Some(json!({ "contents": items }))),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_apiman_content_get(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
+    match state.db.content(id) {
+        Ok(Some(item)) => utils::output(None, Some(json!({ "content": item }))),
+        Ok(None) => utils::output(Some("content not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_apiman_content_create(State(state): State<Arc<AppState>>, Json(input): Json<ApiManContentInput>) -> Json<Value> {
+    match state.db.create_content(input) {
+        Ok(item) => utils::output(None, Some(json!({ "content": item }))),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_apiman_content_update(State(state): State<Arc<AppState>>, Path(id): Path<i64>, Json(input): Json<ApiManContentInput>) -> Json<Value> {
+    match state.db.update_content(id, input) {
+        Ok(Some(item)) => utils::output(None, Some(json!({ "content": item }))),
+        Ok(None) => utils::output(Some("content not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_apiman_content_delete(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
+    match state.db.delete_content(id) { Ok(true) => utils::output(None, Some(json!({ "deleted": true }))), Ok(false) => utils::output(Some("content not found"), None), Err(e) => utils::output(Some(&e), None) }
+}
+
 // ---- ApiMan: Export/Import Workspace ----
 
 async fn handle_apiman_export_workspace(
@@ -4534,6 +4570,26 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handle_apiman_form_get)
                 .put(handle_apiman_form_update)
                 .delete(handle_apiman_form_delete),
+        )
+        .route(
+            "/apiman/contents",
+            get(handle_apiman_content_list).post(handle_apiman_content_create),
+        )
+        .route(
+            "/apiman/contents/:id",
+            get(handle_apiman_content_get)
+                .put(handle_apiman_content_update)
+                .delete(handle_apiman_content_delete),
+        )
+        .route(
+            "/api/apiman/contents",
+            get(handle_apiman_content_list).post(handle_apiman_content_create),
+        )
+        .route(
+            "/api/apiman/contents/:id",
+            get(handle_apiman_content_get)
+                .put(handle_apiman_content_update)
+                .delete(handle_apiman_content_delete),
         )
         .route(
             "/workflows",

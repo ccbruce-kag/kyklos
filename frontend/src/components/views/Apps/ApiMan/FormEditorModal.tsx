@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createForm, onFieldValueChange } from '@formily/core'
+import { FormProvider, createSchemaField, connect, mapProps } from '@formily/react'
 import { getApiBase } from '../../../../utils/api'
 import './form-editor-layout.css'
 
@@ -11,16 +13,15 @@ export type FormRecord = {
   updated_at: string
 }
 
-type FieldType = 'text' | 'textarea' | 'number' | 'email' | 'password' | 'select' | 'checkbox' | 'radio' | 'date'
+type FieldType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'date' | 'textarea' | 'email' | 'password' | 'select' | 'radio'
 
 type FormField = {
-  id: string
-  type: FieldType
-  label: string
   name: string
-  placeholder?: string
-  required?: boolean
-  options?: string[]
+  title: string
+  type: FieldType
+  description?: string
+  'x-component'?: string
+  'x-component-props'?: Record<string, unknown>
 }
 
 type Props = {
@@ -30,17 +31,23 @@ type Props = {
   onClose: () => void
 }
 
-const fieldTypes: Array<{ value: FieldType; label: string }> = [
-  { value: 'text', label: '文字' },
-  { value: 'textarea', label: '多行文字' },
-  { value: 'number', label: '數字' },
-  { value: 'email', label: 'Email' },
-  { value: 'password', label: '密碼' },
-  { value: 'select', label: '下拉選單' },
-  { value: 'checkbox', label: '核取方塊' },
-  { value: 'radio', label: '單選' },
-  { value: 'date', label: '日期' },
+const fieldTypes: Array<{ value: FieldType; label: string; component: string }> = [
+  { value: 'string', label: '文字', component: 'Input' },
+  { value: 'textarea', label: '多行文字', component: 'Input.TextArea' },
+  { value: 'number', label: '數字', component: 'InputNumber' },
+  { value: 'email', label: 'Email', component: 'Input' },
+  { value: 'password', label: '密碼', component: 'Input' },
+  { value: 'select', label: '下拉選單', component: 'Select' },
+  { value: 'boolean', label: '核取方塊', component: 'Switch' },
+  { value: 'radio', label: '單選', component: 'Radio.Group' },
+  { value: 'date', label: '日期', component: 'DatePicker' },
 ]
+
+const FIELD_TYPE_MAP = new Map(fieldTypes.map((item) => [item.value, item]))
+
+function toComponentType(fieldType: FieldType): string {
+  return FIELD_TYPE_MAP.get(fieldType)?.component || 'Input'
+}
 
 async function formApi<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const base = getApiBase()
@@ -60,57 +67,274 @@ async function formApi<T = unknown>(path: string, options: RequestInit = {}): Pr
 
 function newField(index: number): FormField {
   return {
-    id: `field_${Date.now()}_${index}`,
-    type: 'text',
-    label: `欄位 ${index + 1}`,
     name: `field_${index + 1}`,
-    placeholder: '',
-    required: false,
-    options: [],
+    title: `欄位 ${index + 1}`,
+    type: 'string',
+    'x-component': 'Input',
+    'x-component-props': { placeholder: '' },
   }
 }
 
-function normalizeField(raw: Record<string, unknown>, index: number): FormField {
-  const type = fieldTypes.some((item) => item.value === raw.type) ? raw.type as FieldType : 'text'
-  const label = typeof raw.label === 'string' && raw.label.trim() ? raw.label.trim() : `欄位 ${index + 1}`
-  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : `field_${index + 1}`
-  const rawOptions = Array.isArray(raw.options) ? raw.options : []
-  return {
-    id: typeof raw.id === 'string' && raw.id ? raw.id : `field_${index + 1}`,
-    type,
-    label,
-    name,
-    placeholder: typeof raw.placeholder === 'string' ? raw.placeholder : '',
-    required: Boolean(raw.required),
-    options: rawOptions.map((item) => String(item)).filter(Boolean),
-  }
-}
-
-function parseFields(schema: string | null | undefined): FormField[] {
-  if (!schema?.trim()) return []
+function parseFields(schema: string | null | undefined): { fields: FormField[]; title?: string; description?: string } {
+  if (!schema?.trim()) return { fields: [] }
   try {
     const parsed = JSON.parse(schema)
-    const rawFields = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed?.fields)
-        ? parsed.fields
-        : Array.isArray(parsed?.components)
-          ? parsed.components
-          : []
-    return rawFields
-      .filter((item: unknown): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-      .map(normalizeField)
+    if (parsed?.type === 'object' && parsed.properties) {
+      const fields = Object.entries<Record<string, unknown>>(parsed.properties as Record<string, Record<string, unknown>>).map(
+        ([name, field]) => ({
+          name,
+          title: typeof field.title === 'string' ? field.title : name,
+          type: (typeof field.type === 'string' ? field.type : 'string') as FieldType,
+          description: typeof field.description === 'string' ? field.description : undefined,
+          'x-component': typeof field['x-component'] === 'string' ? field['x-component'] : toComponentType(field.type as FieldType),
+          'x-component-props': typeof field['x-component-props'] === 'object' && field['x-component-props'] ? field['x-component-props'] as Record<string, unknown> : {},
+        }),
+      )
+      return { fields, title: parsed.title as string | undefined, description: parsed.description as string | undefined }
+    }
+    return { fields: [] }
   } catch {
-    return []
+    return { fields: [] }
   }
 }
 
-function stringifyFields(fields: FormField[]): string {
-  return JSON.stringify(fields.map(({ id, ...field }) => ({ id, ...field })), null, 2)
+function stringifySchema(fields: FormField[], title?: string, description?: string): string {
+  const properties: Record<string, Record<string, unknown>> = {}
+  fields.forEach((field) => {
+    const { name, type, title: fTitle, description: fDesc, 'x-component': comp, 'x-component-props': props } = field
+    const entry: Record<string, unknown> = {
+      type,
+      title: fTitle || name,
+      'x-decorator': 'FormItem',
+      'x-component': comp || toComponentType(type),
+    }
+    if (fDesc) entry.description = fDesc
+    if (props && Object.keys(props).length > 0) entry['x-component-props'] = props
+    properties[name] = entry
+  })
+  const schema: Record<string, unknown> = { type: 'object', properties }
+  if (title) schema.title = title
+  if (description) schema.description = description
+  return JSON.stringify(schema, null, 2)
 }
 
 function needsOptions(type: FieldType): boolean {
   return type === 'select' || type === 'radio'
+}
+
+/* ---------- Formily Bootstrap 元件（以 connect 注入 Formily 狀態） ---------- */
+
+type FieldProps = {
+  value?: unknown
+  onChange?: (v: unknown) => void
+  placeholder?: string
+  required?: boolean
+  disabled?: boolean
+  options?: string[] | Array<{ label: string; value: string }>
+  className?: string
+  style?: React.CSSProperties
+  type?: string
+  id?: string
+}
+
+const PreviewInput = connect(
+  (props: FieldProps) => (
+    <input
+      className={`form-control form-control-sm ${props.className || ''}`}
+      value={typeof props.value === 'string' || typeof props.value === 'number' ? String(props.value) : ''}
+      onChange={(e) => props.onChange?.(e.target.value)}
+      placeholder={props.placeholder}
+      type={props.type || 'text'}
+      disabled={props.disabled}
+      readOnly
+    />
+  ),
+  mapProps({
+    value: true,
+    placeholder: true,
+    type: true,
+    disabled: true,
+  }),
+)
+
+const PreviewTextArea = connect(
+  (props: FieldProps) => (
+    <textarea
+      className="form-control form-control-sm"
+      value={typeof props.value === 'string' || typeof props.value === 'number' ? String(props.value) : ''}
+      onChange={(e) => props.onChange?.(e.target.value)}
+      placeholder={props.placeholder}
+      disabled={props.disabled}
+      readOnly
+      rows={3}
+    />
+  ),
+  mapProps({
+    value: true,
+    placeholder: true,
+    disabled: true,
+  }),
+)
+
+const PreviewInputNumber = connect(
+  (props: FieldProps) => (
+    <input
+      className="form-control form-control-sm"
+      value={typeof props.value === 'string' || typeof props.value === 'number' ? String(props.value) : ''}
+      onChange={(e) => props.onChange?.(e.target.value === '' ? undefined : Number(e.target.value))}
+      placeholder={props.placeholder}
+      type="number"
+      disabled={props.disabled}
+      readOnly
+    />
+  ),
+  mapProps({
+    value: true,
+    placeholder: true,
+    disabled: true,
+  }),
+)
+
+const PreviewSelect = connect(
+  (props: FieldProps) => {
+    const opts = (props.options || []).map((item) => {
+      if (typeof item === 'string') return { label: item, value: item }
+      return item
+    })
+    const value = typeof props.value === 'string' || typeof props.value === 'number' ? String(props.value) : ''
+    return (
+      <select className="form-select form-select-sm" value={value} onChange={(e) => props.onChange?.(e.target.value)} disabled={props.disabled}>
+        <option value="">{props.placeholder || '請選擇'}</option>
+        {opts.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+      </select>
+    )
+  },
+  mapProps({
+    value: true,
+    placeholder: true,
+    options: true,
+    disabled: true,
+  }),
+)
+
+const PreviewSwitch = connect(
+  (props: FieldProps) => (
+    <div className="form-check form-switch">
+      <input
+        className="form-check-input"
+        type="checkbox"
+        checked={Boolean(props.value)}
+        onChange={(e) => props.onChange?.(e.target.checked)}
+        disabled={props.disabled}
+        readOnly
+      />
+    </div>
+  ),
+  mapProps({
+    value: true,
+    disabled: true,
+  }),
+)
+
+const PreviewRadioGroup = connect(
+  (props: FieldProps) => {
+    const opts = (props.options || []).map((item) => {
+      if (typeof item === 'string') return { label: item, value: item }
+      return item
+    })
+    return (
+      <div>
+        {opts.map((item) => (
+          <div className="form-check form-check-inline" key={item.value}>
+            <input
+              className="form-check-input"
+              type="radio"
+              checked={props.value === item.value}
+              onChange={() => props.onChange?.(item.value)}
+              disabled={props.disabled}
+              readOnly
+            />
+            <label className="form-check-label small">{item.label}</label>
+          </div>
+        ))}
+      </div>
+    )
+  },
+  mapProps({
+    value: true,
+    options: true,
+    disabled: true,
+  }),
+)
+
+const PreviewDatePicker = connect(
+  (props: FieldProps) => (
+    <input
+      className="form-control form-control-sm"
+      type="date"
+      value={typeof props.value === 'string' ? props.value : ''}
+      onChange={(e) => props.onChange?.(e.target.value)}
+      disabled={props.disabled}
+      readOnly
+    />
+  ),
+  mapProps({
+    value: true,
+    disabled: true,
+  }),
+)
+
+const PreviewFormItem = connect(
+  (props: { title?: string; required?: boolean; children?: React.ReactNode }) => (
+    <div className="mb-2">
+      {props.title && (
+        <label className="form-label mb-1 small">
+          {props.title}
+          {props.required && <span className="text-danger ms-1">*</span>}
+        </label>
+      )}
+      {props.children}
+    </div>
+  ),
+)
+
+const { SchemaField } = createSchemaField({
+  components: {
+    Input: PreviewInput,
+    'Input.TextArea': PreviewTextArea,
+    InputNumber: PreviewInputNumber,
+    Select: PreviewSelect,
+    Switch: PreviewSwitch,
+    'Radio.Group': PreviewRadioGroup,
+    DatePicker: PreviewDatePicker,
+    FormItem: PreviewFormItem,
+  },
+})
+
+function buildFormSchema(fields: FormField[]): Record<string, unknown> {
+  const properties: Record<string, Record<string, unknown>> = {}
+  fields.forEach((field) => {
+    if (!field.name.trim() || !field.title.trim()) return
+    const comp = field['x-component'] || toComponentType(field.type)
+    const entry: Record<string, unknown> = {
+      type: field.type,
+      title: field.title,
+      'x-decorator': 'FormItem',
+      'x-component': comp,
+      'x-decorator-props': {},
+    }
+    if (field.description) entry.description = field.description
+    if (field['x-component-props']) {
+      const props = { ...field['x-component-props'] }
+      if (Boolean(props.required)) {
+        entry.required = true
+        delete props.required
+      }
+      if (Object.keys(props).length > 0) entry['x-component-props'] = props
+    }
+    properties[field.name] = entry
+  })
+  return { type: 'object', properties }
 }
 
 export default function FormEditorModal({ record, visible, onSaved, onClose }: Props) {
@@ -119,34 +343,50 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   const [busy, setBusy] = useState(false)
   const [errMsg, setErrMsg] = useState('')
   const [fields, setFields] = useState<FormField[]>([])
-  const [jsonText, setJsonText] = useState('[]')
+  const [jsonText, setJsonText] = useState('{}')
   const [jsonDirty, setJsonDirty] = useState(false)
 
   useEffect(() => {
-    if (!visible) {
-      setErrMsg('')
-      setJsonDirty(false)
-      return
-    }
-    const parsedFields = parseFields(record?.form_schema_json)
+    if (!visible) return
+    const result = parseFields(record?.form_schema_json)
     setName(record?.name || '')
     setDescription(record?.description || '')
-    setFields(parsedFields)
-    setJsonText(stringifyFields(parsedFields))
+    setFields(result.fields)
+    setJsonText(stringifySchema(result.fields, result.title, result.description))
     setJsonDirty(false)
   }, [visible, record])
 
   useEffect(() => {
-    if (!jsonDirty) setJsonText(stringifyFields(fields))
+    if (!jsonDirty) setJsonText(stringifySchema(fields, undefined, undefined))
   }, [fields, jsonDirty])
 
-  const previewFields = useMemo(() => fields.filter((field) => field.label.trim() && field.name.trim()), [fields])
+  const form = useMemo(
+    () => createForm({
+      values: {},
+      effects() {
+        onFieldValueChange('*', () => {})
+      },
+    }),
+    [],
+  )
+
+  const previewFields = useMemo(
+    () => fields.filter((field) => field.title.trim() && field.name.trim()),
+    [fields],
+  )
 
   const setField = (index: number, patch: Partial<FormField>) => {
     setFields((current) => current.map((field, i) => {
       if (i !== index) return field
       const next = { ...field, ...patch }
-      if (patch.type && !needsOptions(patch.type)) next.options = []
+      if (patch.type) {
+        next['x-component'] = toComponentType(patch.type)
+        if (!needsOptions(patch.type)) {
+          const props = { ...next['x-component-props'] }
+          delete (props as Record<string, unknown>).options
+          next['x-component-props'] = props
+        }
+      }
       return next
     }))
     setJsonDirty(false)
@@ -176,9 +416,9 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
 
   const applyJson = () => {
     try {
-      const next = parseFields(jsonText)
       JSON.parse(jsonText)
-      setFields(next)
+      const result = parseFields(jsonText)
+      setFields(result.fields)
       setJsonDirty(false)
       setErrMsg('')
     } catch (err) {
@@ -187,9 +427,8 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   }
 
   const schemaForSave = () => {
-    if (!jsonDirty) return stringifyFields(fields)
-    JSON.parse(jsonText)
-    return stringifyFields(parseFields(jsonText))
+    if (!jsonDirty) return stringifySchema(fields, undefined, undefined)
+    return jsonText
   }
 
   const handleSave = async () => {
@@ -215,7 +454,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   }
 
   const handleExportJson = () => {
-    const schema = jsonDirty ? jsonText : stringifyFields(fields)
+    const schema = jsonDirty ? jsonText : stringifySchema(fields, undefined, undefined)
     const blob = new Blob([schema], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -225,10 +464,12 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
     URL.revokeObjectURL(url)
   }
 
+  if (!visible) return null
+
   return (
     <>
-      <div className="modal-backdrop fade show" style={{ display: visible ? undefined : 'none' }}></div>
-      <div className={`modal fade${visible ? ' show' : ''}`} style={{ display: visible ? 'block' : 'none' }} tabIndex={-1}>
+      <div className="modal-backdrop fade show"></div>
+      <div className="modal fade show" tabIndex={-1} style={{ display: 'block' }}>
         <div className="modal-dialog modal-xl" style={{ maxWidth: '95vw' }}>
           <div className="modal-content" style={{ height: '92vh' }}>
             <div className="modal-header py-2">
@@ -278,7 +519,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                         {fields.length === 0 ? (
                           <tr><td colSpan={7} className="text-center text-muted py-4">尚無欄位，點擊「新增欄位」開始。</td></tr>
                         ) : fields.map((field, index) => (
-                          <tr key={field.id}>
+                          <tr key={index}>
                             <td>
                               <div className="btn-group btn-group-sm">
                                 <button type="button" className="btn btn-outline-secondary" onClick={() => moveField(index, -1)} disabled={index === 0} title="上移"><i className="bx bx-up-arrow-alt"></i></button>
@@ -290,16 +531,18 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                                 {fieldTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                               </select>
                             </td>
-                            <td><input className="form-control form-control-sm" value={field.label} onChange={(e) => setField(index, { label: e.target.value })} /></td>
+                            <td><input className="form-control form-control-sm" value={field.title} onChange={(e) => setField(index, { title: e.target.value })} /></td>
                             <td><input className="form-control form-control-sm" value={field.name} onChange={(e) => setField(index, { name: e.target.value })} /></td>
-                            <td><input className="form-control form-control-sm" value={field.placeholder || ''} onChange={(e) => setField(index, { placeholder: e.target.value })} /></td>
+                            <td>
+                              <input className="form-control form-control-sm" value={String(field['x-component-props']?.placeholder ?? '')} onChange={(e) => setField(index, { 'x-component-props': { ...field['x-component-props'], placeholder: e.target.value } })} />
+                            </td>
                             <td>
                               {needsOptions(field.type) ? (
-                                <input className="form-control form-control-sm" value={(field.options || []).join(', ')} onChange={(e) => setField(index, { options: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="A, B, C" />
+                                <input className="form-control form-control-sm" value={Array.isArray(field['x-component-props']?.options) ? (field['x-component-props']?.options as string[]).join(', ') : ''} onChange={(e) => setField(index, { 'x-component-props': { ...field['x-component-props'], options: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) } })} placeholder="A, B, C" />
                               ) : (
                                 <div className="form-check">
-                                  <input className="form-check-input" type="checkbox" checked={Boolean(field.required)} onChange={(e) => setField(index, { required: e.target.checked })} id={`field-required-${field.id}`} />
-                                  <label className="form-check-label small" htmlFor={`field-required-${field.id}`}>必填</label>
+                                  <input className="form-check-input" type="checkbox" checked={Boolean(field['x-component-props']?.required)} onChange={(e) => setField(index, { 'x-component-props': { ...field['x-component-props'], required: e.target.checked } })} id={`field-required-${index}`} />
+                                  <label className="form-check-label small" htmlFor={`field-required-${index}`}>必填</label>
                                 </div>
                               )}
                             </td>
@@ -314,39 +557,30 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                 </div>
                 <div className="kyklos-form-side">
                   <div className="kyklos-form-preview">
-                    <strong style={{ fontSize: '.8125rem' }}>預覽</strong>
+                    <strong style={{ fontSize: '.8125rem' }}>預覽 (Formily)</strong>
                     <div className="mt-2">
-                      {previewFields.length === 0 ? <div className="text-muted small">尚無可預覽欄位</div> : previewFields.map((field) => (
-                        <div className="mb-2" key={`preview-${field.id}`}>
-                          <label className="form-label mb-1 small">{field.label}{field.required && <span className="text-danger ms-1">*</span>}</label>
-                          {field.type === 'textarea' ? (
-                            <textarea className="form-control form-control-sm" placeholder={field.placeholder}></textarea>
-                          ) : field.type === 'select' ? (
-                            <select className="form-select form-select-sm"><option>{field.placeholder || '請選擇'}</option>{(field.options || []).map((item) => <option key={item}>{item}</option>)}</select>
-                          ) : field.type === 'radio' ? (
-                            <div>{(field.options || ['選項']).map((item) => <div className="form-check form-check-inline" key={item}><input className="form-check-input" type="radio" name={`preview-${field.id}`} /><label className="form-check-label small">{item}</label></div>)}</div>
-                          ) : field.type === 'checkbox' ? (
-                            <div className="form-check"><input className="form-check-input" type="checkbox" /><label className="form-check-label small">{field.placeholder || field.label}</label></div>
-                          ) : (
-                            <input className="form-control form-control-sm" type={field.type} placeholder={field.placeholder} />
-                          )}
-                        </div>
-                      ))}
+                      {previewFields.length === 0 ? (
+                        <div className="text-muted small">尚無可預覽欄位</div>
+                      ) : (
+                        <FormProvider form={form}>
+                          <SchemaField schema={buildFormSchema(fields)} />
+                        </FormProvider>
+                      )}
                     </div>
                   </div>
                   <div className="kyklos-form-json">
                     <div className="d-flex align-items-center mb-2">
-                      <strong style={{ fontSize: '.8125rem' }}>JSON</strong>
+                      <strong style={{ fontSize: '.8125rem' }}>JSON Schema</strong>
                       <button type="button" className="btn btn-sm btn-outline-secondary ms-auto" onClick={applyJson}>套用 JSON</button>
                     </div>
-                    <textarea className="form-control form-control-sm" value={jsonText} onChange={(e) => { setJsonText(e.target.value); setJsonDirty(true) }} spellCheck={false}></textarea>
+                    <textarea className="form-control form-control-sm" style={{ height: 320 }} value={jsonText} onChange={(e) => { setJsonText(e.target.value); setJsonDirty(true) }} spellCheck={false}></textarea>
                   </div>
                 </div>
               </div>
             </div>
             <div className="modal-footer py-2">
               <span className="text-muted me-auto" style={{ fontSize: '.7rem' }}>
-                <i className="bx bx-info-circle me-1"></i>內建表單 Schema 編輯器
+                <i className="bx bx-info-circle me-1"></i>Formily JSON Schema 表單編輯器
               </span>
               <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleExportJson}>
                 <i className="bx bx-download me-1"></i>匯出 JSON

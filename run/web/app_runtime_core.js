@@ -482,12 +482,16 @@
         });
       });
       // ─── Tab event handlers ───
-      $(document).on('click', '.tab-item', function () {
+      if (!window.__fwmTabHandlersInstalled) {
+      $(document).on('click', '.tab-item', function (e) {
+        if ($(e.target).closest('.tab-close').length) return;
         var mode = $(this).data('mode');
         if (mode) switchView(mode);
       });
       $(document).on('click', '.tab-close', function (e) {
+        e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         closeTab($(this).data('mode'));
       });
       // Right-click context menu
@@ -529,6 +533,7 @@
         return false;
       });
       $(document).on('click', function (e) { if (!$(e.target).closest('.tab-context-menu').length) ctxMenu.hide(); });
+      }
       $("#languageDropdownMenu").on("click", ".dropdown-item", function (e) {
         e.preventDefault();
         var lang = $(this).data("lang");

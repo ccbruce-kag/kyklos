@@ -201,8 +201,9 @@ var _orig_ready = $;
       loadTabs();
       var idx = findTab(mode);
       if (idx < 0) return;
+      var wasActive = tabState.activeId === mode;
       tabState.tabs.splice(idx, 1);
-      if (tabState.activeId === mode) {
+      if (wasActive) {
         tabState.activeId = tabState.tabs.length > 0 ? tabState.tabs[Math.min(idx, tabState.tabs.length - 1)].id : null;
       }
       saveTabs();
@@ -220,10 +221,108 @@ var _orig_ready = $;
       if (mode === 'firewallMan') {
         $('#firewallManView').css('display', 'none');
       }
-      if (tabState.activeId && findTab(tabState.activeId) >= 0) {
+      renderTabs();
+      if (wasActive && tabState.activeId && findTab(tabState.activeId) >= 0) {
         activateTabImpl(tabState.activeId);
       }
     }
+    function installTabHandlers() {
+      if (window.__fwmTabHandlersInstalled) return;
+      window.__fwmTabHandlersInstalled = true;
+      var ctxMenu = null;
+      function ensureContextMenu() {
+        if (ctxMenu) return ctxMenu;
+        ctxMenu = document.createElement('div');
+        ctxMenu.className = 'tab-context-menu';
+        ctxMenu.style.display = 'none';
+        document.body.appendChild(ctxMenu);
+        ctxMenu.addEventListener('click', function (event) {
+          var item = event.target && event.target.closest ? event.target.closest('.ctx-item') : null;
+          if (!item) return;
+          event.preventDefault();
+          event.stopPropagation();
+          var action = item.getAttribute('data-action');
+          var mode = ctxMenu.getAttribute('data-mode');
+          ctxMenu.style.display = 'none';
+          if (!mode) return;
+          if (action === 'close') { closeTab(mode); return; }
+          loadTabs();
+          if (action === 'closeAll') {
+            tabState.tabs = [];
+            tabState.activeId = null;
+            saveTabs();
+            renderTabs();
+            $('.tab-content-pane').each(function () {
+              var $view = $(this).find('[id$=View]');
+              if ($view.length) { $view.unwrap(); $view.css('display', 'none'); }
+            });
+            $('.tab-content-pane').remove();
+            hideAllWorkViews();
+            return;
+          }
+          var idx = findTab(mode);
+          if (idx < 0) return;
+          if (action === 'closeLeft') tabState.tabs.splice(0, idx);
+          if (action === 'closeRight') tabState.tabs.splice(idx + 1);
+          if (action === 'closeButMe') {
+            tabState.tabs = [tabState.tabs[idx]];
+            tabState.activeId = mode;
+          } else if (tabState.activeId && findTab(tabState.activeId) < 0) {
+            tabState.activeId = tabState.tabs[0] ? tabState.tabs[0].id : null;
+          }
+          saveTabs();
+          renderTabs();
+          if (tabState.activeId && findTab(tabState.activeId) >= 0) activateTabImpl(tabState.activeId);
+        });
+        return ctxMenu;
+      }
+      document.addEventListener('click', function (event) {
+        var close = event.target && event.target.closest ? event.target.closest('.tab-close') : null;
+        if (close) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          closeTab(close.getAttribute('data-mode'));
+          return;
+        }
+        var tab = event.target && event.target.closest ? event.target.closest('.tab-item') : null;
+        if (!tab || !tab.closest('#tabBar')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        var mode = tab.getAttribute('data-mode');
+        if (!mode) return;
+        if (typeof window.fwmSwitchView === 'function') window.fwmSwitchView(mode);
+        else activateTabImpl(mode);
+      }, true);
+      document.addEventListener('contextmenu', function (event) {
+        var tab = event.target && event.target.closest ? event.target.closest('.tab-item') : null;
+        if (!tab || !tab.closest('#tabBar')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        var mode = tab.getAttribute('data-mode');
+        var lang = i18n[currentLang] || {};
+        var menu = ensureContextMenu();
+        menu.innerHTML =
+          '<div class="ctx-item" data-action="close"><i class="bx bx-x"></i> ' + (lang.closeTab || '關閉') + '</div>' +
+          '<div class="ctx-divider"></div>' +
+          '<div class="ctx-item" data-action="closeAll"><i class="bx bx-x-circle"></i> ' + (lang.closeAll || '關閉全部') + '</div>' +
+          '<div class="ctx-item" data-action="closeButMe"><i class="bx bx-minus-circle"></i> ' + (lang.closeButMe || '關閉除我之外') + '</div>' +
+          '<div class="ctx-item" data-action="closeLeft"><i class="bx bx-chevron-left"></i> ' + (lang.closeLeft || '關閉左方') + '</div>' +
+          '<div class="ctx-item" data-action="closeRight"><i class="bx bx-chevron-right"></i> ' + (lang.closeRight || '關閉右方') + '</div>';
+        menu.setAttribute('data-mode', mode || '');
+        menu.style.left = event.clientX + 'px';
+        menu.style.top = event.clientY + 'px';
+        menu.style.display = 'block';
+      }, true);
+      document.addEventListener('click', function (event) {
+        if (!ctxMenu || ctxMenu.style.display === 'none') return;
+        if (event.target && event.target.closest && event.target.closest('.tab-context-menu')) return;
+        ctxMenu.style.display = 'none';
+      });
+    }
+    installTabHandlers();
     const languageKey = "iptables_lang";
     const storedLang = localStorage.getItem(languageKey);
     const browserLang = (function () { var l = ((navigator.languages && navigator.languages[0]) || navigator.language || "en").toLowerCase(); if (l.startsWith("zh")) return "zh"; if (l.startsWith("ja")) return "ja"; return "en"; })();

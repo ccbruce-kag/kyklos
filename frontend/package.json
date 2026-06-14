@@ -16,6 +16,7 @@
     "@formily/core": "^2.3.7",
     "@formily/json-schema": "^2.3.7",
     "@formily/react": "^2.3.7",
+    "@iconify/react": "^6.0.2",
     "@puckeditor/core": "^0.21.3",
     "@xyflow/react": "^12.11.0",
     "react": "^19.2.6",

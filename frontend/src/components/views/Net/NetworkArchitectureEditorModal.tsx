@@ -17,6 +17,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { Icon } from '@iconify/react'
 import { getApiBase } from '../../../utils/api'
 
 export type NetworkArchitectureRecord = {
@@ -37,16 +38,16 @@ type Props = {
 type DeviceKind = 'router' | 'switch' | 'firewall' | 'server' | 'cloud' | 'client' | 'database' | 'lb' | 'ap' | 'internet'
 
 const DEVICE_KINDS: { kind: DeviceKind; label: string; color: string; icon: string }[] = [
-  { kind: 'router',   label: '路由器',     color: '#3b82f6', icon: 'bx-router'         },
-  { kind: 'switch',   label: '交換器',     color: '#06b6d4', icon: 'bx-hub'            },
-  { kind: 'firewall', label: '防火牆',     color: '#ef4444', icon: 'bx-shield-alt-2'   },
-  { kind: 'server',   label: '伺服器',     color: '#22c55e', icon: 'bx-server'         },
-  { kind: 'database', label: '資料庫',     color: '#f59e0b', icon: 'bx-hdd'            },
-  { kind: 'lb',       label: '負載平衡',   color: '#a855f7', icon: 'bx-transfer'       },
-  { kind: 'ap',       label: '無線 AP',    color: '#ec4899', icon: 'bx-broadcast'      },
-  { kind: 'client',   label: '終端',       color: '#94a3b8', icon: 'bx-desktop'        },
-  { kind: 'cloud',    label: '雲端',       color: '#0ea5e9', icon: 'bx-cloud'          },
-  { kind: 'internet', label: '網際網路',   color: '#64748b', icon: 'bx-globe'          },
+  { kind: 'router',   label: '路由器',     color: '#3b82f6', icon: 'fluent-emoji:antenna-bars'         },
+  { kind: 'switch',   label: '交換器',     color: '#06b6d4', icon: 'fluent-emoji:level-slider'         },
+  { kind: 'firewall', label: '防火牆',     color: '#ef4444', icon: 'fluent-emoji:shield'               },
+  { kind: 'server',   label: '伺服器',     color: '#22c55e', icon: 'bx-server'               },
+  { kind: 'database', label: '資料庫',     color: '#f59e0b', icon: 'fluent-emoji:card-index-dividers'  },
+  { kind: 'lb',       label: '負載平衡',   color: '#a855f7', icon: 'fluent-emoji:gear'                 },
+  { kind: 'ap',       label: '無線 AP',    color: '#ec4899', icon: 'bx-router'                 },
+  { kind: 'client',   label: '終端',       color: '#94a3b8', icon: 'fluent-emoji:desktop-computer'     },
+  { kind: 'cloud',    label: '雲端',       color: '#0ea5e9', icon: 'fluent-emoji:cloud'                },
+  { kind: 'internet', label: '網際網路',   color: '#64748b', icon: 'fluent-emoji:globe-with-meridians' },
 ]
 
 const ZOOM_PRESETS = [25, 50, 75, 100, 125, 150, 200, 300, 400]
@@ -57,6 +58,18 @@ type NodeData = {
   description: string
   ip: string
   config: string
+}
+
+function isLocalImage(name: string): boolean {
+  return name.startsWith('/') || /\.(png|jpg|jpeg|svg|webp|gif)$/i.test(name)
+}
+
+function DeviceIcon({ name, size, style }: { name: string; size: string; style?: React.CSSProperties }) {
+  const baseStyle: React.CSSProperties = { width: size, height: size, display: 'block', objectFit: 'contain', ...style }
+  if (isLocalImage(name)) {
+    return <img src={name} alt="" style={baseStyle} />
+  }
+  return <Icon icon={name} width={size} height={size} style={style} />
 }
 
 function makeNode(kind: DeviceKind, position: { x: number; y: number }, index: number): Node<NodeData> {
@@ -126,10 +139,7 @@ function DeviceNode({ data, selected }: { data: NodeData; selected?: boolean }) 
       <Handle id="t-bottom-source" type="source" position={Position.Bottom} style={handleStyle} />
       <Handle id="t-left-target" type="target" position={Position.Left}   style={handleStyle} />
       <Handle id="t-left-source" type="source" position={Position.Left}   style={handleStyle} />
-      <i
-        className={`bx ${def.icon}`}
-        style={{ color: def.color, fontSize: '4.8rem', lineHeight: 1, display: 'block', marginBottom: 6 }}
-      ></i>
+      <DeviceIcon name={def.icon} size="4.8rem" style={{ marginBottom: 6 }} />
       <div>{data.label}</div>
       {data.ip && (
         <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4, fontFamily: 'monospace' }}>{data.ip}</div>
@@ -368,7 +378,7 @@ function EditorInner({ onSaved }: Props) {
                     }}
                     onClick={() => addNodeOfKind(d.kind)}
                   >
-                    <i className={`bx ${d.icon}`} style={{ fontSize: '2.2rem', lineHeight: 1 }}></i>
+                    <DeviceIcon name={d.icon} size="2.2rem" />
                     <span>{d.label}</span>
                   </button>
                 ))}
@@ -441,7 +451,7 @@ function EditorInner({ onSaved }: Props) {
                       <div className="d-flex align-items-center gap-2 mb-1">
                         {(() => {
                           const def = DEVICE_KINDS.find((d) => d.kind === selectedNode.data.kind) || DEVICE_KINDS[0]
-                          return <i className={`bx ${def.icon}`} style={{ color: def.color, fontSize: '1.1rem' }}></i>
+                          return <DeviceIcon name={def.icon} size="1.4rem" />
                         })()}
                         <span className="fw-semibold" style={{ fontSize: '.8rem' }}>
                           {(DEVICE_KINDS.find((d) => d.kind === selectedNode.data.kind) || DEVICE_KINDS[0]).label}

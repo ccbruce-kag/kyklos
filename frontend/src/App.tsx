@@ -6,16 +6,16 @@ import i18nData from './i18n'
 const languageKey = "iptables_lang";
 const storedLang = localStorage.getItem(languageKey);
 const browserLang: LangCode = (() => {
-  const l = (navigator.language || "en").toLowerCase();
+  const l = ((navigator.languages && navigator.languages[0]) || navigator.language || "en").toLowerCase();
   if (l.startsWith("zh")) return "zh";
   if (l.startsWith("ja")) return "ja";
   return "en";
 })();
 const langOrder: LangCode[] = ['zh', 'en', 'ja'];
-const currentLang: LangCode = (storedLang as LangCode) || browserLang || 'zh';
+const currentLang: LangCode = langOrder.includes(storedLang as LangCode) ? storedLang as LangCode : browserLang;
 
 Object.assign(window, {
-  currentLang: langOrder.includes(currentLang) ? currentLang : 'zh',
+  currentLang,
   i18n: i18nData,
   langOrder,
   langNames: { zh: '中文', en: 'English', ja: '日本語' },
@@ -130,7 +130,7 @@ function App() {
       bootMenu();
 
       if (typeof window.setLanguage === 'function') {
-        window.setLanguage(window.currentLang || 'zh');
+        window.setLanguage(window.currentLang || 'en', false);
       }
       if (typeof window.loadIptables === 'function') {
         setTimeout(() => window.loadIptables && window.loadIptables(), 200);

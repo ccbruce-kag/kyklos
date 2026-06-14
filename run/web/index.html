@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh" class="layout-menu-fixed layout-compact" data-assets-path="/sneat/">
+<html lang="en" class="layout-menu-fixed layout-compact" data-assets-path="/sneat/">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
-  <title>網路與安全工具管理平臺</title>
+  <title>Network & Security Tools Console</title>
   <link rel="icon" type="image/x-icon" href="/sneat/assets/img/favicon/favicon.ico" />
   <link rel="stylesheet" href="/sneat/assets/vendor/fonts/iconify-icons.css" />
   <link rel="stylesheet" href="/sneat/assets/vendor/css/core.css" />
@@ -32,20 +32,19 @@
         console.log('[fwm-menu] toggled', target.textContent.trim(), item.classList.contains('open'));
       }, true);
       var menuViews = {
-        menuDashLink: ['dashboard', '一般性儀表板', 'bx-bar-chart-alt-2'],
-        menuTablesLink: ['tables', '防火牆管理', 'bx-shield-quarter'],
-        menuJuniperLink: ['juniper', 'Juniper 設定', 'bx-network-chart'],
-        menuHaproxyLink: ['haproxy', 'HaProxy 管理', 'bx-transfer'],
-        menuNginxLink: ['nginx', 'Nginx 管理', 'bx-windows'],
-        menuNetplanLink: ['netplan', 'Netplan 設定', 'bx-wifi'],
-        menuSysLink: ['system', '系統現況', 'bx-desktop'],
-        menuToolsLink: ['tools', '工具集合', 'bx-wrench'],
+        menuDashLink: ['dashboard', 'General Dashboard', 'bx-bar-chart-alt-2'],
+        menuTablesLink: ['tables', 'Tables', 'bx-shield-quarter'],
+        menuJuniperLink: ['juniper', 'Juniper Settings', 'bx-network-chart'],
+        menuHaproxyLink: ['haproxy', 'HAProxy Management', 'bx-transfer'],
+        menuNginxLink: ['nginx', 'Nginx Management', 'bx-windows'],
+        menuNetplanLink: ['netplan', 'Netplan Config', 'bx-wifi'],
+        menuSysLink: ['system', 'System', 'bx-desktop'],
+        menuToolsLink: ['tools', 'Tools', 'bx-wrench'],
         menuShellLink: ['shell', 'Shell', 'bx-terminal'],
-        menuAILink: ['ai', 'AI 助手', 'bx-bot'],
-        menuApiManNewLink: ['apiman', 'ApiMan', 'bx-link'],
+        menuAILink: ['ai', 'AI Assistant', 'bx-bot'],
         menuDbManNewLink: ['dbman', 'DbMan', 'bx-data'],
-        menuSecurityCvsLink: ['security', '資安', 'bx-shield'],
-        menuSecurityScanLink: ['security', '資安', 'bx-shield']
+        menuSecurityCvsLink: ['security', 'Security', 'bx-shield'],
+        menuSecurityScanLink: ['security', 'Security', 'bx-shield']
       };
       function directSwitchView(mode, label, icon, linkId) {
         if (typeof window.fwmSwitchView === 'function') {
@@ -125,7 +124,7 @@
       console.log('[fwm-menu] delegated fallback installed');
     })();
   </script>
-  <script type="module" crossorigin src="/assets/index-DA2ubrzO.js"></script>
+  <script type="module" crossorigin src="/assets/index-BvnW9Y5f.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-hTIHPUHf.css">
 </head>
 <body>

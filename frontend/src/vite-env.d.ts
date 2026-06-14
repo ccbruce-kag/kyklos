@@ -28,6 +28,6 @@ interface Window {
   bootstrap?: {
     Tooltip: new (el: Element) => unknown;
   };
-  setLanguage?: (lang: string) => void;
+  setLanguage?: (lang: string, persist?: boolean) => void;
   loadIptables?: () => void;
 }

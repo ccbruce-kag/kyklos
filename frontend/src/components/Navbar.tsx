@@ -9,20 +9,20 @@ export default function Navbar() {
       <div className="navbar-nav-right d-flex align-items-center justify-content-end w-100" id="navbar-collapse">
         <div className="navbar-nav align-items-center me-auto">
           <div className="nav-item d-flex align-items-center">
-            <span className="ipc-title fw-semibold fs-5">網路與安全工具管理平臺</span>
+            <span className="ipc-title fw-semibold fs-5">Network & Security Tools Console</span>
             <span className="ipc-version badge bg-label-info rounded-pill ms-2"></span>
           </div>
         </div>
         <ul className="navbar-nav flex-row align-items-center ms-md-auto">
           <li className="nav-item dropdown me-3">
             <button className="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="docDropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-              <i className="bx bx-book me-1"></i><span id="docDropdownLabel">文件協助</span>
+              <i className="bx bx-book me-1"></i><span id="docDropdownLabel">Quick Help</span>
             </button>
             <div className="dropdown-menu dropdown-menu-end doc-dropdown-menu" id="docDropdownMenu" aria-labelledby="docDropdown"></div>
           </li>
           <li className="nav-item dropdown me-3">
             <button className="btn btn-sm btn-outline-primary dropdown-toggle" type="button" id="languageDropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-              <i className="bx bx-globe me-1"></i><span id="languageDropdownLabel">中文</span>
+              <i className="bx bx-globe me-1"></i><span id="languageDropdownLabel">English</span>
             </button>
             <ul className="dropdown-menu dropdown-menu-end" id="languageDropdownMenu" aria-labelledby="languageDropdown">
               <li><a className="dropdown-item" href="#" data-lang="zh">中文</a></li>

@@ -16,16 +16,16 @@ var _orig_ready = $;
         setTimeout(() => { $(`#t${idx}`).remove(); }, 2500);
       },
       alert(content, opts) {
-        const title = (typeof opts === 'object' && opts.title) ? opts.title : '提示';
-        const btnText = i18n ? i18n[currentLang || 'zh'].confirm : 'OK';
+        const title = (typeof opts === 'object' && opts.title) ? opts.title : ((i18n[currentLang] || i18n.en).warning || 'Warning');
+        const btnText = i18n ? i18n[currentLang || 'en'].confirm : 'OK';
         $('#commonModalTitle').text(title);
         $('#commonModalBody').html(typeof content === 'string' ? content : content.join ? content.join('') : String(content));
         $('#commonModalFooter').html(`<button type="button" class="btn btn-primary" data-bs-dismiss="modal">${btnText}</button>`);
         _showModal();
       },
       confirm(content, yesCallback, noCallback) {
-        const lang = i18n ? i18n[currentLang || 'zh'] : { confirm: 'OK', cancel: 'Cancel', warning: 'Warning' };
-        $('#commonModalTitle').text(lang.warning || '提示');
+        const lang = i18n ? i18n[currentLang || 'en'] : { confirm: 'OK', cancel: 'Cancel', warning: 'Warning' };
+        $('#commonModalTitle').text(lang.warning || 'Warning');
         $('#commonModalBody').text(content);
         $('#commonModalFooter').html(`<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${lang.cancel}</button><button type="button" class="btn btn-primary" id="confirmYes">${lang.confirm}</button>`);
         _showModal();
@@ -60,7 +60,7 @@ var _orig_ready = $;
       },
       close() { _hideModal(); },
       prompt(opts, callback) {
-        const lang = i18n ? i18n[currentLang || 'zh'] : { confirm: 'OK', cancel: 'Cancel' };
+        const lang = i18n ? i18n[currentLang || 'en'] : { confirm: 'OK', cancel: 'Cancel' };
         const title = opts.title || '';
         const val = opts.value || '';
         const placeholder = '';
@@ -77,10 +77,12 @@ var _orig_ready = $;
     };
     function _showModal() {
       const el = document.getElementById('commonModal');
-      modalInstance = new bootstrap.Modal(el);
+      if (!el || !window.bootstrap || !bootstrap.Modal) return;
+      if (modalInstance) modalInstance.dispose();
+      modalInstance = new bootstrap.Modal(el, { backdrop: true, keyboard: true, focus: true });
       modalInstance.show();
     }
-    function _hideModal() { if (modalInstance) { modalInstance.hide(); modalInstance = null; } }
+    function _hideModal() { if (modalInstance) { modalInstance.hide(); modalInstance.dispose(); modalInstance = null; } }
   
   
     // ─── Application Logic ───
@@ -107,19 +109,19 @@ var _orig_ready = $;
     function tabLabel(mode) {
       var lang = i18n[currentLang] || {};
       var map = {
-        tables: lang.tablesLabel || '防火牆管理',
-        dashboard: lang.dashLabel || '一般性儀表板',
-        system: lang.systemLabel || '系統現況',
+        tables: lang.tablesLabel || 'Tables',
+        dashboard: lang.dashLabel || 'General Dashboard',
+        system: lang.systemLabel || 'System',
         shell: lang.shellLabel || 'Shell',
-        ai: lang.aiLabel || 'AI 助手',
-        tools: lang.toolsLabel || '工具集合',
-        haproxy: lang.haproxyLabel || 'HaProxy 管理',
-        nginx: lang.nginxLabel || 'Nginx 管理',
-        juniper: lang.juniperLabel || 'Juniper 設定',
-        netplan: lang.netplanLabel || 'Netplan 設定',
+        ai: lang.aiLabel || 'AI Assistant',
+        tools: lang.toolsLabel || 'Tools',
+        haproxy: lang.haproxyLabel || 'HAProxy Management',
+        nginx: lang.nginxLabel || 'Nginx Management',
+        juniper: lang.juniperLabel || 'Juniper Settings',
+        netplan: lang.netplanLabel || 'Netplan Config',
         apiman: 'ApiMan',
         dbman: 'DbMan',
-        security: '資安',
+        security: lang.securityLabel || 'Security',
       };
       return map[mode] || mode;
     }
@@ -205,11 +207,11 @@ var _orig_ready = $;
     }
     const languageKey = "iptables_lang";
     const storedLang = localStorage.getItem(languageKey);
-    const browserLang = (function () { var l = (navigator.language || "en").toLowerCase(); if (l.startsWith("zh")) return "zh"; if (l.startsWith("ja")) return "ja"; return "en"; })();
+    const browserLang = (function () { var l = ((navigator.languages && navigator.languages[0]) || navigator.language || "en").toLowerCase(); if (l.startsWith("zh")) return "zh"; if (l.startsWith("ja")) return "ja"; return "en"; })();
     const langOrder = ['zh', 'en', 'ja'];
     const langNames = { zh: '中文', en: 'English', ja: '日本語' };
-    let currentLang = storedLang || browserLang || 'zh';
-    if (!langOrder.includes(currentLang)) currentLang = 'zh';
+    let currentLang = langOrder.includes(storedLang) ? storedLang : browserLang;
+    if (!langOrder.includes(currentLang)) currentLang = 'en';
     const i18n = {
       zh: {
         title: "{cmd} 管理平臺", docAssistTitle: "文件協助", chainLabel: "鏈", defaultPolicy: "默認策略",
@@ -282,7 +284,21 @@ var _orig_ready = $;
         shellLabel: "Shell", aiLabel: "AI 助手", aiSend: "送出", aiInputPlaceholder: "輸入需求...",
         aiStatusIdle: "閒置", aiStatusRunning: "執行中", aiStatusDone: "完成", aiStatusError: "錯誤",
         aiCopy: "複製", aiExecute: "執行", aiExecuted: "已執行", aiCopyOk: "已複製", aiConfirmExec: "確認執行此命令？",
+        aiHeader: "AI 助手 (opencode)", aiIntroName: "AI 助手",
+        aiIntroText: "輸入你的需求，我會產生對應的防火牆命令。例如：<br>· 封鎖所有來自 192.168.1.0/24 的流量<br>· 允許 SSH (port 22) 從任何地方連入<br>· 列出目前所有 DROP 規則",
         closeTab: "關閉", closeAll: "關閉全部", closeLeft: "關閉左方", closeRight: "關閉右方",
+        securityLabel: "資安", loading: "載入中...", noData: "無資料",
+        apimanCreateWorkspace: "建立工作區", apimanWorkspaceName: "工作區名稱", apimanWorkspaceDescription: "說明",
+        apimanWorkspaceDescriptionPlaceholder: "用途、環境或 API 說明", apimanWorkspaceNameRequired: "請輸入工作區名稱",
+        apimanWorkspaceCreated: "工作區已建立", apimanNoWorkspace: "尚無工作區", apimanCreateFirstWorkspace: "建立第一個工作區",
+        dbmanDatabase: "資料庫", dbmanSchema: "資料庫結構", dbmanNoTables: "無資料表",
+        dbmanTable: "table", dbmanView: "view", dbmanStoredProcedure: "stored procedure", dbmanStoredFunction: "stored function",
+        dbmanConnectionSettings: "連線設定", dbmanBack: "返回", dbmanSaveQuery: "儲存查詢", dbmanExpand: "放大",
+        dbmanRun: "執行", dbmanSavedQueries: "已儲存查詢", dbmanNewConnection: "新增連線",
+        dbmanEditConnection: "編輯連線",
+        fieldName: "名稱", fieldType: "類型", fieldFilePath: "檔案路徑", fieldUser: "使用者", fieldPassword: "密碼",
+        testConnection: "測試連線", save: "儲存", dbmanNoConnections: "尚無連線", dbmanQuickConnectLocal: "快速連線至本機資料庫",
+        dbmanNoSavedQueries: "尚無儲存查詢",
       },
       en: {
         title: "{cmd} Web Console", docAssistTitle: "Quick Help", chainLabel: "Chain", defaultPolicy: "Default policy",
@@ -356,7 +372,21 @@ var _orig_ready = $;
         shellLabel: "Shell", aiLabel: "AI Assistant", aiSend: "Send", aiInputPlaceholder: "Enter your request...",
         aiStatusIdle: "Idle", aiStatusRunning: "Running", aiStatusDone: "Done", aiStatusError: "Error",
         aiCopy: "Copy", aiExecute: "Execute", aiExecuted: "Executed", aiCopyOk: "Copied", aiConfirmExec: "Confirm to execute this command?",
+        aiHeader: "AI Assistant (opencode)", aiIntroName: "AI Assistant",
+        aiIntroText: "Enter your request and I will generate matching firewall commands. For example:<br>· Block all traffic from 192.168.1.0/24<br>· Allow SSH (port 22) from anywhere<br>· List all current DROP rules",
         closeTab: "Close", closeAll: "Close All", closeLeft: "Close Left", closeRight: "Close Right",
+        securityLabel: "Security", loading: "Loading...", noData: "No data",
+        apimanCreateWorkspace: "Create Workspace", apimanWorkspaceName: "Workspace Name", apimanWorkspaceDescription: "Description",
+        apimanWorkspaceDescriptionPlaceholder: "Purpose, environment, or API notes", apimanWorkspaceNameRequired: "Enter a workspace name",
+        apimanWorkspaceCreated: "Workspace created", apimanNoWorkspace: "No workspaces yet", apimanCreateFirstWorkspace: "Create first workspace",
+        dbmanDatabase: "Database", dbmanSchema: "Database Schema", dbmanNoTables: "No tables",
+        dbmanTable: "table", dbmanView: "view", dbmanStoredProcedure: "stored procedure", dbmanStoredFunction: "stored function",
+        dbmanConnectionSettings: "Connection Settings", dbmanBack: "Back", dbmanSaveQuery: "Save Query", dbmanExpand: "Expand",
+        dbmanRun: "Run", dbmanSavedQueries: "Saved Queries", dbmanNewConnection: "New Connection",
+        dbmanEditConnection: "Edit Connection",
+        fieldName: "Name", fieldType: "Type", fieldFilePath: "File Path", fieldUser: "User", fieldPassword: "Password",
+        testConnection: "Test Connection", save: "Save", dbmanNoConnections: "No connections yet", dbmanQuickConnectLocal: "Quick connect to local database",
+        dbmanNoSavedQueries: "No saved queries",
       },
       ja: {
         title: "{cmd} 管理コンソール", docAssistTitle: "クイックヘルプ", chainLabel: "チェイン", defaultPolicy: "デフォルトポリシー",
@@ -429,7 +459,21 @@ var _orig_ready = $;
         shellLabel: "Shell", aiLabel: "AI アシスタント", aiSend: "送信", aiInputPlaceholder: "リクエストを入力...",
         aiStatusIdle: "アイドル", aiStatusRunning: "実行中", aiStatusDone: "完了", aiStatusError: "エラー",
         aiCopy: "コピー", aiExecute: "実行", aiExecuted: "実行済み", aiCopyOk: "コピーしました", aiConfirmExec: "このコマンドを実行しますか？",
+        aiHeader: "AI アシスタント (opencode)", aiIntroName: "AI アシスタント",
+        aiIntroText: "要望を入力すると、対応するファイアウォールコマンドを生成します。例：<br>· 192.168.1.0/24 からの通信をすべてブロック<br>· 任意の場所から SSH (port 22) を許可<br>· 現在の DROP ルールを一覧表示",
         closeTab: "閉じる", closeAll: "すべて閉じる", closeLeft: "左を閉じる", closeRight: "右を閉じる",
+        securityLabel: "セキュリティ", loading: "読み込み中...", noData: "データなし",
+        apimanCreateWorkspace: "ワークスペース作成", apimanWorkspaceName: "ワークスペース名", apimanWorkspaceDescription: "説明",
+        apimanWorkspaceDescriptionPlaceholder: "用途、環境、API メモ", apimanWorkspaceNameRequired: "ワークスペース名を入力してください",
+        apimanWorkspaceCreated: "ワークスペースを作成しました", apimanNoWorkspace: "ワークスペースがありません", apimanCreateFirstWorkspace: "最初のワークスペースを作成",
+        dbmanDatabase: "データベース", dbmanSchema: "データベース構造", dbmanNoTables: "テーブルなし",
+        dbmanTable: "table", dbmanView: "view", dbmanStoredProcedure: "stored procedure", dbmanStoredFunction: "stored function",
+        dbmanConnectionSettings: "接続設定", dbmanBack: "戻る", dbmanSaveQuery: "クエリを保存", dbmanExpand: "拡大",
+        dbmanRun: "実行", dbmanSavedQueries: "保存済みクエリ", dbmanNewConnection: "新規接続",
+        dbmanEditConnection: "接続を編集",
+        fieldName: "名前", fieldType: "タイプ", fieldFilePath: "ファイルパス", fieldUser: "ユーザー", fieldPassword: "パスワード",
+        testConnection: "接続テスト", save: "保存", dbmanNoConnections: "接続がありません", dbmanQuickConnectLocal: "ローカルデータベースにクイック接続",
+        dbmanNoSavedQueries: "保存済みクエリがありません",
       }
     };
     function t(key) {
@@ -437,17 +481,20 @@ var _orig_ready = $;
       if (typeof s === "string" && s.indexOf("{cmd}") !== -1) s = s.replace("{cmd}", fwDisplayName());
       return s;
     }
-    function setLanguage(lang) {
-      currentLang = lang;
-      localStorage.setItem(languageKey, lang);
+    function setLanguage(lang, persist) {
+      currentLang = langOrder.includes(lang) ? lang : 'en';
+      window.currentLang = currentLang;
+      document.documentElement.lang = currentLang;
+      if (persist) localStorage.setItem(languageKey, currentLang);
       $(".ipc-title").text(t("title"));
+      document.title = t("title");
       $("#docDropdownLabel").text(t("docAssistTitle"));
       var lng = i18n[currentLang];
       $('#menuGroupDashLabel').text(lng.menuGroupDash || '儀表板');
-      $('#menuDashLabel').text(lng.dashLabel || '一般性儀表板');
-      $('#menuSysLabel').text(lng.systemLabel || '系統現況');
-      $('#menuGroupNetLabel').text(lng.menuGroupNet || '網路工具');
-      $('#menuTablesLabel').text(lng.tablesLabel || '防火牆管理');
+      $('#menuDashLabel').text(lng.dashLabel || 'General Dashboard');
+      $('#menuSysLabel').text(lng.systemLabel || 'System');
+      $('#menuGroupNetLabel').text(lng.menuGroupNet || 'Network Tools');
+      $('#menuTablesLabel').text(lng.tablesLabel || 'Tables');
       $('#menuHaproxyLabel').text(lng.haproxyLabel || 'HaProxy 管理');
       $('#menuNginxLabel').text(lng.nginxLabel || 'Nginx 管理');
       $('#menuNetplanLabel').text(lng.netplanLabel || 'Netplan 設定');
@@ -456,16 +503,16 @@ var _orig_ready = $;
       $('#menuToolsLabel').text(lng.toolsLabel || '系統工具');
       $('#menuShellLabel').text(lng.shellLabel || 'Shell');
       $('#menuGroupApiManLabel').text(lng.menuGroupApiMan || 'ApiMan');
-      $('#menuApiManNewLabel').text(lng.menuApiManNew || '新增工作區');
+      $('#menuApiManNewLabel').text(lng.menuApiManNew || 'New Workspace');
       $('#menuGroupDbManLabel').text(lng.menuGroupDbMan || 'DbMan');
-      $('#menuDbManNewLabel').text(lng.menuDbManNew || '新增連線');
-      $('#menuGroupSecurityLabel').text(lng.menuGroupSecurity || '資安');
+      $('#menuDbManNewLabel').text(lng.menuDbManNew || 'New Connection');
+      $('#menuGroupSecurityLabel').text(lng.menuGroupSecurity || 'Security');
       $('#menuSecurityCvsLabel').text(lng.menuSecurityCvs || 'CVS 資料庫');
       $('#menuSecurityScanLabel').text(lng.menuSecurityScan || '網路掃描');
       $('#menuGroupAILabel').text(lng.menuGroupAI || 'AI');
-      $('#menuAILabel').text(lng.aiLabel || 'AI 助手');
-      $('#menuGroupHelpLabel').text(lng.menuGroupHelp || '協助');
-      $('#menuDocLabel').text(lng.docLabel || '命令文件');
+      $('#menuAILabel').text(lng.aiLabel || 'AI Assistant');
+      $('#menuGroupHelpLabel').text(lng.menuGroupHelp || 'Help');
+      $('#menuDocLabel').text(lng.docLabel || 'Command Reference');
       $('#juniperInfoTabLabel,#juniperInfoTitle').text(lng.juniperInfo || 'Device Info');
       $('#juniperVlanTabLabel').text(lng.juniperVlan || 'VLAN Management');
       $('#juniperPortTabLabel,#juniperPortListTitle').text(lng.juniperPort || 'Port Management');
@@ -523,13 +570,29 @@ var _orig_ready = $;
       labels.forEach(([sel, k]) => { const el = $(sel); if (el.length) el.html(el.html().replace(/(<\/i>)\s*.*/, '$1 ' + t(k))); });
       const tabs = ["tabRaw", "tabMangle", "tabNat", "tabFilter"];
       $(".iptables-table .nav-link").each((i, el) => { if (tabs[i]) $(el).text(t(tabs[i])); });
-      $("#languageDropdownLabel").text(langNames[lang] || 'English');
+      $("#languageDropdownLabel").text(langNames[currentLang] || 'English');
       $("#languageDropdownMenu .dropdown-item").each(function () {
         $(this).toggleClass("active fw-semibold", $(this).data("lang") === lang);
         $(this).find(".bx-check").remove();
         if ($(this).data("lang") === lang) {
           $(this).append('<i class="bx bx-check ms-auto text-primary"></i>');
         }
+      });
+      $('[data-i18n]').each(function () {
+        var key = $(this).data('i18n');
+        if (key && lng[key]) $(this).text(lng[key]);
+      });
+      $('[data-i18n-html]').each(function () {
+        var key = $(this).data('i18n-html');
+        if (key && lng[key]) $(this).html(lng[key]);
+      });
+      $('[data-i18n-placeholder]').each(function () {
+        var key = $(this).data('i18n-placeholder');
+        if (key && lng[key]) $(this).attr('placeholder', lng[key]);
+      });
+      $('[data-i18n-title]').each(function () {
+        var key = $(this).data('i18n-title');
+        if (key && lng[key]) $(this).attr('title', lng[key]);
       });
     }
     // ─── Logger ───
@@ -2448,16 +2511,18 @@ var _orig_ready = $;
             '<button class="btn btn-sm btn-outline-danger dbman-del-conn" data-id="' + c.id + '"><i class="bx bx-trash"></i></button>' +
             '</div></div>';
         });
-        var emptyHtml = '<div class="text-muted text-center p-3" style="font-size:.8125rem">尚無連線<br><button class="btn btn-sm btn-outline-primary mt-2" id="dbmanShowAddForm"><i class="bx bx-plus me-1"></i>新增連線</button></div>' +
-          '<div class="mt-2"><button class="btn btn-sm btn-outline-info w-100" id="dbmanQuickConnectLocal"><i class="bx bx-plug me-1"></i>快速連線至本機資料庫</button></div>';
+        var lang = i18n[currentLang] || i18n.en;
+        var emptyHtml = '<div class="text-muted text-center p-3" style="font-size:.8125rem">' + escHtml(lang.dbmanNoConnections || 'No connections yet') + '<br><button class="btn btn-sm btn-outline-primary mt-2" id="dbmanShowAddForm"><i class="bx bx-plus me-1"></i>' + escHtml(lang.dbmanNewConnection || 'New Connection') + '</button></div>' +
+          '<div class="mt-2"><button class="btn btn-sm btn-outline-info w-100" id="dbmanQuickConnectLocal"><i class="bx bx-plug me-1"></i>' + escHtml(lang.dbmanQuickConnectLocal || 'Quick connect to local database') + '</button></div>';
         $('#dbmanConnList').html(html || emptyHtml);
       });
     }
     function showDbManConnForm(conn) {
       $('#dbmanConnView').hide();
       $('#dbmanConnForm').show();
+      var lang = i18n[currentLang] || i18n.en;
       if (conn) {
-        $('#dbmanFormTitle').text('編輯連線');
+        $('#dbmanFormTitle').text(lang.dbmanEditConnection || 'Edit Connection');
         $('#dbmanEditConnId').val(conn.id);
         $('#dbmanFormName').val(conn.name);
         $('#dbmanFormType').val(conn.db_type).trigger('change');
@@ -2469,7 +2534,7 @@ var _orig_ready = $;
         $('#dbmanFormPass').val('');
         $('#dbmanFormTrustCert').prop('checked', conn.trust_server_cert);
       } else {
-        $('#dbmanFormTitle').text('新增連線');
+        $('#dbmanFormTitle').text(lang.dbmanNewConnection || 'New Connection');
         $('#dbmanEditConnId').val('');
         $('#dbmanFormName').val('');
         $('#dbmanFormType').val('sqlite').trigger('change');
@@ -2496,22 +2561,25 @@ var _orig_ready = $;
       return data;
     }
     function dbmanDatabaseLabel(conn) {
-      if (!conn) return '資料庫';
+      var lang = i18n[currentLang] || i18n.en;
+      if (!conn) return lang.dbmanDatabase || 'Database';
       if (conn.db_type === 'sqlite') return conn.file_path || conn.name || 'SQLite';
-      return conn.database_name || conn.name || conn.host || '資料庫';
+      return conn.database_name || conn.name || conn.host || (lang.dbmanDatabase || 'Database');
     }
     function renderDbManSchemaLoading(conn) {
+      var lang = i18n[currentLang] || i18n.en;
       $('#dbmanSchemaTree').show().html(
-        '<div class="text-muted mb-1" style="font-size:.75rem">資料庫結構</div>' +
+        '<div class="text-muted mb-1" style="font-size:.75rem">' + escHtml(lang.dbmanSchema || 'Database Schema') + '</div>' +
         '<div class="dbman-schema-tree" style="font-size:.8125rem">' +
         '<div class="py-1"><i class="bx bx-data me-1"></i><strong>' + escHtml(dbmanDatabaseLabel(conn)) + '</strong></div>' +
-        '<div class="ms-3 text-muted py-1">載入中...</div>' +
+        '<div class="ms-3 text-muted py-1">' + escHtml(lang.loading || 'Loading...') + '</div>' +
         '</div>'
       );
     }
     function renderDbManSchemaError(conn, msg) {
+      var lang = i18n[currentLang] || i18n.en;
       $('#dbmanSchemaTree').show().html(
-        '<div class="text-muted mb-1" style="font-size:.75rem">資料庫結構</div>' +
+        '<div class="text-muted mb-1" style="font-size:.75rem">' + escHtml(lang.dbmanSchema || 'Database Schema') + '</div>' +
         '<div class="dbman-schema-tree" style="font-size:.8125rem">' +
         '<div class="py-1"><i class="bx bx-data me-1"></i><strong>' + escHtml(dbmanDatabaseLabel(conn)) + '</strong></div>' +
         '<div class="ms-3 text-danger py-1">' + escHtml(msg) + '</div>' +
@@ -2519,10 +2587,11 @@ var _orig_ready = $;
       );
     }
     function renderDbManSchemaTree(conn, tables) {
+      var lang = i18n[currentLang] || i18n.en;
       tables = tables || [];
       var tableHtml = '';
       if (!tables.length) {
-        tableHtml = '<div class="text-muted py-1 ms-4">無資料表</div>';
+        tableHtml = '<div class="text-muted py-1 ms-4">' + escHtml(lang.dbmanNoTables || 'No tables') + '</div>';
       } else {
         tableHtml = '<div id="dbmanTableList" class="d-flex flex-column py-1">';
         tables.forEach(function (t, idx) {
@@ -2532,23 +2601,23 @@ var _orig_ready = $;
         tableHtml += '</div>';
       }
       $('#dbmanSchemaTree').show().html(
-        '<div class="text-muted mb-1" style="font-size:.75rem">資料庫結構</div>' +
+        '<div class="text-muted mb-1" style="font-size:.75rem">' + escHtml(lang.dbmanSchema || 'Database Schema') + '</div>' +
         '<div class="dbman-schema-tree" style="font-size:.8125rem">' +
         '<div class="dbman-tree-node py-1" data-tree-target="#dbmanTreeDb" data-open="1" style="cursor:pointer">' +
         '<i class="bx bx-chevron-down me-1 dbman-tree-caret"></i><i class="bx bx-data me-1"></i><strong>' + escHtml(dbmanDatabaseLabel(conn)) + '</strong></div>' +
         '<div id="dbmanTreeDb" class="ms-3">' +
         '<div class="dbman-tree-node py-1" data-tree-target="#dbmanTreeTables" data-open="1" style="cursor:pointer">' +
-        '<i class="bx bx-chevron-down me-1 dbman-tree-caret"></i><i class="bx bx-folder-open me-1 dbman-tree-folder"></i>table</div>' +
+        '<i class="bx bx-chevron-down me-1 dbman-tree-caret"></i><i class="bx bx-folder-open me-1 dbman-tree-folder"></i>' + escHtml(lang.dbmanTable || 'table') + '</div>' +
         '<div id="dbmanTreeTables" class="ms-3">' + tableHtml + '</div>' +
         '<div class="dbman-tree-node py-1 text-muted" data-tree-target="#dbmanTreeViews" data-open="0" style="cursor:pointer">' +
-        '<i class="bx bx-chevron-right me-1 dbman-tree-caret"></i><i class="bx bx-folder me-1 dbman-tree-folder"></i>view</div>' +
-        '<div id="dbmanTreeViews" class="ms-3" style="display:none"><div class="text-muted py-1 ms-4">無資料</div></div>' +
+        '<i class="bx bx-chevron-right me-1 dbman-tree-caret"></i><i class="bx bx-folder me-1 dbman-tree-folder"></i>' + escHtml(lang.dbmanView || 'view') + '</div>' +
+        '<div id="dbmanTreeViews" class="ms-3" style="display:none"><div class="text-muted py-1 ms-4">' + escHtml(lang.noData || 'No data') + '</div></div>' +
         '<div class="dbman-tree-node py-1 text-muted" data-tree-target="#dbmanTreeProcedures" data-open="0" style="cursor:pointer">' +
-        '<i class="bx bx-chevron-right me-1 dbman-tree-caret"></i><i class="bx bx-folder me-1 dbman-tree-folder"></i>stored procedure</div>' +
-        '<div id="dbmanTreeProcedures" class="ms-3" style="display:none"><div class="text-muted py-1 ms-4">無資料</div></div>' +
+        '<i class="bx bx-chevron-right me-1 dbman-tree-caret"></i><i class="bx bx-folder me-1 dbman-tree-folder"></i>' + escHtml(lang.dbmanStoredProcedure || 'stored procedure') + '</div>' +
+        '<div id="dbmanTreeProcedures" class="ms-3" style="display:none"><div class="text-muted py-1 ms-4">' + escHtml(lang.noData || 'No data') + '</div></div>' +
         '<div class="dbman-tree-node py-1 text-muted" data-tree-target="#dbmanTreeFunctions" data-open="0" style="cursor:pointer">' +
-        '<i class="bx bx-chevron-right me-1 dbman-tree-caret"></i><i class="bx bx-folder me-1 dbman-tree-folder"></i>stored function</div>' +
-        '<div id="dbmanTreeFunctions" class="ms-3" style="display:none"><div class="text-muted py-1 ms-4">無資料</div></div>' +
+        '<i class="bx bx-chevron-right me-1 dbman-tree-caret"></i><i class="bx bx-folder me-1 dbman-tree-folder"></i>' + escHtml(lang.dbmanStoredFunction || 'stored function') + '</div>' +
+        '<div id="dbmanTreeFunctions" class="ms-3" style="display:none"><div class="text-muted py-1 ms-4">' + escHtml(lang.noData || 'No data') + '</div></div>' +
         '</div></div>'
       );
     }
@@ -2612,11 +2681,63 @@ var _orig_ready = $;
         }
       });
     }
+    function rebuildApiManMenu() {
+      loadApiManWorkspaces(function (workspaces) {
+        var html = '';
+        workspaces.forEach(function (ws) {
+          html += '<li class="menu-item apiman-menu-ws" data-ws-id="' + ws.id + '">' +
+            '<a href="#" class="menu-link apiman-menu-ws-link" data-ws-id="' + ws.id + '">' +
+            '<i class="menu-icon tf-icons bx bx-folder"></i>' +
+            '<div class="text-truncate">' + escHtml(ws.name) + '</div></a></li>';
+        });
+        $('#menuApiManWsItems').html(html);
+      });
+    }
+    function refreshApiManWorkspaceLists() {
+      renderApiManTree();
+      rebuildApiManMenu();
+    }
+    function openApiManWorkspaceDialog() {
+      var lang = i18n[currentLang] || i18n.en;
+      layer.open({
+        title: lang.apimanCreateWorkspace || 'Create Workspace',
+        area: ['460px', 'auto'],
+        content:
+          '<div class="p-2">' +
+          '<div class="mb-2"><label class="form-label" for="apimanWsNameInput">' + escHtml(lang.apimanWorkspaceName || 'Workspace Name') + '</label>' +
+          '<input type="text" class="form-control" id="apimanWsNameInput" placeholder="My Workspace"></div>' +
+          '<div class="mb-2"><label class="form-label" for="apimanWsDescInput">' + escHtml(lang.apimanWorkspaceDescription || 'Description') + '</label>' +
+          '<textarea class="form-control" id="apimanWsDescInput" rows="3" placeholder="' + escHtml(lang.apimanWorkspaceDescriptionPlaceholder || 'Purpose, environment, or API notes') + '"></textarea></div>' +
+          '</div>',
+        btn: [lang.apimanCreateWorkspace || 'Create', lang.cancel || 'Cancel'],
+        btn1: function () {
+          var name = $('#apimanWsNameInput').val().trim();
+          var description = $('#apimanWsDescInput').val().trim();
+          if (!name) { layer.msg(lang.apimanWorkspaceNameRequired || 'Enter a workspace name', { icon: 2 }); return; }
+          $.post(apimanUrl('/workspaces'), { name: name, description: description }, function (res) {
+            if (res.code === 0) {
+              _hideModal();
+              layer.msg(lang.apimanWorkspaceCreated || 'Workspace created', { icon: 1 });
+              loadApiManWorkspaces(function () {
+                renderApiManTree();
+                rebuildApiManMenu();
+                if (res.data && res.data.id) renderApiManTreeForWs(res.data.id);
+              });
+            } else {
+              layer.alert(res.msg);
+            }
+          });
+        },
+        btn2: function () { _hideModal(); }
+      });
+      setTimeout(function () { $('#apimanWsNameInput').trigger('focus'); }, 50);
+    }
     function renderApiManTree() {
       loadApiManWorkspaces(function (workspaces) {
         var $tree = $('#apimanTreeBody');
+        var lang = i18n[currentLang] || i18n.en;
         if (!workspaces.length) {
-          $tree.html('<div class="text-muted text-center p-3" style="font-size:.8125rem">尚無工作區<br><button class="btn btn-sm btn-outline-primary mt-2" id="apimanCreateFirstWs"><i class="bx bx-plus me-1"></i>建立第一個工作區</button></div>');
+          $tree.html('<div class="text-muted text-center p-3" style="font-size:.8125rem">' + escHtml(lang.apimanNoWorkspace || 'No workspaces yet') + '<br><button class="btn btn-sm btn-outline-primary mt-2" id="apimanCreateFirstWs"><i class="bx bx-plus me-1"></i>' + escHtml(lang.apimanCreateFirstWorkspace || 'Create first workspace') + '</button></div>');
           return;
         }
         // Show workspace list as selectable tabs
@@ -2635,6 +2756,7 @@ var _orig_ready = $;
     function renderApiManTreeForWs(wsId) {
       apimanCurrentWsId = wsId;
       loadApiManVars();
+      var ws = (apimanWorkspaces || []).find(function (item) { return String(item.id) === String(wsId); });
       $.get(apimanUrl('/workspaces/' + wsId + '/nodes'), function (res) {
         if (res.code !== 0) return;
         var treeData = res.data || [];
@@ -2650,6 +2772,7 @@ var _orig_ready = $;
           '</div>' +
           (html || '<div class="text-muted p-2" style="font-size:.8125rem">空的</div>')
         );
+        $('#apimanCurrentWsLabel').text(ws ? ws.name : '');
       });
     }
     var apimanDragNodeId = null;
@@ -3002,7 +3125,7 @@ var _orig_ready = $;
           currentPlatform = res.data;
           logger.info('平台偵測完成', currentPlatform);
           if (currentPlatform !== "linux") { $("#protocolSwitch, .iptables-table").hide(); }
-          setLanguage(currentLang);
+          setLanguage(currentLang, false);
           renderDocContent();
         }
       });
@@ -3011,7 +3134,7 @@ var _orig_ready = $;
         logger.info('切換協定', currentProtocol);
         loadListRule(currentTableName());
       });
-      setLanguage(currentLang);
+      setLanguage(currentLang, false);
       // Tab-aware view activation map (must be defined before tab restoration below)
       var viewActivators = {
         dashboard: function() { loadDash(); if (dashTimer) clearInterval(dashTimer); dashTimer = setInterval(loadDash, 5000); },
@@ -3055,6 +3178,7 @@ var _orig_ready = $;
         }
       }
       // ─── Rebuild dynamic menus ───
+      rebuildApiManMenu();
       rebuildDbManMenu();
       // ─── Logger toggle ───
       $('#logToggle').on('click', function () {
@@ -3101,8 +3225,7 @@ var _orig_ready = $;
             menuSysLink: 'system',
             menuToolsLink: 'tools',
             menuShellLink: 'shell',
-            menuAILink: 'ai',
-            menuApiManNewLink: 'apiman',
+          menuAILink: 'ai',
             menuDbManNewLink: 'dbman',
             menuSecurityCvsLink: 'security',
             menuSecurityScanLink: 'security'
@@ -3130,15 +3253,7 @@ var _orig_ready = $;
       $('#menuApiManNewLink').on('click', function (e) {
         e.preventDefault();
         switchView('apiman');
-        // Prompt to create workspace
-        var lang = i18n[currentLang];
-        var wsName = prompt('請輸入工作區名稱 (Workspace Name):');
-        if (wsName && wsName.trim()) {
-          $.post(apimanUrl('/workspaces'), { name: wsName.trim() }, function (res) {
-            if (res.code === 0) { renderApiManTree(); layer.msg('工作區已建立', { icon: 1 }); }
-            else { layer.alert(res.msg); }
-          });
-        }
+        openApiManWorkspaceDialog();
       });
       $('#menuDbManNewLink').on('click', function (e) { e.preventDefault(); switchView('dbman'); });
       $(document).on('click', '.dbman-menu-conn-link', function (e) {
@@ -3516,9 +3631,9 @@ var _orig_ready = $;
       $("#languageDropdownMenu").on("click", ".dropdown-item", function (e) {
         e.preventDefault();
         var lang = $(this).data("lang");
-        if (lang && lang !== currentLang) {
+        if (lang) {
           logger.info('切換語言', lang);
-          setLanguage(lang);
+          setLanguage(lang, true);
         }
       });
       $("#aiSendBtn").on("click", function (e) { e.preventDefault(); sendAIPrompt(); });
@@ -3788,7 +3903,8 @@ var _orig_ready = $;
               '<button class="btn btn-sm btn-outline-danger dbman-del-saved-query" data-id="' + q.id + '"><i class="bx bx-x"></i></button></div>' +
               '<small class="text-muted" style="font-size:.65rem">' + escHtml(q.db_type) + '</small></div>';
           });
-          $('#dbmanSavedQueries').html(html || '<div class="text-muted p-2" style="font-size:.75rem">尚無儲存查詢</div>');
+          var lang = i18n[currentLang] || i18n.en;
+          $('#dbmanSavedQueries').html(html || '<div class="text-muted p-2" style="font-size:.75rem">' + escHtml(lang.dbmanNoSavedQueries || 'No saved queries') + '</div>');
         });
       }
       $(document).on('click', '#dbmanSaveQueryBtn', function () {
@@ -4239,19 +4355,13 @@ var _orig_ready = $;
       });
       // ─── ApiMan event handlers ───
       $(document).on('click', '#apimanCreateFirstWs', function () {
-        var name = prompt('請輸入工作區名稱:');
-        if (name && name.trim()) {
-          $.post(apimanUrl('/workspaces'), { name: name.trim() }, function (res) {
-            if (res.code === 0) { renderApiManTree(); layer.msg('工作區已建立', { icon: 1 }); }
-            else { layer.alert(res.msg); }
-          });
-        }
+        openApiManWorkspaceDialog();
       });
       $(document).on('click', '.apiman-del-ws', function () {
         var id = $(this).data('id');
         if (!confirm('確認刪除此工作區及所有內容？')) return;
         $.ajax({ url: apimanUrl('/workspaces/' + id), type: 'DELETE', dataType: 'json' })
-          .done(function (res) { if (res.code === 0) { renderApiManTree(); layer.msg('已刪除', { icon: 1 }); } });
+          .done(function (res) { if (res.code === 0) { refreshApiManWorkspaceLists(); layer.msg('已刪除', { icon: 1 }); } });
       });
       $(document).on('click', '.apiman-ws-item', function () {
         var wsId = $(this).data('ws-id');
@@ -4260,6 +4370,12 @@ var _orig_ready = $;
         renderApiManTreeForWs(wsId);
       });
       $(document).on('click', '.apiman-back-ws', function () { apimanCurrentWsId = null; renderApiManTree(); });
+      $(document).on('click', '.apiman-menu-ws-link', function (e) {
+        e.preventDefault();
+        var wsId = $(this).data('ws-id');
+        switchView('apiman');
+        renderApiManTreeForWs(wsId);
+      });
       // ─── ApiMan export/import ───
       $(document).on('click', '.apiman-export-ws', function () {
         var wsId = $(this).data('ws');
@@ -4289,7 +4405,7 @@ var _orig_ready = $;
           reader.onload = function (ev) {
             var data = ev.target.result;
             $.post('/apiman/workspaces/import', { data: data }, function (res) {
-              if (res.code === 0) { layer.msg('工作區已匯入', { icon: 1 }); renderApiManTree(); }
+              if (res.code === 0) { layer.msg('工作區已匯入', { icon: 1 }); refreshApiManWorkspaceLists(); }
               else { layer.alert(res.msg); }
             });
           };

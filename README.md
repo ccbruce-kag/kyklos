@@ -233,3 +233,5 @@ Apache License 2.0
 
 ## References
   [iptables-web](https://github.com/pretty66/iptables-web)
+  [rustcached](https://github.com/ketralnis/rustcached)
+  [rust-oauth2-server](https://github.com/kuwala-io/rust-oauth2-server)

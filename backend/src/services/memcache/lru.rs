@@ -1,10 +1,9 @@
 /// The LRU storage engine
-
 use std::cmp::Ord;
-use std::collections::HashMap;
 use std::collections::BTreeSet;
-use std::mem;
+use std::collections::HashMap;
 use std::hash::Hash;
+use std::mem;
 use std::sync::Arc;
 
 pub type Weight = usize;
@@ -53,18 +52,12 @@ impl<K: HasWeight + Ord + Hash + Clone, V: HasWeight> LruCache<K, V> {
         self.weight = 0;
     }
 
-    pub fn get_full_entry(&mut self,
-                          key: &K,
-                          now: Timestamp)
-                          -> Option<&LruEntry<K, V>> {
+    pub fn get_full_entry(&mut self, key: &K, now: Timestamp) -> Option<&LruEntry<K, V>> {
         let entry = self._get_full_entry(key, now);
         entry.map(|e| &*e)
     }
 
-    fn _get_full_entry(&mut self,
-                       key: &K,
-                       now: Timestamp) 
-                       -> Option<&mut LruEntry<K, V>> {
+    fn _get_full_entry(&mut self, key: &K, now: Timestamp) -> Option<&mut LruEntry<K, V>> {
         match self.map.get_mut(key) {
             None => Option::None,
 
@@ -107,12 +100,7 @@ impl<K: HasWeight + Ord + Hash + Clone, V: HasWeight> LruCache<K, V> {
         self.get_full_entry(key, now).map(|entry| &entry.data)
     }
 
-    pub fn set(&mut self,
-               key: K,
-               value: V,
-               expires: Option<Timestamp>,
-               now: Timestamp)
-               -> bool {
+    pub fn set(&mut self, key: K, value: V, expires: Option<Timestamp>, now: Timestamp) -> bool {
         if expired(expires, now) {
             // if it's already expired there's no need to store it
             return false;
@@ -172,11 +160,7 @@ impl<K: HasWeight + Ord + Hash + Clone, V: HasWeight> LruCache<K, V> {
         self.fast_get(key, now).is_some()
     }
 
-    pub fn touch(&mut self,
-                 key: &K,
-                 expires: Option<Timestamp>,
-                 now: Timestamp)
-                 -> bool {
+    pub fn touch(&mut self, key: &K, expires: Option<Timestamp>, now: Timestamp) -> bool {
         // update the timestamp and last-used field of a row without copying the
         // whole contents
         let (old_key, old_expires, old_used) = match self._get_full_entry(key, now) {
@@ -200,13 +184,14 @@ impl<K: HasWeight + Ord + Hash + Clone, V: HasWeight> LruCache<K, V> {
         true
     }
 
-    fn _touch(&mut self,
-              key: Arc<K>,
-              old_expires: Option<Timestamp>,
-              new_expires: Option<Timestamp>,
-              old_used: Timestamp,
-              now: Timestamp) {
-
+    fn _touch(
+        &mut self,
+        key: Arc<K>,
+        old_expires: Option<Timestamp>,
+        new_expires: Option<Timestamp>,
+        old_used: Timestamp,
+        now: Timestamp,
+    ) {
         if old_expires != new_expires {
             if let Some(old_expires_ts) = old_expires {
                 // if it expired before, we have to remove it
@@ -233,12 +218,12 @@ impl<K: HasWeight + Ord + Hash + Clone, V: HasWeight> LruCache<K, V> {
         let found = {
             match self.map.get(key) {
                 None => None,
-                Some(entry) => {
-                    Some(((*entry).key.clone(),
-                          (*entry).expires,
-                          (*entry).used,
-                          (*entry).weight))
-                }
+                Some(entry) => Some((
+                    (*entry).key.clone(),
+                    (*entry).expires,
+                    (*entry).used,
+                    (*entry).weight,
+                )),
             }
         };
 
@@ -348,9 +333,7 @@ fn _expired(timestamp: Timestamp, now: Timestamp) -> bool {
     timestamp < now
 }
 
-pub fn compute_weight<K: HasWeight, V: HasWeight>(key: &K,
-                                                  value: &V)
-                                                  -> Weight {
+pub fn compute_weight<K: HasWeight, V: HasWeight>(key: &K, value: &V) -> Weight {
     // this isn't perfect because it ignores some hashtable and btreeset
     // overhead, but it's a pretty good guess at the memory usage of an entry
     let mut sum = 0;
@@ -460,7 +443,6 @@ mod tests {
 
         assert!(!store.contains(&b("foo1"), NOW));
     }
-
 
     fn make_store() -> LruCache<Vec<u8>, Vec<u8>> {
         let store = LruCache::new(CAPACITY);

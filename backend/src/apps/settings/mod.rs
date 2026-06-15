@@ -10,7 +10,9 @@ pub fn hash_password(password: &str, salt: &str) -> String {
 
 pub fn verify_password(password: &str, stored: &str) -> bool {
     let parts: Vec<&str> = stored.splitn(2, '$').collect();
-    if parts.len() != 2 { return false; }
+    if parts.len() != 2 {
+        return false;
+    }
     let salt = parts[0];
     let expected = hash_password(password, salt);
     expected == stored
@@ -155,7 +157,9 @@ pub struct SystemSettingInput {
 }
 
 pub fn mask_secret(value: &str) -> String {
-    if value.is_empty() { return String::new(); }
+    if value.is_empty() {
+        return String::new();
+    }
     let visible = value.chars().take(2).collect::<String>();
     let len = value.chars().count();
     format!("{}{}", visible, "*".repeat(len.min(8)))

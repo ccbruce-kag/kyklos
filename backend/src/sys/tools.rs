@@ -9,9 +9,17 @@ async fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
         .map_err(|e| format!("exec {} failed: {}", cmd, e))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let combined = if stdout.trim().is_empty() { stderr } else { stdout };
+    let combined = if stdout.trim().is_empty() {
+        stderr
+    } else {
+        stdout
+    };
     if combined.trim().is_empty() && !output.status.success() {
-        return Err(format!("{} exited with code {}", cmd, output.status.code().unwrap_or(-1)));
+        return Err(format!(
+            "{} exited with code {}",
+            cmd,
+            output.status.code().unwrap_or(-1)
+        ));
     }
     Ok(combined)
 }
@@ -36,7 +44,8 @@ pub async fn lsof(port: Option<u16>, _process: Option<&str>, protocol: Option<&s
     let platform = std::env::consts::OS;
     match platform {
         "windows" => {
-            let mut args: Vec<&str> = vec!["-NoProfile", "Get-NetConnection", "-State", "Established"];
+            let mut args: Vec<&str> =
+                vec!["-NoProfile", "Get-NetConnection", "-State", "Established"];
             let port_s = port.map(|p| p.to_string());
             if let Some(ref ps) = port_s {
                 args.push("-LocalPort");
@@ -91,7 +100,10 @@ pub async fn nslookup(domain: &str, dns_server: Option<&str>) -> Value {
 }
 
 pub async fn ip_location(ip: &str) -> Value {
-    let url = format!("http://ip-api.com/json/{}?fields=status,message,country,regionName,city,isp,org,as,query", ip);
+    let url = format!(
+        "http://ip-api.com/json/{}?fields=status,message,country,regionName,city,isp,org,as,query",
+        ip
+    );
     let output = Command::new("curl")
         .args(["-s", "-m", "10", &url])
         .output()
@@ -127,9 +139,27 @@ pub async fn ping_classc(network: &str, count: u32, timeout_secs: u32) -> Value 
             let start = std::time::Instant::now();
             let platform = std::env::consts::OS;
             let args: Vec<String> = match platform {
-                "windows" => vec!["-n".to_string(), "1".to_string(), "-w".to_string(), "3000".to_string(), ip.clone()],
-                "macos" => vec!["-c".to_string(), "1".to_string(), "-t".to_string(), "3".to_string(), ip.clone()],
-                _ => vec!["-c".to_string(), "1".to_string(), "-W".to_string(), "3".to_string(), ip.clone()],
+                "windows" => vec![
+                    "-n".to_string(),
+                    "1".to_string(),
+                    "-w".to_string(),
+                    "3000".to_string(),
+                    ip.clone(),
+                ],
+                "macos" => vec![
+                    "-c".to_string(),
+                    "1".to_string(),
+                    "-t".to_string(),
+                    "3".to_string(),
+                    ip.clone(),
+                ],
+                _ => vec![
+                    "-c".to_string(),
+                    "1".to_string(),
+                    "-W".to_string(),
+                    "3".to_string(),
+                    ip.clone(),
+                ],
             };
             let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
             let reachable = tokio::process::Command::new("ping")

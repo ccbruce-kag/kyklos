@@ -1,6 +1,10 @@
     // ─── HAProxy ───
     var haproxyBase = null;
     var haproxyBaseCandidates = ['/haproxy', '/api/haproxy', 'haproxy', 'api/haproxy'];
+    var haproxyEditState = { web: null, sql: null };
+    var haproxySavedItems = {};
+    var haproxySavedServers = {};
+    var haproxyLbModalInstance = null;
     function haproxyUrl(path) { return haproxyBase + path; }
     function detectHaproxyApi(done) {
       if (haproxyBase) { if (done) done(); return; }
@@ -66,21 +70,166 @@
     }
     function haproxyFormData(kind) {
       if (kind === 'web') {
-        return {
+        var webData = {
           name: $('#haproxyWebName').val().trim(),
           bind_port: $('#haproxyWebPort').val(),
           balance_method: $('#haproxyWebBalance').val(),
           health_check_path: $('#haproxyWebHealthPath').val().trim(),
           servers: JSON.stringify(collectHaproxyServers('#haproxyWebServers'))
         };
+        if (haproxyEditState.web) webData.id = haproxyEditState.web.id;
+        return webData;
       }
-      return {
+      var sqlData = {
         name: $('#haproxySqlName').val().trim(),
         bind_port: $('#haproxySqlPort').val(),
         balance_method: $('#haproxySqlBalance').val(),
         health_check: $('#haproxySqlHealth').is(':checked') ? '1' : '0',
         servers: JSON.stringify(collectHaproxyServers('#haproxySqlServers'))
       };
+      if (haproxyEditState.sql) sqlData.id = haproxyEditState.sql.id;
+      return sqlData;
+    }
+    function updateHaproxyEditHint(kind) {
+      var state = haproxyEditState[kind];
+      var box = kind === 'web' ? $('#haproxyWebEditHint') : $('#haproxySqlEditHint');
+      if (!box.length) return;
+      if (!state) {
+        box.addClass('d-none').empty();
+        return;
+      }
+      box.removeClass('d-none').html(
+        '<span><i class="bx bx-edit-alt me-1"></i>正在編輯已儲存設定：<code>' + escHtml(state.name) + '</code> (id=' + escHtml(state.id) + ')</span>' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary haproxy-clear-edit" data-kind="' + escHtml(kind) + '">切回新增模式</button>'
+      );
+    }
+    function setHaproxyEditState(kind, item) {
+      haproxyEditState[kind] = item ? { id: item.id, name: item.name || '' } : null;
+      updateHaproxyEditHint(kind);
+    }
+    function resetHaproxyForm(kind) {
+      setHaproxyEditState(kind, null);
+      if (kind === 'web') {
+        $('#haproxyWebName').val('web');
+        $('#haproxyWebPort').val(80);
+        $('#haproxyWebBalance').val('roundrobin');
+        $('#haproxyWebHealthPath').val('/');
+        $('#haproxyWebPreview').text('');
+        $('#haproxyWebServers tbody').empty()
+          .append(haproxyServerRow('web', { name: 'web1', ip: '192.168.1.10', port: 80 }))
+          .append(haproxyServerRow('web', { name: 'web2', ip: '192.168.1.11', port: 80 }));
+      } else {
+        $('#haproxySqlName').val('msql');
+        $('#haproxySqlPort').val(1433);
+        $('#haproxySqlBalance').val('source');
+        $('#haproxySqlHealth').prop('checked', true);
+        $('#haproxySqlPreview').text('');
+        $('#haproxySqlServers tbody').empty()
+          .append(haproxyServerRow('sql', { name: 'sql_node1', ip: '10.0.0.10', port: 1433 }))
+          .append(haproxyServerRow('sql', { name: 'sql_node2', ip: '10.0.0.11', port: 1433 }));
+      }
+    }
+    function closeHaproxyLbDialog() {
+      var el = document.getElementById('haproxyLbModal');
+      if (!el || !window.bootstrap || !bootstrap.Modal) return;
+      var inst = bootstrap.Modal.getInstance(el);
+      if (inst) inst.hide();
+    }
+    function openHaproxyLbDialog(kind) {
+      kind = kind === 'sql' ? 'sql' : 'web';
+      var pane = kind === 'web' ? $('#haproxyWebPane') : $('#haproxySqlPane');
+      var title = kind === 'web' ? 'Web 負載平衡' : 'SQL Server 負載平衡';
+      var icon = kind === 'web' ? 'bx-world' : 'bx-data';
+      var modalEl = document.getElementById('haproxyLbModal');
+      if (!modalEl || !pane.length || !window.bootstrap || !bootstrap.Modal) return;
+      $('#haproxyLbModalTitle').html('<i class="bx ' + icon + ' me-1"></i>' + title);
+      $('#haproxyLbModalBody').empty().append(pane);
+      pane.removeClass('d-none').show();
+      $('#haproxyLbModal').off('hidden.bs.modal.haproxy').one('hidden.bs.modal.haproxy', function () {
+        $('#haproxyHiddenPaneStore').append(pane);
+        pane.addClass('d-none').hide();
+        $('#haproxyLbModalBody').empty();
+      });
+      haproxyLbModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: 'static', keyboard: true });
+      haproxyLbModalInstance.show();
+    }
+    function openHaproxyTypePicker() {
+      var html = '<div class="haproxy-type-picker">' +
+        '<button type="button" class="haproxy-type-option haproxy-new-kind" data-kind="web">' +
+          '<i class="bx bx-world"></i><span><span class="haproxy-type-title">Web 負載平衡</span><span class="haproxy-type-desc d-block">HTTP frontend / backend，支援 Health Check Path。</span></span>' +
+        '</button>' +
+        '<button type="button" class="haproxy-type-option haproxy-new-kind" data-kind="sql">' +
+          '<i class="bx bx-data"></i><span><span class="haproxy-type-title">SQL Server 負載平衡</span><span class="haproxy-type-desc d-block">TCP mode，適合 SQL Server 1433。</span></span>' +
+        '</button>' +
+      '</div>';
+      layer.open({
+        title: '新增 HAProxy 負載平衡',
+        content: html,
+        area: ['620px', 'auto'],
+        btn: []
+      });
+    }
+    function loadHaproxyIntoForm(item) {
+      var kind = item.lb_type === 'sql' ? 'sql' : 'web';
+      setHaproxyEditState(kind, item);
+      if (kind === 'web') {
+        $('#haproxyWebName').val(item.name || 'web');
+        $('#haproxyWebPort').val(item.bind_port || 80);
+        $('#haproxyWebBalance').val(item.balance_method || 'roundrobin');
+        $('#haproxyWebHealthPath').val(item.health_check_path || '/');
+        $('#haproxyWebServers tbody').empty();
+        (item.servers || []).forEach(function (server) { $('#haproxyWebServers tbody').append(haproxyServerRow('web', server)); });
+        $('#haproxyWebPreview').text('');
+      } else {
+        $('#haproxySqlName').val(item.name || 'msql');
+        $('#haproxySqlPort').val(item.bind_port || 1433);
+        $('#haproxySqlBalance').val(item.balance_method || 'source');
+        $('#haproxySqlHealth').prop('checked', item.health_check !== false);
+        $('#haproxySqlServers tbody').empty();
+        (item.servers || []).forEach(function (server) { $('#haproxySqlServers tbody').append(haproxyServerRow('sql', server)); });
+        $('#haproxySqlPreview').text('');
+      }
+      openHaproxyLbDialog(kind);
+      logger.info('載入 HAProxy 負載平衡設定進入編輯模式', 'id=' + item.id + ', type=' + kind + ', name=' + (item.name || ''));
+    }
+    function openHaproxyBackendEditor(id) {
+      var saved = haproxySavedServers[String(id)];
+      if (!saved || !saved.server) {
+        layer.msg('找不到已儲存的 Backend Server，請先重新整理', { icon: 2 });
+        return;
+      }
+      var server = saved.server;
+      var lb = saved.lb || {};
+      var enabled = server.health_check !== false;
+      var html = '<div class="haproxy-backend-editor">' +
+        '<div class="mb-2 text-muted">Frontend：<code>' + escHtml(lb.name || '') + '</code> / ' + escHtml(lb.lb_type || '') + '</div>' +
+        '<div class="row g-3">' +
+          '<div class="col-12 col-md-4"><label class="form-label">Backend Name</label><input id="haproxyBackendEditName" class="form-control font-monospace" value="' + escHtml(server.name || '') + '"></div>' +
+          '<div class="col-12 col-md-5"><label class="form-label">IP Address</label><input id="haproxyBackendEditIp" class="form-control font-monospace" value="' + escHtml(server.ip || '') + '"></div>' +
+          '<div class="col-12 col-md-3"><label class="form-label">Port</label><input id="haproxyBackendEditPort" type="number" min="1" max="65535" class="form-control font-monospace" value="' + escHtml(server.port || '') + '"></div>' +
+          '<div class="col-12"><label class="form-check form-switch haproxy-status-switch' + (enabled ? '' : ' is-off') + '"><input id="haproxyBackendEditEnabled" class="form-check-input haproxy-server-health-toggle" type="checkbox"' + (enabled ? ' checked' : '') + '><span class="form-check-label">' + (enabled ? '啟用' : '停用') + '</span></label></div>' +
+        '</div>' +
+      '</div>';
+      layer.open({
+        title: '編輯 Backend Server',
+        content: html,
+        area: ['680px', 'auto'],
+        btn: ['儲存並套用', '取消'],
+        yes: function (index) {
+          var data = {
+            name: $('#haproxyBackendEditName').val().trim(),
+            ip: $('#haproxyBackendEditIp').val().trim(),
+            port: $('#haproxyBackendEditPort').val(),
+            enabled: $('#haproxyBackendEditEnabled').is(':checked') ? '1' : '0'
+          };
+          haproxyPost('/backend-servers/' + encodeURIComponent(id), data, function () {
+            layer.close(index);
+            loadHaproxySaved();
+            loadHaproxyStatus();
+            layer.msg('Backend Server 已更新並重新套用', { icon: 1 });
+          });
+        }
+      });
     }
     function loadHaproxyStatus() {
       var lang = i18n[currentLang];
@@ -93,14 +242,16 @@
           var valid = d.config_valid ? 'OK' : 'Failed';
           var refreshedAt = new Date().toLocaleString();
           $('#haproxyStatusBody').html(
-            '<div class="row">' +
-              '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + (lang.haproxyInstalled || 'Installed') + '</div><div class="haproxy-status-value">' + escHtml(installed) + '</div></div>' +
-              '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + (lang.haproxyService || 'Service Status') + '</div><div class="haproxy-status-value">' + escHtml(d.service_status || 'unknown') + '</div></div>' +
-              '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + (lang.haproxyConfigValid || 'Config Valid') + '</div><div class="haproxy-status-value">' + escHtml(valid) + '</div></div>' +
-              '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + (lang.haproxyConfigPath || 'Config Path') + '</div><div class="haproxy-status-value" style="font-size:.875rem">' + escHtml(d.config_path || '') + '</div></div>' +
-              '<div class="col-12 mb-2"><div class="sys-card-label">' + (lang.haproxyVersion || 'Version') + '</div><pre class="modal-pre mb-0">' + escHtml(d.version || '') + '</pre></div>' +
-              '<div class="col-12"><div class="sys-card-label">Validation</div><pre class="modal-pre mb-0">' + escHtml(d.validation_output || '') + '</pre></div>' +
-              '<div class="col-12 mt-2 text-end text-muted" style="font-size:.75rem">Updated: ' + escHtml(refreshedAt) + '</div>' +
+            '<div class="haproxy-status-layout">' +
+              '<div class="haproxy-status-summary">' +
+                '<div><div class="sys-card-label">' + (lang.haproxyInstalled || 'Installed') + '</div><div class="haproxy-status-value">' + escHtml(installed) + '</div></div>' +
+                '<div><div class="sys-card-label">' + (lang.haproxyService || 'Service Status') + '</div><div class="haproxy-status-value">' + escHtml(d.service_status || 'unknown') + '</div></div>' +
+                '<div><div class="sys-card-label">' + (lang.haproxyConfigValid || 'Config Valid') + '</div><div class="haproxy-status-value">' + escHtml(valid) + '</div></div>' +
+                '<div><div class="sys-card-label">' + (lang.haproxyConfigPath || 'Config Path') + '</div><div class="haproxy-status-value haproxy-status-path">' + escHtml(d.config_path || '') + '</div></div>' +
+              '</div>' +
+              '<div class="haproxy-status-block"><div class="sys-card-label mb-1">' + (lang.haproxyVersion || 'Version') + '</div><pre class="haproxy-status-pre mb-0">' + escHtml(d.version || '') + '</pre></div>' +
+              '<div class="haproxy-status-block"><div class="sys-card-label mb-1">Validation</div><pre class="haproxy-status-pre mb-0">' + escHtml(d.validation_output || '') + '</pre></div>' +
+              '<div class="text-end text-muted" style="font-size:.75rem">Updated: ' + escHtml(refreshedAt) + '</div>' +
             '</div>'
           );
           logger.debug('HAProxy 狀態已載入', d.service_status || '');
@@ -126,39 +277,62 @@
           if (res.code !== 0) { $('#haproxySavedBody').html('<div class="text-danger">' + escHtml(res.msg) + '</div>'); return; }
           var items = res.data || [];
           if (!items.length) {
+            haproxySavedItems = {};
+            haproxySavedServers = {};
             $('#haproxySavedBody').html('<div class="text-muted">尚未儲存 HAProxy 負載平衡設定</div>');
             return;
           }
-          var rows = items.map(function (item) {
-            var servers = (item.servers || []).map(function (server) {
-              var serverEnabled = server.health_check !== false;
-              var serverStatusText = serverEnabled ? '啟用' : '停用';
-              var serverStatusClass = serverEnabled ? '' : ' is-off';
-              return '<div class="haproxy-saved-server">' +
-                '<span class="haproxy-saved-server-main">' + escHtml(server.name || '') + ' ' + escHtml(server.ip || '') + ':' + escHtml(server.port || '') + '</span>' +
-                '<label class="form-check form-switch haproxy-status-switch is-static' + serverStatusClass + '">' +
-                  '<input type="checkbox" class="form-check-input" tabindex="-1"' + (serverEnabled ? ' checked' : '') + '>' +
-                  '<span class="form-check-label">' + serverStatusText + '</span>' +
-                '</label>' +
-              '</div>';
-            }).join('');
+          haproxySavedItems = {};
+          haproxySavedServers = {};
+          var rows = [];
+          items.forEach(function (item) {
+            haproxySavedItems[String(item.id)] = item;
             var enabled = item.enabled !== false;
             var statusText = enabled ? '啟用' : '停用';
             var statusClass = enabled ? '' : ' is-off';
-            return '<tr>' +
-              '<td><span class="badge bg-label-primary">' + escHtml(item.lb_type || '') + '</span></td>' +
-              '<td class="font-monospace">' + escHtml(item.name || '') + '</td>' +
-              '<td class="font-monospace">' + escHtml(item.bind_port || '') + '</td>' +
-              '<td class="font-monospace">' + escHtml(item.balance_method || '') + '</td>' +
-              '<td><label class="form-check form-switch haproxy-status-switch' + statusClass + '"><input type="checkbox" class="form-check-input haproxy-toggle-lb" data-id="' + escHtml(item.id) + '" data-enabled="' + (enabled ? '1' : '0') + '"' + (enabled ? ' checked' : '') + '><span class="form-check-label">' + statusText + '</span></label></td>' +
-              '<td class="font-monospace">' + servers + '</td>' +
-              '<td><button type="button" class="btn btn-sm btn-outline-danger haproxy-delete-lb" data-id="' + escHtml(item.id) + '"><i class="bx bx-trash me-1"></i>刪除</button></td>' +
-            '</tr>';
-          }).join('');
+            var servers = item.servers || [];
+            if (!servers.length) {
+              rows.push('<tr>' +
+                '<td><span class="badge bg-label-primary">' + escHtml(item.lb_type || '') + '</span></td>' +
+                '<td class="font-monospace">' + escHtml(item.name || '') + '</td>' +
+                '<td class="font-monospace">' + escHtml(item.bind_port || '') + '</td>' +
+                '<td class="font-monospace">' + escHtml(item.balance_method || '') + '</td>' +
+                '<td><label class="form-check form-switch haproxy-status-switch' + statusClass + '"><input type="checkbox" class="form-check-input haproxy-toggle-lb" data-id="' + escHtml(item.id) + '" data-enabled="' + (enabled ? '1' : '0') + '"' + (enabled ? ' checked' : '') + '><span class="form-check-label">' + statusText + '</span></label></td>' +
+                '<td colspan="4" class="text-muted">此負載平衡尚無 Backend Server</td>' +
+                '<td><div class="btn-group btn-group-sm haproxy-saved-actions">' +
+                  '<button type="button" class="btn btn-outline-primary haproxy-edit-lb" data-id="' + escHtml(item.id) + '"><i class="bx bx-edit-alt me-1"></i>編輯群組</button>' +
+                  '<button type="button" class="btn btn-outline-danger haproxy-delete-lb" data-id="' + escHtml(item.id) + '"><i class="bx bx-trash me-1"></i>刪除群組</button>' +
+                '</div></td>' +
+              '</tr>');
+              return;
+            }
+            servers.forEach(function (server) {
+              haproxySavedServers[String(server.id)] = { lb: item, server: server };
+              var serverEnabled = server.health_check !== false;
+              var serverStatusText = serverEnabled ? '啟用' : '停用';
+              var serverStatusClass = serverEnabled ? '' : ' is-off';
+              rows.push('<tr>' +
+                '<td><span class="badge bg-label-primary">' + escHtml(item.lb_type || '') + '</span></td>' +
+                '<td class="font-monospace">' + escHtml(item.name || '') + '</td>' +
+                '<td class="font-monospace">' + escHtml(item.bind_port || '') + '</td>' +
+                '<td class="font-monospace">' + escHtml(item.balance_method || '') + '</td>' +
+                '<td><label class="form-check form-switch haproxy-status-switch' + statusClass + '"><input type="checkbox" class="form-check-input haproxy-toggle-lb" data-id="' + escHtml(item.id) + '" data-enabled="' + (enabled ? '1' : '0') + '"' + (enabled ? ' checked' : '') + '><span class="form-check-label">' + statusText + '</span></label></td>' +
+                '<td class="font-monospace">' + escHtml(server.name || '') + '</td>' +
+                '<td class="font-monospace">' + escHtml(server.ip || '') + ':' + escHtml(server.port || '') + '</td>' +
+                '<td><label class="form-check form-switch haproxy-status-switch' + serverStatusClass + '"><input type="checkbox" class="form-check-input haproxy-toggle-backend" data-id="' + escHtml(server.id) + '" data-enabled="' + (serverEnabled ? '1' : '0') + '"' + (serverEnabled ? ' checked' : '') + '><span class="form-check-label">' + serverStatusText + '</span></label></td>' +
+                '<td class="font-monospace text-muted">' + escHtml(item.updated_at || '') + '</td>' +
+                '<td><div class="btn-group btn-group-sm haproxy-saved-actions">' +
+                  '<button type="button" class="btn btn-outline-primary haproxy-edit-backend" data-id="' + escHtml(server.id) + '"><i class="bx bx-edit-alt me-1"></i>編輯</button>' +
+                  '<button type="button" class="btn btn-outline-secondary haproxy-edit-lb" data-id="' + escHtml(item.id) + '"><i class="bx bx-cog me-1"></i>群組</button>' +
+                  '<button type="button" class="btn btn-outline-danger haproxy-delete-backend" data-id="' + escHtml(server.id) + '"><i class="bx bx-trash me-1"></i>刪除</button>' +
+                '</div></td>' +
+              '</tr>');
+            });
+          });
           $('#haproxySavedBody').html(
             '<div class="table-responsive"><table class="table table-sm mb-0">' +
-            '<thead><tr><th>Type</th><th>Name</th><th>Port</th><th>Balance</th><th>LB Status</th><th>Backend Servers</th><th></th></tr></thead>' +
-            '<tbody>' + rows + '</tbody></table></div>'
+            '<thead><tr><th>Type</th><th>Frontend</th><th>Port</th><th>Balance</th><th>LB Status</th><th>Backend Name</th><th>Target</th><th>Status</th><th>Updated</th><th></th></tr></thead>' +
+            '<tbody>' + rows.join('') + '</tbody></table></div>'
           );
         }, 'json').fail(function (xhr, textStatus, errorThrown) {
           $('#haproxySavedBody').html('<div class="text-danger">' + escHtml(juniperAjaxError(xhr, textStatus, errorThrown)) + '</div>');
@@ -223,6 +397,7 @@
           var data = haproxyFormData(kind);
           data.apply = '1';
           haproxyPost(kind === 'web' ? '/web' : '/sql', data, function (res) {
+            closeHaproxyLbDialog();
             layer.open({
               title: lang.haproxyApplied || 'HAProxy config applied',
               content: '<pre class="modal-pre">' + escHtml(JSON.stringify(res.data || {}, null, 2)) + '</pre>',
@@ -348,6 +523,14 @@
       });
     }
     $(document).on('click', '#haproxyStatusRefresh', function () { refreshHaproxyPage(this); });
+    $(document).on('click', '#haproxyAddLbBtn', function () { openHaproxyTypePicker(); });
+    $(document).on('click', '.haproxy-new-kind', function () {
+      var kind = $(this).data('kind') === 'sql' ? 'sql' : 'web';
+      _hideModal();
+      resetHaproxyForm(kind);
+      setTimeout(function () { openHaproxyLbDialog(kind); }, 120);
+      logger.info('新增 HAProxy 負載平衡設定', kind);
+    });
     $(document).on('click', '#haproxySavedRefresh', function () {
       var btn = $(this);
       var original = btn.html();
@@ -387,6 +570,23 @@
     });
     $(document).on('click', '#haproxySqlAddServer', function () {
       $('#haproxySqlServers tbody').append(haproxyServerRow('sql', { name: 'sql_node' + ($('#haproxySqlServers tbody tr').length + 1), port: 1433 }));
+    });
+    $(document).on('click', '.haproxy-edit-lb', function () {
+      var id = String($(this).data('id') || '');
+      var item = haproxySavedItems[id];
+      if (!item) {
+        layer.msg('找不到已儲存的 HAProxy 設定，請先重新整理', { icon: 2 });
+        return;
+      }
+      loadHaproxyIntoForm(item);
+    });
+    $(document).on('click', '.haproxy-edit-backend', function () {
+      openHaproxyBackendEditor($(this).data('id'));
+    });
+    $(document).on('click', '.haproxy-clear-edit', function () {
+      var kind = $(this).data('kind') === 'sql' ? 'sql' : 'web';
+      setHaproxyEditState(kind, null);
+      logger.info('HAProxy 表單切回新增模式', kind);
     });
     $(document).on('click', '.haproxy-remove-server', function () { $(this).closest('tr').remove(); });
     $(document).on('click', '.haproxy-test-backend', function () {
@@ -435,12 +635,64 @@
             showHaproxyError(res.msg);
             return;
           }
+          if (haproxyEditState.web && String(haproxyEditState.web.id) === String(id)) setHaproxyEditState('web', null);
+          if (haproxyEditState.sql && String(haproxyEditState.sql.id) === String(id)) setHaproxyEditState('sql', null);
           loadHaproxySaved();
           loadHaproxyStatus();
           showHaproxyToast(enabled, 'id=' + id + ', reload=success');
         }, 'json').fail(function (xhr, textStatus, errorThrown) {
           setHaproxySwitchState(toggle, !enabled);
           toggle.closest('.haproxy-status-switch').removeClass('is-busy');
+          showHaproxyError(juniperAjaxError(xhr, textStatus, errorThrown));
+        });
+      });
+    });
+    $(document).on('change', '.haproxy-toggle-backend', function () {
+      var toggle = $(this);
+      var id = toggle.data('id');
+      var enabled = toggle.is(':checked');
+      toggle.closest('.haproxy-status-switch').addClass('is-busy');
+      logger.info('切換 HAProxy Backend Server 狀態', 'id=' + id + ', enabled=' + enabled);
+      detectHaproxyApi(function () {
+        $.post(haproxyUrl('/backend-servers/' + encodeURIComponent(id) + '/enabled'), { enabled: enabled ? '1' : '0' }, function (res) {
+          logger.debug('HAProxy Backend 狀態切換 API 回應', JSON.stringify(res));
+          if (res.code !== 0) {
+            setHaproxySwitchState(toggle, !enabled);
+            toggle.closest('.haproxy-status-switch').removeClass('is-busy');
+            showHaproxyError(res.msg);
+            return;
+          }
+          loadHaproxySaved();
+          loadHaproxyStatus();
+          showHaproxyToast(enabled, 'backend_id=' + id + ', reload=success');
+        }, 'json').fail(function (xhr, textStatus, errorThrown) {
+          setHaproxySwitchState(toggle, !enabled);
+          toggle.closest('.haproxy-status-switch').removeClass('is-busy');
+          showHaproxyError(juniperAjaxError(xhr, textStatus, errorThrown));
+        });
+      });
+    });
+    $(document).on('click', '.haproxy-delete-backend', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var id = $(this).data('id');
+      var btn = $(this);
+      logger.info('按下 HAProxy Backend 刪除按鈕', 'id=' + id);
+      if (!window.confirm('確認刪除這台 Backend Server 並重新套用？若這是最後一台，會一併移除空的 frontend 群組。')) return;
+      btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>刪除中');
+      detectHaproxyApi(function () {
+        $.post(haproxyUrl('/backend-servers/' + encodeURIComponent(id) + '/delete'), {}, function (res) {
+          logger.debug('HAProxy Backend 刪除 API 回應', JSON.stringify(res));
+          if (res.code !== 0) {
+            btn.prop('disabled', false).html('<i class="bx bx-trash me-1"></i>刪除');
+            showHaproxyError(res.msg);
+            return;
+          }
+          loadHaproxySaved();
+          loadHaproxyStatus();
+          layer.msg('Backend Server 已刪除並重新套用 HAProxy 設定', { icon: 1 });
+        }, 'json').fail(function (xhr, textStatus, errorThrown) {
+          btn.prop('disabled', false).html('<i class="bx bx-trash me-1"></i>刪除');
           showHaproxyError(juniperAjaxError(xhr, textStatus, errorThrown));
         });
       });
@@ -462,6 +714,8 @@
             showHaproxyError(res.msg);
             return;
           }
+          if (haproxyEditState.web && String(haproxyEditState.web.id) === String(id)) setHaproxyEditState('web', null);
+          if (haproxyEditState.sql && String(haproxyEditState.sql.id) === String(id)) setHaproxyEditState('sql', null);
           loadHaproxySaved();
           loadHaproxyStatus();
           layer.msg('已刪除並重新套用 HAProxy 設定', { icon: 1 });

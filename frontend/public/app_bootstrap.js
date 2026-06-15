@@ -75,14 +75,41 @@ var _orig_ready = $;
         });
       }
     };
+    function _cleanupModalState() {
+      $('.modal-backdrop').remove();
+      $('body').removeClass('modal-open').css({ overflow: '', paddingRight: '' });
+      $('#commonModal').removeClass('show').removeAttr('aria-modal').attr('aria-hidden', 'true').hide();
+      $('.modal-dialog').css({ maxWidth: '', width: '' });
+    }
     function _showModal() {
       const el = document.getElementById('commonModal');
       if (!el || !window.bootstrap || !bootstrap.Modal) return;
-      if (modalInstance) modalInstance.dispose();
+      if (modalInstance) {
+        try { modalInstance.hide(); } catch (_e) {}
+        try { modalInstance.dispose(); } catch (_e) {}
+        modalInstance = null;
+      }
+      _cleanupModalState();
       modalInstance = new bootstrap.Modal(el, { backdrop: true, keyboard: true, focus: true });
+      el.addEventListener('hidden.bs.modal', _cleanupModalState, { once: true });
       modalInstance.show();
     }
-    function _hideModal() { if (modalInstance) { modalInstance.hide(); modalInstance.dispose(); modalInstance = null; } }
+    function _hideModal() {
+      const el = document.getElementById('commonModal');
+      if (modalInstance) {
+        try { modalInstance.hide(); } catch (_e) {}
+        try { modalInstance.dispose(); } catch (_e) {}
+        modalInstance = null;
+      }
+      if (el && window.bootstrap && bootstrap.Modal) {
+        try {
+          const inst = bootstrap.Modal.getInstance(el);
+          if (inst) inst.dispose();
+        } catch (_e) {}
+      }
+      setTimeout(_cleanupModalState, 80);
+    }
+    window.fwmCleanupModalState = _cleanupModalState;
   
   
     // ─── Application Logic ───

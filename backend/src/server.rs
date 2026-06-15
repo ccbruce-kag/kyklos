@@ -1,5 +1,8 @@
 use crate::ai;
-use crate::apps::apiman::{ApiManContentInput, ApiManFormInput, ApiManNodeInput, ApiManReportInput, ApiManRequestInput, ApiManWireframeInput, ApiManWorkspaceInput};
+use crate::apps::apiman::{
+    ApiManContentInput, ApiManFormInput, ApiManNodeInput, ApiManReportInput, ApiManRequestInput,
+    ApiManWireframeInput, ApiManWorkspaceInput,
+};
 use crate::apps::dbman::{DbConnectionInput, ErdDiagramInput};
 use crate::apps::network::NetworkArchitectureInput;
 use crate::apps::settings::{
@@ -134,6 +137,7 @@ pub struct HaproxyConfigForm {
 
 #[derive(Deserialize)]
 pub struct HaproxyLbForm {
+    pub id: Option<i64>,
     pub name: Option<String>,
     pub bind_port: Option<u16>,
     pub balance_method: Option<String>,
@@ -146,6 +150,15 @@ pub struct HaproxyLbForm {
 #[derive(Deserialize)]
 pub struct HaproxyEnabledForm {
     pub enabled: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct HaproxyBackendServerForm {
+    pub name: Option<String>,
+    pub ip: Option<String>,
+    pub port: Option<u16>,
+    pub enabled: Option<String>,
+    pub health_check: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -721,6 +734,7 @@ async fn handle_haproxy_web(
                 return utils::output(None, Some(serde_json::to_value(data).unwrap_or_default()));
             }
             let update = HaproxyLoadBalancerUpdate {
+                id: form.id,
                 lb_type: "web".to_string(),
                 enabled: true,
                 name: name.to_string(),
@@ -766,6 +780,7 @@ async fn handle_haproxy_sql(
                 return utils::output(None, Some(serde_json::to_value(data).unwrap_or_default()));
             }
             let update = HaproxyLoadBalancerUpdate {
+                id: form.id,
                 lb_type: "sql".to_string(),
                 enabled: true,
                 name: name.to_string(),
@@ -840,6 +855,63 @@ async fn handle_haproxy_set_enabled(
             Err(e) => utils::output(Some(&e), None),
         },
         Ok(false) => utils::output(Some("HAProxy load balancer not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_update_backend_server(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<HaproxyBackendServerForm>,
+) -> Json<Value> {
+    let enabled = form
+        .enabled
+        .as_deref()
+        .or(form.health_check.as_deref())
+        .map(|value| parse_form_bool(Some(value)))
+        .unwrap_or(true);
+    let update = HaproxyBackendServerUpdate {
+        name: form.name.unwrap_or_default(),
+        ip: form.ip.unwrap_or_default(),
+        port: form.port.unwrap_or(0),
+        health_check: Some(enabled),
+    };
+    match state.db.update_haproxy_backend_server(id, update) {
+        Ok(true) => match apply_saved_haproxy_config(&state).await {
+            Ok(value) => utils::output(None, Some(value)),
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("HAProxy backend server not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_set_backend_server_enabled(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<HaproxyEnabledForm>,
+) -> Json<Value> {
+    let enabled = parse_form_bool(form.enabled.as_deref());
+    match state.db.set_haproxy_backend_server_enabled(id, enabled) {
+        Ok(true) => match apply_saved_haproxy_config(&state).await {
+            Ok(value) => utils::output(None, Some(value)),
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("HAProxy backend server not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_haproxy_delete_backend_server(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    match state.db.delete_haproxy_backend_server(id) {
+        Ok(true) => match apply_saved_haproxy_config(&state).await {
+            Ok(value) => utils::output(None, Some(value)),
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("HAProxy backend server not found"), None),
         Err(e) => utils::output(Some(&e), None),
     }
 }
@@ -2922,10 +2994,7 @@ async fn handle_erd_list(State(state): State<Arc<AppState>>) -> Json<Value> {
     }
 }
 
-async fn handle_erd_get(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> Json<Value> {
+async fn handle_erd_get(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
     match state.db.erd_diagram(id) {
         Ok(Some(item)) => utils::output(None, Some(json!({ "diagram": item }))),
         Ok(None) => utils::output(Some("erd diagram not found"), None),
@@ -2955,10 +3024,7 @@ async fn handle_erd_update(
     }
 }
 
-async fn handle_erd_delete(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> Json<Value> {
+async fn handle_erd_delete(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
     match state.db.delete_erd_diagram(id) {
         Ok(true) => utils::output(None, Some(json!({ "deleted": true }))),
         Ok(false) => utils::output(Some("erd diagram not found"), None),
@@ -3022,21 +3088,25 @@ async fn handle_erd_schema(
 
     let mut columns_map: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     for t in &tables {
-        let cols_result: Result<Vec<crate::apps::dbman::ColumnInfo>, String> = match db_type.as_str() {
-            "sqlite" => {
-                let path = file_path_opt.as_deref().unwrap_or("");
-                crate::apps::dbman::get_sqlite_columns(path, &t.name).await
-            }
-            _ => {
-                crate::apps::dbman::list_cli_columns(
-                    &db_type, host, port, username, pass, database, &t.name, trust_cert,
-                )
-                .await
-            }
-        };
+        let cols_result: Result<Vec<crate::apps::dbman::ColumnInfo>, String> =
+            match db_type.as_str() {
+                "sqlite" => {
+                    let path = file_path_opt.as_deref().unwrap_or("");
+                    crate::apps::dbman::get_sqlite_columns(path, &t.name).await
+                }
+                _ => {
+                    crate::apps::dbman::list_cli_columns(
+                        &db_type, host, port, username, pass, database, &t.name, trust_cert,
+                    )
+                    .await
+                }
+            };
         match cols_result {
             Ok(cols) => {
-                columns_map.insert(t.name.clone(), serde_json::to_value(&cols).unwrap_or_default());
+                columns_map.insert(
+                    t.name.clone(),
+                    serde_json::to_value(&cols).unwrap_or_default(),
+                );
             }
             Err(e) => {
                 columns_map.insert(t.name.clone(), json!({ "error": e }));
@@ -3067,10 +3137,7 @@ async fn handle_role_list(State(state): State<Arc<AppState>>) -> Json<Value> {
     }
 }
 
-async fn handle_role_get(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> Json<Value> {
+async fn handle_role_get(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
     match state.db.role(id) {
         Ok(Some(r)) => utils::output(None, Some(json!({ "role": r }))),
         Ok(None) => utils::output(Some("role not found"), None),
@@ -3120,10 +3187,7 @@ async fn handle_unit_list(State(state): State<Arc<AppState>>) -> Json<Value> {
     }
 }
 
-async fn handle_unit_get(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> Json<Value> {
+async fn handle_unit_get(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
     match state.db.unit(id) {
         Ok(Some(u)) => utils::output(None, Some(json!({ "unit": u }))),
         Ok(None) => utils::output(Some("unit not found"), None),
@@ -3173,10 +3237,7 @@ async fn handle_user_list(State(state): State<Arc<AppState>>) -> Json<Value> {
     }
 }
 
-async fn handle_user_get(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> Json<Value> {
+async fn handle_user_get(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
     match state.db.user(id) {
         Ok(Some(u)) => utils::output(None, Some(json!({ "user": u }))),
         Ok(None) => utils::output(Some("user not found"), None),
@@ -3794,7 +3855,10 @@ async fn handle_apiman_form_list(State(state): State<Arc<AppState>>) -> Json<Val
     }
 }
 
-async fn handle_apiman_form_get(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
+async fn handle_apiman_form_get(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
     match state.db.form(id) {
         Ok(Some(item)) => utils::output(None, Some(json!({ "form": item }))),
         Ok(None) => utils::output(Some("form not found"), None),
@@ -3802,16 +3866,37 @@ async fn handle_apiman_form_get(State(state): State<Arc<AppState>>, Path(id): Pa
     }
 }
 
-async fn handle_apiman_form_create(State(state): State<Arc<AppState>>, Json(input): Json<ApiManFormInput>) -> Json<Value> {
-    match state.db.create_form(input) { Ok(item) => utils::output(None, Some(json!({ "form": item }))), Err(e) => utils::output(Some(&e), None) }
+async fn handle_apiman_form_create(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<ApiManFormInput>,
+) -> Json<Value> {
+    match state.db.create_form(input) {
+        Ok(item) => utils::output(None, Some(json!({ "form": item }))),
+        Err(e) => utils::output(Some(&e), None),
+    }
 }
 
-async fn handle_apiman_form_update(State(state): State<Arc<AppState>>, Path(id): Path<i64>, Json(input): Json<ApiManFormInput>) -> Json<Value> {
-    match state.db.update_form(id, input) { Ok(Some(item)) => utils::output(None, Some(json!({ "form": item }))), Ok(None) => utils::output(Some("form not found"), None), Err(e) => utils::output(Some(&e), None) }
+async fn handle_apiman_form_update(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(input): Json<ApiManFormInput>,
+) -> Json<Value> {
+    match state.db.update_form(id, input) {
+        Ok(Some(item)) => utils::output(None, Some(json!({ "form": item }))),
+        Ok(None) => utils::output(Some("form not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
 }
 
-async fn handle_apiman_form_delete(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
-    match state.db.delete_form(id) { Ok(true) => utils::output(None, Some(json!({ "deleted": true }))), Ok(false) => utils::output(Some("form not found"), None), Err(e) => utils::output(Some(&e), None) }
+async fn handle_apiman_form_delete(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    match state.db.delete_form(id) {
+        Ok(true) => utils::output(None, Some(json!({ "deleted": true }))),
+        Ok(false) => utils::output(Some("form not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
 }
 
 // ---- ApiMan: Contents (Puck) ----
@@ -3823,7 +3908,10 @@ async fn handle_apiman_content_list(State(state): State<Arc<AppState>>) -> Json<
     }
 }
 
-async fn handle_apiman_content_get(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
+async fn handle_apiman_content_get(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
     match state.db.content(id) {
         Ok(Some(item)) => utils::output(None, Some(json!({ "content": item }))),
         Ok(None) => utils::output(Some("content not found"), None),
@@ -3831,14 +3919,21 @@ async fn handle_apiman_content_get(State(state): State<Arc<AppState>>, Path(id):
     }
 }
 
-async fn handle_apiman_content_create(State(state): State<Arc<AppState>>, Json(input): Json<ApiManContentInput>) -> Json<Value> {
+async fn handle_apiman_content_create(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<ApiManContentInput>,
+) -> Json<Value> {
     match state.db.create_content(input) {
         Ok(item) => utils::output(None, Some(json!({ "content": item }))),
         Err(e) => utils::output(Some(&e), None),
     }
 }
 
-async fn handle_apiman_content_update(State(state): State<Arc<AppState>>, Path(id): Path<i64>, Json(input): Json<ApiManContentInput>) -> Json<Value> {
+async fn handle_apiman_content_update(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(input): Json<ApiManContentInput>,
+) -> Json<Value> {
     match state.db.update_content(id, input) {
         Ok(Some(item)) => utils::output(None, Some(json!({ "content": item }))),
         Ok(None) => utils::output(Some("content not found"), None),
@@ -3846,8 +3941,15 @@ async fn handle_apiman_content_update(State(state): State<Arc<AppState>>, Path(i
     }
 }
 
-async fn handle_apiman_content_delete(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> Json<Value> {
-    match state.db.delete_content(id) { Ok(true) => utils::output(None, Some(json!({ "deleted": true }))), Ok(false) => utils::output(Some("content not found"), None), Err(e) => utils::output(Some(&e), None) }
+async fn handle_apiman_content_delete(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    match state.db.delete_content(id) {
+        Ok(true) => utils::output(None, Some(json!({ "deleted": true }))),
+        Ok(false) => utils::output(Some("content not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
 }
 
 // ---- ApiMan: Export/Import Workspace ----
@@ -4187,6 +4289,62 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/sneat/*path", get(handle_sneat_assets))
         .route("/layui/*path", get(handle_layui_assets))
         .route("/app.js", get(handle_app_js))
+        .route(
+            "/app_bootstrap.js",
+            get(|| async { embedded_asset_response("app_bootstrap.js") }),
+        )
+        .route(
+            "/app_dashboard.js",
+            get(|| async { embedded_asset_response("app_dashboard.js") }),
+        )
+        .route(
+            "/app_system.js",
+            get(|| async { embedded_asset_response("app_system.js") }),
+        )
+        .route(
+            "/app_juniper.js",
+            get(|| async { embedded_asset_response("app_juniper.js") }),
+        )
+        .route(
+            "/app_services.js",
+            get(|| async { embedded_asset_response("app_services.js") }),
+        )
+        .route(
+            "/app_data_modules.js",
+            get(|| async { embedded_asset_response("app_data_modules.js") }),
+        )
+        .route(
+            "/app_firewall_helpers.js",
+            get(|| async { embedded_asset_response("app_firewall_helpers.js") }),
+        )
+        .route(
+            "/app_runtime_core.js",
+            get(|| async { embedded_asset_response("app_runtime_core.js") }),
+        )
+        .route(
+            "/app_network_events.js",
+            get(|| async { embedded_asset_response("app_network_events.js") }),
+        )
+        .route(
+            "/app_dbman_events.js",
+            get(|| async { embedded_asset_response("app_dbman_events.js") }),
+        )
+        .route(
+            "/app_security_events.js",
+            get(|| async { embedded_asset_response("app_security_events.js") }),
+        )
+        .route(
+            "/app_apiman_events.js",
+            get(|| async { embedded_asset_response("app_apiman_events.js") }),
+        )
+        .route(
+            "/app_tools_capture.js",
+            get(|| async { embedded_asset_response("app_tools_capture.js") }),
+        )
+        .route(
+            "/app_menu.js",
+            get(|| async { embedded_asset_response("app_menu.js") }),
+        )
         .route("/env.js", get(handle_env_js))
         .route("/icons.svg", get(handle_icons_svg))
         .route("/favicon.svg", get(handle_favicon_svg))
@@ -4226,6 +4384,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/haproxy/lbs/:id", delete(handle_haproxy_delete_lb))
         .route("/haproxy/lbs/:id/delete", post(handle_haproxy_delete_lb))
         .route("/haproxy/lbs/:id/enabled", post(handle_haproxy_set_enabled))
+        .route(
+            "/haproxy/backend-servers/:id",
+            post(handle_haproxy_update_backend_server),
+        )
+        .route(
+            "/haproxy/backend-servers/:id/enabled",
+            post(handle_haproxy_set_backend_server_enabled),
+        )
+        .route(
+            "/haproxy/backend-servers/:id/delete",
+            post(handle_haproxy_delete_backend_server),
+        )
         .route("/haproxy/test/web", post(handle_haproxy_test_web))
         .route("/haproxy/test/sql", post(handle_haproxy_test_sql))
         .route("/haproxy/web", post(handle_haproxy_web))
@@ -4247,6 +4417,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/haproxy/lbs/:id/enabled",
             post(handle_haproxy_set_enabled),
+        )
+        .route(
+            "/api/haproxy/backend-servers/:id",
+            post(handle_haproxy_update_backend_server),
+        )
+        .route(
+            "/api/haproxy/backend-servers/:id/enabled",
+            post(handle_haproxy_set_backend_server_enabled),
+        )
+        .route(
+            "/api/haproxy/backend-servers/:id/delete",
+            post(handle_haproxy_delete_backend_server),
         )
         .route("/api/haproxy/test/web", post(handle_haproxy_test_web))
         .route("/api/haproxy/test/sql", post(handle_haproxy_test_sql))
@@ -4601,10 +4783,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .put(handle_workflow_update)
                 .delete(handle_workflow_delete),
         )
-        .route(
-            "/workflows/:id/status",
-            post(handle_workflow_set_status),
-        )
+        .route("/workflows/:id/status", post(handle_workflow_set_status))
         .route(
             "/api/workflows",
             get(handle_workflow_list).post(handle_workflow_create),
@@ -4881,7 +5060,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .delete(handle_cron_delete),
         )
         .route("/system/crontab/jobs/:id/enable", post(handle_cron_enable))
-        .route("/system/crontab/jobs/:id/disable", post(handle_cron_disable))
+        .route(
+            "/system/crontab/jobs/:id/disable",
+            post(handle_cron_disable),
+        )
         .route("/system/crontab/jobs/:id/run", post(handle_cron_run))
         .route("/system/crontab/jobs/:id/runs", get(handle_cron_runs))
         .route("/snmp/get", post(handle_snmp_get))

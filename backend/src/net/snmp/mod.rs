@@ -19,7 +19,10 @@ fn snmp_value_to_string(val: &SnmpValue) -> String {
             let mins = rem / 6000;
             let secs = (rem % 6000) / 100;
             let cs = t % 100;
-            format!("{} ticks ({}d {}:{:02}:{:02}.{:02})", t, days, hours, mins, secs, cs)
+            format!(
+                "{} ticks ({}d {}:{:02}:{:02}.{:02})",
+                t, days, hours, mins, secs, cs
+            )
         }
         SnmpValue::Opaque(o) => format!("Opaque({} bytes)", o.len()),
         SnmpValue::Counter64(c) => c.to_string(),
@@ -63,7 +66,9 @@ pub fn snmp_get(host: &str, port: u16, community: &str, oid: &str) -> Result<Val
     let oid = parse_oid(oid)?;
     let mut session = create_session(host, port, community)?;
 
-    let pdu = session.get(&oid).map_err(|e| format!("SNMP get failed: {}", e))?;
+    let pdu = session
+        .get(&oid)
+        .map_err(|e| format!("SNMP get failed: {}", e))?;
 
     let mut results = Vec::new();
     for (resp_oid, value) in pdu.varbinds {

@@ -1,10 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 pub fn substitute_variables(text: &str, vars: &[ApiManVariable]) -> String {
-    if !text.contains("{{") { return text.to_string(); }
+    if !text.contains("{{") {
+        return text.to_string();
+    }
     let mut result = text.to_string();
     for v in vars {
-        if !v.enabled { continue; }
+        if !v.enabled {
+            continue;
+        }
         let placeholder = format!("{{{{{}}}}}", v.key);
         result = result.replace(&placeholder, &v.value);
     }
@@ -120,7 +124,7 @@ pub struct ApiManNode {
     pub workspace_id: i64,
     pub parent_id: Option<i64>,
     pub name: String,
-    pub node_type: String,  // "folder" | "request"
+    pub node_type: String, // "folder" | "request"
     pub sort_order: i64,
     pub created_at: String,
     pub updated_at: String,

@@ -3,23 +3,35 @@ use std::net::Ipv4Addr;
 
 pub fn list_interfaces() -> Value {
     let devices = pcap::Device::list().unwrap_or_default();
-    let interfaces: Vec<Value> = devices.into_iter().map(|d| {
-        let addrs: Vec<Value> = d.addresses.into_iter().map(|a| {
+    let interfaces: Vec<Value> = devices
+        .into_iter()
+        .map(|d| {
+            let addrs: Vec<Value> = d
+                .addresses
+                .into_iter()
+                .map(|a| {
+                    json!({
+                        "addr": a.addr.to_string(),
+                        "netmask": a.netmask.map(|m| m.to_string()),
+                    })
+                })
+                .collect();
             json!({
-                "addr": a.addr.to_string(),
-                "netmask": a.netmask.map(|m| m.to_string()),
+                "name": d.name,
+                "description": d.desc.unwrap_or_default(),
+                "addresses": addrs,
             })
-        }).collect();
-        json!({
-            "name": d.name,
-            "description": d.desc.unwrap_or_default(),
-            "addresses": addrs,
         })
-    }).collect();
+        .collect();
     json!(interfaces)
 }
 
-pub fn capture_packets(interface: &str, filter: &str, count: usize, timeout_secs: u64) -> Result<Vec<Value>, String> {
+pub fn capture_packets(
+    interface: &str,
+    filter: &str,
+    count: usize,
+    timeout_secs: u64,
+) -> Result<Vec<Value>, String> {
     let mut cap = pcap::Capture::from_device(interface)
         .map_err(|e| format!("open device failed: {}", e))?
         .promisc(true)
@@ -94,10 +106,20 @@ fn parse_packet(data: &[u8], index: u64, timestamp: f64) -> Value {
     })
 }
 
-fn parse_ipv4(data: &[u8], src: &mut String, dst: &mut String, proto: &mut String, info: &mut String) {
-    if data.len() < 20 { return; }
+fn parse_ipv4(
+    data: &[u8],
+    src: &mut String,
+    dst: &mut String,
+    proto: &mut String,
+    info: &mut String,
+) {
+    if data.len() < 20 {
+        return;
+    }
     let ihl = (data[0] & 0x0F) as usize * 4;
-    if data.len() < ihl { return; }
+    if data.len() < ihl {
+        return;
+    }
 
     let protocol = data[9];
     let src_ip = Ipv4Addr::new(data[12], data[13], data[14], data[15]);
@@ -128,8 +150,16 @@ fn parse_ipv4(data: &[u8], src: &mut String, dst: &mut String, proto: &mut Strin
     }
 }
 
-fn parse_ipv6(data: &[u8], src: &mut String, dst: &mut String, proto: &mut String, info: &mut String) {
-    if data.len() < 40 { return; }
+fn parse_ipv6(
+    data: &[u8],
+    src: &mut String,
+    dst: &mut String,
+    proto: &mut String,
+    info: &mut String,
+) {
+    if data.len() < 40 {
+        return;
+    }
     let next_header = data[6];
     *src = format!(
         "{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}",
@@ -143,30 +173,59 @@ fn parse_ipv6(data: &[u8], src: &mut String, dst: &mut String, proto: &mut Strin
     );
     let transport = &data[40..];
     match next_header {
-        6 => { *proto = "TCP".into(); parse_tcp(transport, src, dst, info); }
-        17 => { *proto = "UDP".into(); parse_udp(transport, info); }
-        58 => { *proto = "ICMPv6".into(); if transport.len() >= 2 { *info = format!("ICMPv6 type={} code={}", transport[0], transport[1]); } }
-        _ => { *proto = format!("IPv6-{}", next_header); }
+        6 => {
+            *proto = "TCP".into();
+            parse_tcp(transport, src, dst, info);
+        }
+        17 => {
+            *proto = "UDP".into();
+            parse_udp(transport, info);
+        }
+        58 => {
+            *proto = "ICMPv6".into();
+            if transport.len() >= 2 {
+                *info = format!("ICMPv6 type={} code={}", transport[0], transport[1]);
+            }
+        }
+        _ => {
+            *proto = format!("IPv6-{}", next_header);
+        }
     }
 }
 
 fn parse_tcp(data: &[u8], src: &str, dst: &str, info: &mut String) {
-    if data.len() < 20 { return; }
+    if data.len() < 20 {
+        return;
+    }
     let sport = u16::from_be_bytes([data[0], data[1]]);
     let dport = u16::from_be_bytes([data[2], data[3]]);
     let flags = data[13];
     let mut f = String::new();
-    if flags & 0x02 != 0 { f.push_str("SYN "); }
-    if flags & 0x10 != 0 { f.push_str("ACK "); }
-    if flags & 0x01 != 0 { f.push_str("FIN "); }
-    if flags & 0x04 != 0 { f.push_str("RST "); }
-    if flags & 0x08 != 0 { f.push_str("PSH "); }
-    if flags & 0x20 != 0 { f.push_str("URG "); }
+    if flags & 0x02 != 0 {
+        f.push_str("SYN ");
+    }
+    if flags & 0x10 != 0 {
+        f.push_str("ACK ");
+    }
+    if flags & 0x01 != 0 {
+        f.push_str("FIN ");
+    }
+    if flags & 0x04 != 0 {
+        f.push_str("RST ");
+    }
+    if flags & 0x08 != 0 {
+        f.push_str("PSH ");
+    }
+    if flags & 0x20 != 0 {
+        f.push_str("URG ");
+    }
     *info = format!("{}:{} > {}:{} [{}]", src, sport, dst, dport, f.trim());
 }
 
 fn parse_udp(data: &[u8], info: &mut String) {
-    if data.len() < 8 { return; }
+    if data.len() < 8 {
+        return;
+    }
     let sport = u16::from_be_bytes([data[0], data[1]]);
     let dport = u16::from_be_bytes([data[2], data[3]]);
     let len = u16::from_be_bytes([data[4], data[5]]);
@@ -179,16 +238,25 @@ fn hex_dump(data: &[u8]) -> String {
         s.push_str(&format!("{:04x}  ", i * 16));
         for (j, b) in chunk.iter().enumerate() {
             s.push_str(&format!("{:02x} ", b));
-            if j == 7 { s.push(' '); }
+            if j == 7 {
+                s.push(' ');
+            }
         }
         if chunk.len() < 16 {
-            for _ in 0..(16 - chunk.len()) { s.push_str("   "); }
-            if chunk.len() <= 7 { s.push(' '); }
+            for _ in 0..(16 - chunk.len()) {
+                s.push_str("   ");
+            }
+            if chunk.len() <= 7 {
+                s.push(' ');
+            }
         }
         s.push(' ');
         for b in chunk {
-            if b.is_ascii_graphic() || *b == b' ' { s.push(*b as char); }
-            else { s.push('.'); }
+            if b.is_ascii_graphic() || *b == b' ' {
+                s.push(*b as char);
+            } else {
+                s.push('.');
+            }
         }
         s.push('\n');
     }

@@ -1,6 +1,6 @@
-use std::thread::spawn;
-use std::sync::{Arc, Mutex};
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Arc, Mutex};
+use std::thread::spawn;
 
 use std::io;
 use std::io::{Read, Write};
@@ -79,8 +79,8 @@ fn format_response(response: Response, socket: &mut dyn Write) -> io::Result<()>
             socket.write_all(b"CLIENT_ERROR ")?;
             socket.write_all(message)?;
             socket.write_all(b"\r\n")?;
-        },
-        Response::ServerError{message} => {
+        }
+        Response::ServerError { message } => {
             socket.write_all(b"SERVER_ERROR ")?;
             socket.write_all(message)?;
             socket.write_all(b"\r\n")?;
@@ -102,9 +102,7 @@ fn format_response(response: Response, socket: &mut dyn Write) -> io::Result<()>
     Ok(())
 }
 
-fn client(locked_store: Arc<Mutex<Store>>,
-          mut socket: TcpStream,
-          verbose: bool) {
+fn client(locked_store: Arc<Mutex<Store>>, mut socket: TcpStream, verbose: bool) {
     if verbose {
         println!("client connect");
     }
@@ -142,10 +140,13 @@ fn client(locked_store: Arc<Mutex<Store>>,
                 // TODO this is all sorts of slow. we hold the lock until the
                 // client is done receiving all of our bits!
 
-                match parser::parse_command(&parse_state.to_vec()) { // TODO copy
+                match parser::parse_command(&parse_state.to_vec()) {
+                    // TODO copy
                     parser::IResult::Done(remaining, command_config) => {
-                        let CommandConfig { should_reply, command } =
-                            command_config;
+                        let CommandConfig {
+                            should_reply,
+                            command,
+                        } = command_config;
 
                         let response = match command {
                             ServerCommand::Quit => {
@@ -154,15 +155,16 @@ fn client(locked_store: Arc<Mutex<Store>>,
                             }
                             ServerCommand::Bad(text) => {
                                 if verbose {
-                                    println!("bad client command: {:?}",
-                                             String::from_utf8_lossy(text))
+                                    println!(
+                                        "bad client command: {:?}",
+                                        String::from_utf8_lossy(text)
+                                    )
                                 }
                                 Response::Error
                             }
                             _ => {
                                 // all others must be sent to the store
-                                let mut unlocked_store = locked_store.lock()
-                                    .unwrap();
+                                let mut unlocked_store = locked_store.lock().unwrap();
                                 unlocked_store.apply(command)
                             }
                         };
@@ -198,9 +200,7 @@ fn client(locked_store: Arc<Mutex<Store>>,
     }
 }
 
-fn start_client(locked_store: Arc<Mutex<Store>>,
-                socket: TcpStream,
-                verbose: bool) {
+fn start_client(locked_store: Arc<Mutex<Store>>, socket: TcpStream, verbose: bool) {
     spawn(move || client(locked_store, socket, verbose));
 }
 

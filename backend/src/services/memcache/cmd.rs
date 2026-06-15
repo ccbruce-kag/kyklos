@@ -1,7 +1,7 @@
 use std::env;
+use std::io::Write;
 use std::process;
 use std::str::FromStr;
-use std::io::Write;
 
 use getopts::Options;
 

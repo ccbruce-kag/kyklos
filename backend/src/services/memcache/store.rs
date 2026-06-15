@@ -4,8 +4,8 @@
 #[allow(unused_imports)]
 use time;
 
-use std::str;
 use std::mem;
+use std::str;
 
 use super::lru;
 
@@ -32,7 +32,7 @@ pub type IncrValue = u64;
 
 pub type Capacity = usize;
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug, PartialEq)]
 struct DataContainer {
     data: StoredData,
     flags: Flags,
@@ -42,7 +42,7 @@ struct DataContainer {
     unique: CasUnique,
 }
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SetterType {
     Set,
     Add,
@@ -52,19 +52,19 @@ pub enum SetterType {
     Cas(CasUnique),
 }
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum GetterType {
     Get,
     Gets,
 }
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum IncrementerType {
     Incr,
     Decr,
 }
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ServerCommand<'a> {
     Setter {
         setter: SetterType,
@@ -96,7 +96,7 @@ pub enum ServerCommand<'a> {
     Verbosity,
 }
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SingleGetResponse<'a> {
     pub key: ReturnedKey<'a>,
     pub data: ReturnedData,
@@ -104,7 +104,7 @@ pub struct SingleGetResponse<'a> {
     pub unique: CasUnique,
 }
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Response<'a> {
     // Data and Gets share the SingleGetResponse format for simplicity. If
     // copying a bunch of unneeded unique values turns out to be a problem we
@@ -210,14 +210,18 @@ impl Store {
         let now = epoch_time(); // TODO lazy?
 
         match command {
-            ServerCommand::Setter { key: ckey, data: cdata, .. }
-                if ckey.len() > MAX_KEY ||
-                   cdata.len() > MAX_DATA => Response::TooBig,
-            ServerCommand::Setter { setter,
-                                    key: ckey,
-                                    data: cdata,
-                                    ttl: cttl,
-                                    flags } => {
+            ServerCommand::Setter {
+                key: ckey,
+                data: cdata,
+                ..
+            } if ckey.len() > MAX_KEY || cdata.len() > MAX_DATA => Response::TooBig,
+            ServerCommand::Setter {
+                setter,
+                key: ckey,
+                data: cdata,
+                ttl: cttl,
+                flags,
+            } => {
                 let new_cas = self.make_cas_id(); // TODO too many IDs
                 let ttl = wrap_ttl(cttl, now);
                 let skey = ckey.to_vec();
@@ -231,9 +235,7 @@ impl Store {
                 };
 
                 match setter {
-                    SetterType::Add if self.store.contains(&skey, now) => {
-                        Response::NotStored
-                    }
+                    SetterType::Add if self.store.contains(&skey, now) => Response::NotStored,
                     SetterType::Add | SetterType::Set => {
                         self.store.set(skey, container(cdata, flags), ttl, now);
                         Response::Stored
@@ -250,53 +252,39 @@ impl Store {
                         // directly modify, but then we'd need to make sure to
                         // keep the weights and stuff in sync and that's a pain
                         let (new_vec, old_ttl, old_flags) = {
-                            let current_entry =
-                                self.store.get_full_entry(&skey, now).unwrap();
+                            let current_entry = self.store.get_full_entry(&skey, now).unwrap();
                             let current_container = &current_entry.data;
-                            let new_size = cdata.len() +
-                                           current_container.data.len();
+                            let new_size = cdata.len() + current_container.data.len();
                             let mut new_vec = Vec::with_capacity(new_size);
                             new_vec.extend_from_slice(&current_container.data);
                             new_vec.extend_from_slice(cdata);
-                            (new_vec,
-                             current_entry.expires,
-                             current_container.flags)
+                            (new_vec, current_entry.expires, current_container.flags)
                         };
-                        self.store.set(skey,
-                                       container(&new_vec, old_flags),
-                                       old_ttl,
-                                       now);
+                        self.store
+                            .set(skey, container(&new_vec, old_flags), old_ttl, now);
                         Response::Stored
                     }
                     SetterType::Append => Response::NotStored,
                     SetterType::Prepend if self.store.contains(&skey, now) => {
                         let (new_vec, old_ttl, old_flags) = {
-                            let current_entry =
-                                self.store.get_full_entry(&skey, now).unwrap();
+                            let current_entry = self.store.get_full_entry(&skey, now).unwrap();
                             let current_container = &current_entry.data;
-                            let new_size = cdata.len() +
-                                           current_container.data.len();
+                            let new_size = cdata.len() + current_container.data.len();
                             let mut new_vec = Vec::with_capacity(new_size);
                             new_vec.extend_from_slice(cdata);
                             new_vec.extend_from_slice(&current_container.data);
-                            (new_vec,
-                             current_entry.expires,
-                             current_container.flags)
+                            (new_vec, current_entry.expires, current_container.flags)
                         };
-                        self.store.set(skey,
-                                       container(&new_vec, old_flags),
-                                       old_ttl,
-                                       now);
+                        self.store
+                            .set(skey, container(&new_vec, old_flags), old_ttl, now);
                         Response::Stored
                     }
                     SetterType::Prepend => Response::NotStored,
-                    SetterType::Cas(_) if !self.store.contains(&skey, now) => {
-                        Response::NotFound
-                    }
-                    SetterType::Cas(unique) if (self.store
-                        .fast_get(&skey, now)
-                        .map(|cont| cont.unique) ==
-                                                Some(unique)) => {
+                    SetterType::Cas(_) if !self.store.contains(&skey, now) => Response::NotFound,
+                    SetterType::Cas(unique)
+                        if (self.store.fast_get(&skey, now).map(|cont| cont.unique)
+                            == Some(unique)) =>
+                    {
                         self.store.set(skey, container(cdata, flags), ttl, now);
                         Response::Stored
                     }
@@ -336,7 +324,10 @@ impl Store {
                     Response::NotFound
                 }
             }
-            ServerCommand::Touch { key: ckey, ttl: cttl } => {
+            ServerCommand::Touch {
+                key: ckey,
+                ttl: cttl,
+            } => {
                 let skey = ckey.to_vec();
                 let ttl = wrap_ttl(cttl, now);
 
@@ -347,7 +338,11 @@ impl Store {
                     Response::NotFound
                 }
             }
-            ServerCommand::Incrementer { incrementer, key: ckey, value } => {
+            ServerCommand::Incrementer {
+                incrementer,
+                key: ckey,
+                value,
+            } => {
                 let new_cas = self.make_cas_id();
                 let skey = ckey.to_vec();
 
@@ -363,28 +358,20 @@ impl Store {
                                 let new_int = match incrementer {
                                     // memcached is saturating in the negative
                                     // direction
-                                    IncrementerType::Decr => {
-                                        current_int.saturating_sub(value)
-                                    }
+                                    IncrementerType::Decr => current_int.saturating_sub(value),
                                     // ...but wrapping in the positive direction
-                                    IncrementerType::Incr => {
-                                        current_int.wrapping_add(value)
-                                    }
+                                    IncrementerType::Incr => current_int.wrapping_add(value),
                                 };
-                                _IncrSubResult::NewValue(new_int,
-                                                         full_entry.expires,
-                                                         item.flags)
+                                _IncrSubResult::NewValue(new_int, full_entry.expires, item.flags)
                             }
                         }
                     }
                 };
                 match isr {
                     _IncrSubResult::NotFound => Response::NotFound,
-                    _IncrSubResult::BadInt => {
-                        Response::ClientError {
-                            message: b"cannot increment or decrement non-numeric value",
-                        }
-                    }
+                    _IncrSubResult::BadInt => Response::ClientError {
+                        message: b"cannot increment or decrement non-numeric value",
+                    },
                     _IncrSubResult::NewValue(new_int, sttl, flags) => {
                         let re_str = new_int.to_string();
                         let re_bytes = re_str.as_bytes();
@@ -410,7 +397,6 @@ impl Store {
             ServerCommand::Quit => {
                 unreachable!("this should have been handled by the server dispatch loop")
             }
-
         }
     }
 
@@ -422,8 +408,7 @@ impl Store {
             None => None,
             Some(container) => {
                 let ref container_data = container.data;
-                let container_as_string =
-                    String::from_utf8_lossy(&container_data);
+                let container_as_string = String::from_utf8_lossy(&container_data);
                 let mut new_string = String::new();
                 new_string.push_str(&container_as_string);
                 Some(new_string)
@@ -454,30 +439,28 @@ impl Store {
     }
 
     #[cfg(test)]
-    pub fn simple_set_cas(&mut self,
-                          key: &str,
-                          data: &str,
-                          unique: CasUnique) {
+    pub fn simple_set_cas(&mut self, key: &str, data: &str, unique: CasUnique) {
         let mut key_vec: Vec<u8> = Vec::new();
         key_vec.extend_from_slice(key.as_bytes());
         let mut data_vec: Vec<u8> = Vec::new();
         data_vec.extend_from_slice(data.as_bytes());
 
-        self.store.set(key_vec,
-                       DataContainer {
-                           data: data_vec,
-                           flags: 0,
-                           unique: unique,
-                       },
-                       Option::None,
-                       epoch_time());
+        self.store.set(
+            key_vec,
+            DataContainer {
+                data: data_vec,
+                flags: 0,
+                unique: unique,
+            },
+            Option::None,
+            epoch_time(),
+        );
     }
 }
 
 impl lru::HasWeight for DataContainer {
     fn weight(&self) -> lru::Weight {
-        (self.data.capacity() + mem::size_of::<CasUnique>() +
-         mem::size_of::<Flags>())
+        (self.data.capacity() + mem::size_of::<CasUnique>() + mem::size_of::<Flags>())
     }
 }
 
@@ -689,15 +672,17 @@ mod tests {
             getter: GetterType::Get,
             keys: vec!["foo".as_bytes()],
         });
-        assert_eq!(res,
-                   Response::Data {
-                       responses: vec![SingleGetResponse {
-                                           key: "foo".as_bytes(),
-                                           data: b("bar"),
-                                           flags: 0,
-                                           unique: 0,
-                                       }],
-                   });
+        assert_eq!(
+            res,
+            Response::Data {
+                responses: vec![SingleGetResponse {
+                    key: "foo".as_bytes(),
+                    data: b("bar"),
+                    flags: 0,
+                    unique: 0,
+                }],
+            }
+        );
     }
 
     #[test]
@@ -709,21 +694,25 @@ mod tests {
             getter: GetterType::Get,
             keys: vec!["foo1".as_bytes(), "foo2".as_bytes(), "foo3".as_bytes()],
         });
-        assert_eq!(res,
-                   Response::Data {
-                       responses: vec![SingleGetResponse {
-                                           key: "foo1".as_bytes(),
-                                           data: b("bar1"),
-                                           flags: 0,
-                                           unique: 0,
-                                       },
-                                       SingleGetResponse {
-                                           key: "foo2".as_bytes(),
-                                           data: b("bar2"),
-                                           flags: 0,
-                                           unique: 0,
-                                       }],
-                   });
+        assert_eq!(
+            res,
+            Response::Data {
+                responses: vec![
+                    SingleGetResponse {
+                        key: "foo1".as_bytes(),
+                        data: b("bar1"),
+                        flags: 0,
+                        unique: 0,
+                    },
+                    SingleGetResponse {
+                        key: "foo2".as_bytes(),
+                        data: b("bar2"),
+                        flags: 0,
+                        unique: 0,
+                    }
+                ],
+            }
+        );
     }
 
     #[test]
@@ -734,15 +723,17 @@ mod tests {
             getter: GetterType::Get,
             keys: vec!["foo".as_bytes()],
         });
-        assert_eq!(res,
-                   Response::Data {
-                       responses: vec![SingleGetResponse {
-                                           key: "foo".as_bytes(),
-                                           data: b("bar"),
-                                           flags: 0,
-                                           unique: 0,
-                                       }],
-                   });
+        assert_eq!(
+            res,
+            Response::Data {
+                responses: vec![SingleGetResponse {
+                    key: "foo".as_bytes(),
+                    data: b("bar"),
+                    flags: 0,
+                    unique: 0,
+                }],
+            }
+        );
     }
 
     #[test]
@@ -754,21 +745,25 @@ mod tests {
             getter: GetterType::Gets,
             keys: vec!["foo1".as_bytes(), "foo2".as_bytes(), "foo3".as_bytes()],
         });
-        assert_eq!(res,
-                   Response::Gets {
-                       responses: vec![SingleGetResponse {
-                                           key: "foo1".as_bytes(),
-                                           data: b("bar1"),
-                                           flags: 0,
-                                           unique: 100,
-                                       },
-                                       SingleGetResponse {
-                                           key: "foo2".as_bytes(),
-                                           data: b("bar2"),
-                                           flags: 0,
-                                           unique: 100,
-                                       }],
-                   });
+        assert_eq!(
+            res,
+            Response::Gets {
+                responses: vec![
+                    SingleGetResponse {
+                        key: "foo1".as_bytes(),
+                        data: b("bar1"),
+                        flags: 0,
+                        unique: 100,
+                    },
+                    SingleGetResponse {
+                        key: "foo2".as_bytes(),
+                        data: b("bar2"),
+                        flags: 0,
+                        unique: 100,
+                    }
+                ],
+            }
+        );
     }
 
     #[test]
@@ -792,10 +787,12 @@ mod tests {
             key: b"foo",
             value: 5,
         });
-        assert_eq!(res,
-                   Response::ClientError {
-                       message: b"cannot increment or decrement non-numeric value",
-                   });
+        assert_eq!(
+            res,
+            Response::ClientError {
+                message: b"cannot increment or decrement non-numeric value",
+            }
+        );
     }
 
     #[test]
@@ -829,7 +826,6 @@ mod tests {
         assert_eq!(Response::Exists, res);
         assert_eq!(Some("25".to_string()), store.simple_get("foo"));
     }
-
 
     #[test]
     pub fn decr() {

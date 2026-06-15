@@ -140,9 +140,7 @@ impl NginxClient {
             return Ok(Vec::new());
         }
         let mut modules = Vec::new();
-        for entry in
-            std::fs::read_dir(dir).map_err(|e| format!("read modules dir failed: {e}"))?
-        {
+        for entry in std::fs::read_dir(dir).map_err(|e| format!("read modules dir failed: {e}"))? {
             let entry = entry.map_err(|e| format!("read modules entry failed: {e}"))?;
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("load") {
@@ -161,9 +159,7 @@ impl NginxClient {
             return Ok(Vec::new());
         }
         let mut sites = Vec::new();
-        for entry in
-            std::fs::read_dir(dir).map_err(|e| format!("read sites dir failed: {e}"))?
-        {
+        for entry in std::fs::read_dir(dir).map_err(|e| format!("read sites dir failed: {e}"))? {
             let entry = entry.map_err(|e| format!("read sites entry failed: {e}"))?;
             let path = entry.path();
             if path.is_file() || path.is_symlink() {
@@ -178,15 +174,13 @@ impl NginxClient {
 
     pub fn write_site_file(&self, name: &str, content: &str) -> Result<(), String> {
         let path = self.site_path(name);
-        std::fs::write(&path, content)
-            .map_err(|e| format!("write site file {path} failed: {e}"))
+        std::fs::write(&path, content).map_err(|e| format!("write site file {path} failed: {e}"))
     }
 
     pub fn remove_site_file(&self, name: &str) -> Result<(), String> {
         let path = self.site_path(name);
         if Path::new(&path).exists() {
-            std::fs::remove_file(&path)
-                .map_err(|e| format!("remove site file {path} failed: {e}"))
+            std::fs::remove_file(&path).map_err(|e| format!("remove site file {path} failed: {e}"))
         } else {
             Ok(())
         }
@@ -201,8 +195,7 @@ impl NginxClient {
     pub fn disable_module(&self, name: &str) -> Result<(), String> {
         let path = self.module_link_path(name);
         if Path::new(&path).exists() {
-            std::fs::remove_file(&path)
-                .map_err(|e| format!("disable module {path} failed: {e}"))
+            std::fs::remove_file(&path).map_err(|e| format!("disable module {path} failed: {e}"))
         } else {
             Ok(())
         }
@@ -226,7 +219,9 @@ impl NginxClient {
         }
 
         config.push_str("events {\n    worker_connections 1024;\n}\n\nhttp {\n");
-        config.push_str("    include       mime.types;\n    default_type  application/octet-stream;\n");
+        config.push_str(
+            "    include       mime.types;\n    default_type  application/octet-stream;\n",
+        );
         config.push_str("    sendfile        on;\n    keepalive_timeout  65;\n\n");
 
         for site in sites {

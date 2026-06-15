@@ -46,7 +46,10 @@ pub fn generate_yaml(input: &NetplanConfigInput) -> String {
             }
         }
         if let Some(ref dns) = input.dns_servers {
-            let servers: Vec<&str> = dns.split(|c: char| c == ',' || c == ' ').filter(|s| !s.is_empty()).collect();
+            let servers: Vec<&str> = dns
+                .split(|c: char| c == ',' || c == ' ')
+                .filter(|s| !s.is_empty())
+                .collect();
             if !servers.is_empty() {
                 yaml.push_str("      nameservers:\n        addresses:\n");
                 for s in &servers {
@@ -80,7 +83,10 @@ pub async fn get_current_config(iface: &str) -> Value {
     let output = Command::new("sh")
         .args([
             "-c",
-            &format!("ip addr show {} 2>/dev/null | grep 'inet ' | head -1", iface),
+            &format!(
+                "ip addr show {} 2>/dev/null | grep 'inet ' | head -1",
+                iface
+            ),
         ])
         .output()
         .await;
@@ -106,8 +112,7 @@ pub async fn get_current_config(iface: &str) -> Value {
 pub async fn apply_yaml(yaml: &str) -> Result<String, String> {
     // Write temporary file
     let tmp_path = "/tmp/firewall-man-netplan.yaml";
-    std::fs::write(tmp_path, yaml)
-        .map_err(|e| format!("write netplan temp file failed: {e}"))?;
+    std::fs::write(tmp_path, yaml).map_err(|e| format!("write netplan temp file failed: {e}"))?;
 
     // Copy to /etc/netplan/
     let copy = Command::new("sh")

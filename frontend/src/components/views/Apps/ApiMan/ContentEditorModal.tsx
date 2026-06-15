@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Puck, type Config, type Data } from '@puckeditor/core'
 import '@puckeditor/core/puck.css'
@@ -154,7 +154,6 @@ function parseInitialData(dataJson: string | null | undefined): Data {
 }
 
 export default function ContentEditorModal({ record, onSaved, onClose }: Props) {
-  const puckRef = useRef<{ getData: () => Data } | null>(null)
   const [name, setName] = useState(record?.name || '')
   const [description, setDescription] = useState(record?.description || '')
   const [busy, setBusy] = useState(false)
@@ -162,9 +161,11 @@ export default function ContentEditorModal({ record, onSaved, onClose }: Props) 
   const [blockCount, setBlockCount] = useState(0)
 
   const initialData = parseInitialData(record?.data_json)
+  const [puckData, setPuckData] = useState<Data>(initialData)
 
-  const onPuckPublish = useCallback((puckData: Data) => {
-    const content = puckData?.content
+  const handlePuckData = useCallback((nextData: Data) => {
+    setPuckData(nextData)
+    const content = nextData?.content
     if (Array.isArray(content)) setBlockCount(content.length)
   }, [])
 
@@ -176,11 +177,10 @@ export default function ContentEditorModal({ record, onSaved, onClose }: Props) 
     setBusy(true)
     setErrMsg('')
     try {
-      const data: Data = puckRef.current ? puckRef.current.getData() : initialData
       const body = {
         name: name.trim(),
         description: description.trim(),
-        data_json: JSON.stringify(data),
+        data_json: JSON.stringify(puckData),
       }
       if (record) {
         await contentApi(`/api/apiman/contents/${record.id}`, { method: 'PUT', body: JSON.stringify(body) })
@@ -197,10 +197,7 @@ export default function ContentEditorModal({ record, onSaved, onClose }: Props) 
 
   const handleReset = () => {
     if (!window.confirm('確認重置為空白？所有區塊將被清空。')) return
-    const api = puckRef.current
-    if (api) {
-      api.getData()
-    }
+    setPuckData({ content: [], root: {} })
     setBlockCount(0)
   }
 
@@ -239,9 +236,9 @@ export default function ContentEditorModal({ record, onSaved, onClose }: Props) 
               <div className="kyklos-content-puck">
                 <Puck
                   config={config}
-                  data={initialData}
-                  onPublish={onPuckPublish as never}
-                  puckRef={puckRef as never}
+                  data={puckData}
+                  onChange={handlePuckData}
+                  onPublish={handlePuckData}
                 />
               </div>
             </div>

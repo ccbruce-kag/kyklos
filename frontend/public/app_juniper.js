@@ -307,14 +307,15 @@
     $(document).on('click', '#juniperInfoRefresh', loadJuniperInfo);
     $(document).on('click', '#juniperSettingsSaveBtn', function () {
       var lang = i18n[currentLang];
+      var timeout = $('#juniperTimeout').val() || '10';
       var data = {
-        name: $('#juniperDeviceName').val().trim(),
+        name: ($('#juniperDeviceName').val() || 'default').trim() || 'default',
         host: $('#juniperHost').val().trim(),
         port: $('#juniperPort').val(),
         username: $('#juniperUsername').val().trim(),
         password: $('#juniperPassword').val(),
         clear_password: $('#juniperClearPassword').is(':checked') ? '1' : '0',
-        connect_timeout_secs: $('#juniperTimeout').val(),
+        connect_timeout_secs: timeout,
         strict_host_key_checking: $('#juniperStrictHostKey').is(':checked') ? '1' : '0'
       };
       logger.info('Juniper 儲存連線設定', data.host + ':' + data.port);

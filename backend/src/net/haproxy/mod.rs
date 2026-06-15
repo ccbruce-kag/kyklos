@@ -347,6 +347,10 @@ impl HaproxyClient {
                     health_check: Some(server.health_check),
                 })
                 .collect();
+            let active_servers: Vec<_> = servers
+                .iter()
+                .filter(|server| server.health_check.unwrap_or(true))
+                .collect();
             validate_lb(&lb.name, lb.bind_port, &lb.balance_method, &servers)?;
             let frontend = format!("{}_front", lb.name);
             let backend = format!("{}_back", lb.name);
@@ -363,10 +367,7 @@ impl HaproxyClient {
                         "\nfrontend {frontend}\n    bind *:{}\n    mode http\n    default_backend {backend}\n\nbackend {backend}\n    mode http\n    balance {}\n",
                         lb.bind_port, lb.balance_method
                     ));
-                    if servers
-                        .iter()
-                        .any(|server| server.health_check.unwrap_or(true))
-                    {
+                    if !active_servers.is_empty() {
                         config.push_str(&format!("    option httpchk GET {health_path}\n"));
                     }
                 }
@@ -386,7 +387,10 @@ impl HaproxyClient {
                     ))
                 }
             }
-            for server in &servers {
+            if active_servers.is_empty() {
+                config.push_str("    # All backend servers are disabled in Firewall-Man.\n");
+            }
+            for server in active_servers {
                 config.push_str(&server_line(server));
             }
         }

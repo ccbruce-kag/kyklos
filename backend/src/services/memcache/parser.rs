@@ -1,10 +1,9 @@
 /// The parser. Takes a stream of bytes and turns it into a series of parsed
 /// commands ready to be send to the store
-
 use std::str::from_utf8;
 use std::str::FromStr;
 
-use nom::{crlf, space, digit};
+use nom::{crlf, digit, space};
 use regex::Regex; // used for the size parser
 
 pub use nom::{IResult, Needed};
@@ -14,7 +13,7 @@ use super::store::IncrementerType;
 use super::store::ServerCommand;
 use super::store::SetterType;
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CommandConfig<'a> {
     pub should_reply: bool,
     pub command: ServerCommand<'a>,
@@ -30,35 +29,19 @@ fn unwrap_noreply(tag: Option<&[u8]>) -> bool {
     }
 }
 
-named!(u32_digit<u32>,
-  map_res!(
-    map_res!(
-      digit,
-      from_utf8
-    ),
-    FromStr::from_str
-  )
+named!(
+    u32_digit<u32>,
+    map_res!(map_res!(digit, from_utf8), FromStr::from_str)
 );
 
-named!(usize_digit<usize>,
-    map_res!(
-        map_res!(
-            digit,
-            from_utf8
-        ),
-        FromStr::from_str
-    )
+named!(
+    usize_digit<usize>,
+    map_res!(map_res!(digit, from_utf8), FromStr::from_str)
 );
 
-
-named!(u64_digit<u64>,
-  map_res!(
-    map_res!(
-      digit,
-      from_utf8
-    ),
-    FromStr::from_str
-  )
+named!(
+    u64_digit<u64>,
+    map_res!(map_res!(digit, from_utf8), FromStr::from_str)
 );
 
 fn map_setter_name(res: &[u8]) -> SetterType {
@@ -72,14 +55,9 @@ fn map_setter_name(res: &[u8]) -> SetterType {
     }
 }
 
-named!(parse_setter_name,
-    alt!(
-        tag!("set") |
-        tag!("add") |
-        tag!("prepend") |
-        tag!("replace") |
-        tag!("append")
-    )
+named!(
+    parse_setter_name,
+    alt!(tag!("set") | tag!("add") | tag!("prepend") | tag!("replace") | tag!("append"))
 );
 
 // cas <key> <flags> <exptime> <bytes> <cas unique> [noreply]\r\n
@@ -157,13 +135,7 @@ fn map_getter_name(res: &[u8]) -> GetterType {
     }
 }
 
-named!(parse_getter_name,
-    alt!(
-        tag!("gets") |
-        tag!("get")
-    )
-);
-
+named!(parse_getter_name, alt!(tag!("gets") | tag!("get")));
 
 // get <key>*\r\n
 // gets <key>*\r\n
@@ -235,12 +207,7 @@ fn map_incr_name(res: &[u8]) -> IncrementerType {
     }
 }
 
-named!(parse_incr_name,
-    alt!(
-        tag!("incr") |
-        tag!("decr")
-    )
-);
+named!(parse_incr_name, alt!(tag!("incr") | tag!("decr")));
 
 // incr <key> <value> [noreply]\r\n
 // decr <key> <value> [noreply]\r\n
@@ -375,89 +342,451 @@ pub fn parse_size(size_str: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::store::GetterType;
     use super::super::store::IncrementerType;
     use super::super::store::ServerCommand;
     use super::super::store::SetterType;
+    use super::*;
 
     #[test]
     pub fn commands() {
         let tests: Vec<(&str, IResult<&[u8], CommandConfig>)> = vec![
-            ("set foo 12 34 5\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Setter {setter: SetterType::Set, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("set foo 12 34 5 noreply\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Setter { setter: SetterType::Set, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("add foo 12 34 5\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Setter {setter: SetterType::Add, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("add foo 12 34 5 noreply\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Setter { setter: SetterType::Add, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("append foo 12 34 5\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Setter { setter: SetterType::Append, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("append foo 12 34 5 noreply\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Setter { setter: SetterType::Append, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("prepend foo 12 34 5\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Setter { setter: SetterType::Prepend, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("prepend foo 12 34 5 noreply\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Setter { setter: SetterType::Prepend, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("replace foo 12 34 5 noreply\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Setter { setter: SetterType::Replace, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("replace foo 12 34 5 noreply\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Setter { setter: SetterType::Replace, key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-
-            ("cas foo 12 34 5 89\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Setter { setter: SetterType::Cas(89), key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-            ("cas foo 12 34 5 89 noreply\r\ndata!\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Setter { setter: SetterType::Cas(89), key: b"foo", data: b"data!", ttl: 34, flags: 12 } })),
-
-            ("get foo\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Getter { getter: GetterType::Get, keys: vec![b"foo"] } })),
-            ("get foo1 foo2\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Getter { getter: GetterType::Get, keys: vec![b"foo1", b"foo2"] } })),
-            ("gets foo\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Getter { getter: GetterType::Gets, keys: vec![b"foo"] } })),
-            ("gets foo1 foo2\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Getter { getter: GetterType::Gets, keys: vec![b"foo1", b"foo2"] } })),
-
-            ("delete foo\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Delete { key: b"foo" } })),
-            ("delete foo noreply\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Delete { key: b"foo" } })),
-
-            ("incr foo 5\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Incrementer { incrementer: IncrementerType::Incr, key: b"foo", value: 5 } })),
-            ("incr foo 5 noreply\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Incrementer { incrementer: IncrementerType::Incr, key: b"foo", value: 5 } })),
-            ("decr foo 5\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Incrementer { incrementer: IncrementerType::Decr, key: b"foo", value: 5 } })),
-            ("decr foo 5 noreply\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Incrementer { incrementer: IncrementerType::Decr, key: b"foo", value: 5 } })),
-
-            ("touch foo 5\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Touch { key: b"foo", ttl: 5 } })),
-            ("touch foo 5 noreply\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Touch { key: b"foo", ttl: 5 } })),
-
-            ("flush_all\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::FlushAll })),
-            ("flush_all noreply\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::FlushAll })),
-            ("version\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Version })),
-            ("quit\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Quit })),
-            ("verbosity 10\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Verbosity })),
-            ("verbosity 10 noreply\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: false, command: ServerCommand::Verbosity })),
-
-            ("foo bar\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Bad(b"foo bar") })),
-            ("version foo bar\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Bad(b"version foo bar") })),
-            ("\r\n",
-             IResult::Done(b"", CommandConfig { should_reply: true, command: ServerCommand::Bad(b"") } )),
-
+            (
+                "set foo 12 34 5\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Set,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "set foo 12 34 5 noreply\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Set,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "add foo 12 34 5\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Add,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "add foo 12 34 5 noreply\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Add,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "append foo 12 34 5\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Append,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "append foo 12 34 5 noreply\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Append,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "prepend foo 12 34 5\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Prepend,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "prepend foo 12 34 5 noreply\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Prepend,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "replace foo 12 34 5 noreply\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Replace,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "replace foo 12 34 5 noreply\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Replace,
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "cas foo 12 34 5 89\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Cas(89),
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "cas foo 12 34 5 89 noreply\r\ndata!\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Setter {
+                            setter: SetterType::Cas(89),
+                            key: b"foo",
+                            data: b"data!",
+                            ttl: 34,
+                            flags: 12,
+                        },
+                    },
+                ),
+            ),
+            (
+                "get foo\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Getter {
+                            getter: GetterType::Get,
+                            keys: vec![b"foo"],
+                        },
+                    },
+                ),
+            ),
+            (
+                "get foo1 foo2\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Getter {
+                            getter: GetterType::Get,
+                            keys: vec![b"foo1", b"foo2"],
+                        },
+                    },
+                ),
+            ),
+            (
+                "gets foo\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Getter {
+                            getter: GetterType::Gets,
+                            keys: vec![b"foo"],
+                        },
+                    },
+                ),
+            ),
+            (
+                "gets foo1 foo2\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Getter {
+                            getter: GetterType::Gets,
+                            keys: vec![b"foo1", b"foo2"],
+                        },
+                    },
+                ),
+            ),
+            (
+                "delete foo\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Delete { key: b"foo" },
+                    },
+                ),
+            ),
+            (
+                "delete foo noreply\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Delete { key: b"foo" },
+                    },
+                ),
+            ),
+            (
+                "incr foo 5\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Incrementer {
+                            incrementer: IncrementerType::Incr,
+                            key: b"foo",
+                            value: 5,
+                        },
+                    },
+                ),
+            ),
+            (
+                "incr foo 5 noreply\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Incrementer {
+                            incrementer: IncrementerType::Incr,
+                            key: b"foo",
+                            value: 5,
+                        },
+                    },
+                ),
+            ),
+            (
+                "decr foo 5\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Incrementer {
+                            incrementer: IncrementerType::Decr,
+                            key: b"foo",
+                            value: 5,
+                        },
+                    },
+                ),
+            ),
+            (
+                "decr foo 5 noreply\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Incrementer {
+                            incrementer: IncrementerType::Decr,
+                            key: b"foo",
+                            value: 5,
+                        },
+                    },
+                ),
+            ),
+            (
+                "touch foo 5\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Touch {
+                            key: b"foo",
+                            ttl: 5,
+                        },
+                    },
+                ),
+            ),
+            (
+                "touch foo 5 noreply\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Touch {
+                            key: b"foo",
+                            ttl: 5,
+                        },
+                    },
+                ),
+            ),
+            (
+                "flush_all\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::FlushAll,
+                    },
+                ),
+            ),
+            (
+                "flush_all noreply\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::FlushAll,
+                    },
+                ),
+            ),
+            (
+                "version\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Version,
+                    },
+                ),
+            ),
+            (
+                "quit\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Quit,
+                    },
+                ),
+            ),
+            (
+                "verbosity 10\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Verbosity,
+                    },
+                ),
+            ),
+            (
+                "verbosity 10 noreply\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: false,
+                        command: ServerCommand::Verbosity,
+                    },
+                ),
+            ),
+            (
+                "foo bar\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Bad(b"foo bar"),
+                    },
+                ),
+            ),
+            (
+                "version foo bar\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Bad(b"version foo bar"),
+                    },
+                ),
+            ),
+            (
+                "\r\n",
+                IResult::Done(
+                    b"",
+                    CommandConfig {
+                        should_reply: true,
+                        command: ServerCommand::Bad(b""),
+                    },
+                ),
+            ),
         ];
 
         for &(ref command, ref expected_result) in &tests {
@@ -485,9 +814,9 @@ mod tests {
             ("100", Some(100)),
             ("1k", Some(1024)),
             ("2k", Some(2048)),
-            ("1m", Some(1024*1024)),
-            ("2m", Some(2*1024*1024)),
-            ("2mb", Some(2*1024*1024)),
+            ("1m", Some(1024 * 1024)),
+            ("2m", Some(2 * 1024 * 1024)),
+            ("2mb", Some(2 * 1024 * 1024)),
             ("garbage", None),
             ("1.5gb", None), // might be nice to support this some day
         ];

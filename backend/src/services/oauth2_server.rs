@@ -12,6 +12,14 @@ fn service_dir() -> PathBuf {
 }
 
 pub fn start_background_from_env() {
+    if !std::env::var("KYKLOS_OAUTH2_ENABLE")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+    {
+        info!("oauth2 server service disabled; set KYKLOS_OAUTH2_ENABLE=1 to enable");
+        return;
+    }
+
     if std::env::var("KYKLOS_OAUTH2_DISABLE")
         .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false)
@@ -43,6 +51,8 @@ pub fn start_background_from_env() {
             .arg("run")
             .arg("--manifest-path")
             .arg(&manifest)
+            .arg("--bin")
+            .arg("rust_oauth2_server")
             .arg("--no-default-features")
             .arg("--features")
             .arg("sqlx")

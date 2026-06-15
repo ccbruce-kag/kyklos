@@ -88,6 +88,7 @@ pub struct HaproxyLoadBalancerSettings {
 
 #[derive(Clone)]
 pub struct HaproxyLoadBalancerUpdate {
+    pub id: Option<i64>,
     pub lb_type: String,
     pub enabled: bool,
     pub name: String,
@@ -346,30 +347,64 @@ impl AppDb {
             .optional()
             .map_err(|e| format!("lookup HAProxy load balancer failed: {e}"))?;
 
-        if existing_id.is_some() {
-            return Err(format!(
-                "HAProxy {} load balancer frontend name already exists: {}",
-                update.lb_type, update.name
-            ));
+        if let Some(existing_id) = existing_id {
+            if Some(existing_id) != update.id {
+                return Err(format!(
+                    "HAProxy {} load balancer frontend name already exists: {}",
+                    update.lb_type, update.name
+                ));
+            }
         }
 
-        tx.execute(
-            "INSERT INTO haproxy_load_balancers
-             (lb_type, enabled, name, bind_port, mode, balance_method, health_check_path, health_check)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                update.lb_type,
-                if update.enabled { 1 } else { 0 },
-                update.name,
-                i64::from(update.bind_port),
-                update.mode,
-                update.balance_method,
-                update.health_check_path,
-                if update.health_check { 1 } else { 0 }
-            ],
-        )
-        .map_err(|e| format!("insert HAProxy load balancer failed: {e}"))?;
-        let id = tx.last_insert_rowid();
+        let id = if let Some(id) = update.id {
+            let affected = tx
+                .execute(
+                    "UPDATE haproxy_load_balancers
+                     SET enabled = ?1,
+                         name = ?2,
+                         bind_port = ?3,
+                         mode = ?4,
+                         balance_method = ?5,
+                         health_check_path = ?6,
+                         health_check = ?7,
+                         updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                     WHERE id = ?8 AND lb_type = ?9",
+                    params![
+                        if update.enabled { 1 } else { 0 },
+                        update.name,
+                        i64::from(update.bind_port),
+                        update.mode,
+                        update.balance_method,
+                        update.health_check_path,
+                        if update.health_check { 1 } else { 0 },
+                        id,
+                        update.lb_type,
+                    ],
+                )
+                .map_err(|e| format!("update HAProxy load balancer failed: {e}"))?;
+            if affected == 0 {
+                return Err("HAProxy load balancer not found".to_string());
+            }
+            id
+        } else {
+            tx.execute(
+                "INSERT INTO haproxy_load_balancers
+                 (lb_type, enabled, name, bind_port, mode, balance_method, health_check_path, health_check)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    update.lb_type,
+                    if update.enabled { 1 } else { 0 },
+                    update.name,
+                    i64::from(update.bind_port),
+                    update.mode,
+                    update.balance_method,
+                    update.health_check_path,
+                    if update.health_check { 1 } else { 0 }
+                ],
+            )
+            .map_err(|e| format!("insert HAProxy load balancer failed: {e}"))?;
+            tx.last_insert_rowid()
+        };
 
         tx.execute(
             "DELETE FROM haproxy_backend_servers WHERE lb_id = ?1",
@@ -430,6 +465,117 @@ impl AppDb {
             )
             .map_err(|e| format!("update HAProxy load balancer enabled state failed: {e}"))?;
         Ok(affected > 0)
+    }
+
+    pub fn update_haproxy_backend_server(
+        &self,
+        id: i64,
+        update: HaproxyBackendServerUpdate,
+    ) -> Result<bool, String> {
+        validate_haproxy_backend_update(&update)?;
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE haproxy_backend_servers
+                 SET name = ?1, ip = ?2, port = ?3, health_check = ?4
+                 WHERE id = ?5",
+                params![
+                    update.name,
+                    update.ip,
+                    i64::from(update.port),
+                    if update.health_check.unwrap_or(true) {
+                        1
+                    } else {
+                        0
+                    },
+                    id
+                ],
+            )
+            .map_err(|e| format!("update HAProxy backend server failed: {e}"))?;
+        if affected > 0 {
+            let _ = conn.execute(
+                "UPDATE haproxy_load_balancers
+                 SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = (SELECT lb_id FROM haproxy_backend_servers WHERE id = ?1)",
+                params![id],
+            );
+        }
+        Ok(affected > 0)
+    }
+
+    pub fn set_haproxy_backend_server_enabled(
+        &self,
+        id: i64,
+        enabled: bool,
+    ) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE haproxy_backend_servers
+                 SET health_check = ?1
+                 WHERE id = ?2",
+                params![if enabled { 1 } else { 0 }, id],
+            )
+            .map_err(|e| format!("update HAProxy backend server state failed: {e}"))?;
+        if affected > 0 {
+            let _ = conn.execute(
+                "UPDATE haproxy_load_balancers
+                 SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = (SELECT lb_id FROM haproxy_backend_servers WHERE id = ?1)",
+                params![id],
+            );
+        }
+        Ok(affected > 0)
+    }
+
+    pub fn delete_haproxy_backend_server(&self, id: i64) -> Result<bool, String> {
+        let mut conn = self.connect()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("start HAProxy backend delete transaction failed: {e}"))?;
+        let lb_id: Option<i64> = tx
+            .query_row(
+                "SELECT lb_id FROM haproxy_backend_servers WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("lookup HAProxy backend server failed: {e}"))?;
+        let Some(lb_id) = lb_id else {
+            return Ok(false);
+        };
+
+        tx.execute(
+            "DELETE FROM haproxy_backend_servers WHERE id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("delete HAProxy backend server failed: {e}"))?;
+
+        let remaining: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM haproxy_backend_servers WHERE lb_id = ?1",
+                params![lb_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("count HAProxy backend servers failed: {e}"))?;
+        if remaining == 0 {
+            tx.execute(
+                "DELETE FROM haproxy_load_balancers WHERE id = ?1",
+                params![lb_id],
+            )
+            .map_err(|e| format!("delete empty HAProxy load balancer failed: {e}"))?;
+        } else {
+            tx.execute(
+                "UPDATE haproxy_load_balancers
+                 SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = ?1",
+                params![lb_id],
+            )
+            .map_err(|e| format!("touch HAProxy load balancer failed: {e}"))?;
+        }
+        tx.commit()
+            .map_err(|e| format!("commit HAProxy backend delete failed: {e}"))?;
+        Ok(true)
     }
 
     fn init(&self) -> Result<(), String> {
@@ -2333,6 +2479,32 @@ fn validate_haproxy_update(update: &HaproxyLoadBalancerUpdate) -> Result<(), Str
     Ok(())
 }
 
+fn validate_haproxy_backend_update(update: &HaproxyBackendServerUpdate) -> Result<(), String> {
+    let valid_name = !update.name.trim().is_empty()
+        && update.name.len() <= 64
+        && update
+            .name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'));
+    if !valid_name {
+        return Err("invalid HAProxy backend server name".to_string());
+    }
+    let valid_host = !update.ip.trim().is_empty()
+        && update.ip.len() <= 255
+        && !update.ip.contains('/')
+        && update
+            .ip
+            .chars()
+            .all(|ch| !ch.is_control() && !ch.is_whitespace());
+    if !valid_host {
+        return Err("invalid HAProxy backend server host".to_string());
+    }
+    if update.port == 0 {
+        return Err("invalid HAProxy backend server port".to_string());
+    }
+    Ok(())
+}
+
 fn migrate_legacy_firewall_db(path: &PathBuf) -> Result<(), String> {
     let should_seed_from_legacy = match fs::metadata(path) {
         Ok(meta) => meta.len() == 0,
@@ -2521,7 +2693,10 @@ impl AppDb {
             .optional()
             .map_err(|e| format!("lookup workflow by name failed: {e}"))?;
         if existing.is_some() {
-            return Err(format!("workflow name already exists: {}", input.name.trim()));
+            return Err(format!(
+                "workflow name already exists: {}",
+                input.name.trim()
+            ));
         }
         conn.execute(
             "INSERT INTO workflows (name, description, trigger, status, nodes_json, edges_json, viewport_json)
@@ -2542,7 +2717,11 @@ impl AppDb {
             .ok_or_else(|| "created workflow not found".to_string())
     }
 
-    pub fn update_workflow(&self, id: i64, input: WorkflowInput) -> Result<Option<Workflow>, String> {
+    pub fn update_workflow(
+        &self,
+        id: i64,
+        input: WorkflowInput,
+    ) -> Result<Option<Workflow>, String> {
         validate_workflow_input(&input)?;
         let conn = self.connect()?;
         let affected = conn
@@ -2615,7 +2794,9 @@ fn map_network_row(row: &rusqlite::Row) -> rusqlite::Result<NetworkArchitecture>
 fn validate_network_input(input: &NetworkArchitectureInput) -> Result<(), String> {
     let name = input.name.trim();
     if name.is_empty() || name.len() > 128 {
-        return Err("network architecture name is required and must be 128 characters or less".to_string());
+        return Err(
+            "network architecture name is required and must be 128 characters or less".to_string(),
+        );
     }
     let _: serde_json::Value = serde_json::from_str(input.nodes_json.trim())
         .map_err(|e| format!("nodes_json is invalid JSON: {e}"))?;
@@ -2679,7 +2860,10 @@ impl AppDb {
             .optional()
             .map_err(|e| format!("lookup network architecture by name failed: {e}"))?;
         if existing.is_some() {
-            return Err(format!("network architecture name already exists: {}", input.name.trim()));
+            return Err(format!(
+                "network architecture name already exists: {}",
+                input.name.trim()
+            ));
         }
         conn.execute(
             "INSERT INTO network_architectures (name, description, nodes_json, edges_json, viewport_json)
@@ -2842,7 +3026,11 @@ impl AppDb {
             .ok_or_else(|| "created erd diagram not found".to_string())
     }
 
-    pub fn update_erd_diagram(&self, id: i64, input: ErdDiagramInput) -> Result<Option<ErdDiagram>, String> {
+    pub fn update_erd_diagram(
+        &self,
+        id: i64,
+        input: ErdDiagramInput,
+    ) -> Result<Option<ErdDiagram>, String> {
         validate_erd_input(&input)?;
         let conn = self.connect()?;
         let affected = conn
@@ -2992,7 +3180,9 @@ impl AppDb {
                 ],
             )
             .map_err(|e| format!("update role failed: {e}"))?;
-        if affected == 0 { return Ok(None); }
+        if affected == 0 {
+            return Ok(None);
+        }
         self.role(id)
     }
 
@@ -3075,11 +3265,9 @@ impl AppDb {
         let conn = self.connect()?;
         if let Some(pid) = input.parent_id {
             let exists: Option<i64> = conn
-                .query_row(
-                    "SELECT id FROM units WHERE id = ?1",
-                    params![pid],
-                    |row| row.get(0),
-                )
+                .query_row("SELECT id FROM units WHERE id = ?1", params![pid], |row| {
+                    row.get(0)
+                })
                 .optional()
                 .map_err(|e| format!("lookup parent unit failed: {e}"))?;
             if exists.is_none() {
@@ -3118,11 +3306,9 @@ impl AppDb {
         let conn = self.connect()?;
         if let Some(pid) = input.parent_id {
             let exists: Option<i64> = conn
-                .query_row(
-                    "SELECT id FROM units WHERE id = ?1",
-                    params![pid],
-                    |row| row.get(0),
-                )
+                .query_row("SELECT id FROM units WHERE id = ?1", params![pid], |row| {
+                    row.get(0)
+                })
                 .optional()
                 .map_err(|e| format!("lookup parent unit failed: {e}"))?;
             if exists.is_none() {
@@ -3155,7 +3341,9 @@ impl AppDb {
                 ],
             )
             .map_err(|e| format!("update unit failed: {e}"))?;
-        if affected == 0 { return Ok(None); }
+        if affected == 0 {
+            return Ok(None);
+        }
         self.unit(id)
     }
 
@@ -3260,7 +3448,10 @@ impl AppDb {
             .optional()
             .map_err(|e| format!("lookup username failed: {e}"))?;
         if exists.is_some() {
-            return Err(format!("username already exists: {}", input.username.trim()));
+            return Err(format!(
+                "username already exists: {}",
+                input.username.trim()
+            ));
         }
         let salt = crate::apps::settings::derive_salt(&input.username);
         let pw = input.password.as_deref().unwrap_or("");
@@ -3299,7 +3490,10 @@ impl AppDb {
             .optional()
             .map_err(|e| format!("lookup username failed: {e}"))?;
         if exists.is_some() {
-            return Err(format!("username already exists: {}", input.username.trim()));
+            return Err(format!(
+                "username already exists: {}",
+                input.username.trim()
+            ));
         }
         let role_codes_json = serde_json::to_string(&input.role_codes.clone().unwrap_or_default())
             .unwrap_or_else(|_| "[]".to_string());
@@ -3326,7 +3520,9 @@ impl AppDb {
                         ],
                     )
                     .map_err(|e| format!("update user failed: {e}"))?;
-                if affected == 0 { return Ok(None); }
+                if affected == 0 {
+                    return Ok(None);
+                }
                 return self.user(id);
             }
         }
@@ -3348,7 +3544,9 @@ impl AppDb {
                 ],
             )
             .map_err(|e| format!("update user failed: {e}"))?;
-        if affected == 0 { return Ok(None); }
+        if affected == 0 {
+            return Ok(None);
+        }
         self.user(id)
     }
 
@@ -3469,7 +3667,11 @@ impl AppDb {
             .optional()
             .map_err(|e| format!("lookup dictionary code failed: {e}"))?;
         if exists.is_some() {
-            return Err(format!("dictionary entry already exists: {}/{}", input.category.trim(), input.code.trim()));
+            return Err(format!(
+                "dictionary entry already exists: {}/{}",
+                input.category.trim(),
+                input.code.trim()
+            ));
         }
         conn.execute(
             "INSERT INTO data_dictionary (category, code, label, description, sort_order, extra_json, enabled)
@@ -3490,7 +3692,11 @@ impl AppDb {
             .ok_or_else(|| "created dictionary entry not found".to_string())
     }
 
-    pub fn update_dictionary(&self, id: i64, input: DictionaryInput) -> Result<Option<DictionaryEntry>, String> {
+    pub fn update_dictionary(
+        &self,
+        id: i64,
+        input: DictionaryInput,
+    ) -> Result<Option<DictionaryEntry>, String> {
         validate_dictionary_input(&input)?;
         let conn = self.connect()?;
         let exists: Option<i64> = conn
@@ -3502,7 +3708,11 @@ impl AppDb {
             .optional()
             .map_err(|e| format!("lookup dictionary code failed: {e}"))?;
         if exists.is_some() {
-            return Err(format!("dictionary entry already exists: {}/{}", input.category.trim(), input.code.trim()));
+            return Err(format!(
+                "dictionary entry already exists: {}/{}",
+                input.category.trim(),
+                input.code.trim()
+            ));
         }
         let affected = conn
             .execute(
@@ -3522,7 +3732,9 @@ impl AppDb {
                 ],
             )
             .map_err(|e| format!("update dictionary entry failed: {e}"))?;
-        if affected == 0 { return Ok(None); }
+        if affected == 0 {
+            return Ok(None);
+        }
         self.dictionary_entry(id)
     }
 
@@ -3562,7 +3774,9 @@ fn validate_setting_input(input: &SystemSettingInput) -> Result<(), String> {
     }
     let value_trimmed = input.value.trim();
     if data_type == "number" && !value_trimmed.is_empty() {
-        value_trimmed.parse::<f64>().map_err(|_| "value is not a valid number".to_string())?;
+        value_trimmed
+            .parse::<f64>()
+            .map_err(|_| "value is not a valid number".to_string())?;
     }
     if data_type == "boolean" && !value_trimmed.is_empty() {
         if !matches!(value_trimmed, "true" | "false" | "1" | "0" | "yes" | "no") {
@@ -3629,10 +3843,20 @@ impl AppDb {
             params![
                 input.key.trim(),
                 input.value,
-                input.category.unwrap_or_else(|| "general".to_string()).trim(),
-                input.data_type.unwrap_or_else(|| "string".to_string()).trim(),
+                input
+                    .category
+                    .unwrap_or_else(|| "general".to_string())
+                    .trim(),
+                input
+                    .data_type
+                    .unwrap_or_else(|| "string".to_string())
+                    .trim(),
                 input.description.unwrap_or_default().trim(),
-                if input.is_secret.unwrap_or(false) { 1 } else { 0 },
+                if input.is_secret.unwrap_or(false) {
+                    1
+                } else {
+                    0
+                },
             ],
         )
         .map_err(|e| format!("insert setting failed: {e}"))?;
@@ -3641,7 +3865,11 @@ impl AppDb {
             .ok_or_else(|| "created setting not found".to_string())
     }
 
-    pub fn update_setting(&self, id: i64, input: SystemSettingInput) -> Result<Option<SystemSetting>, String> {
+    pub fn update_setting(
+        &self,
+        id: i64,
+        input: SystemSettingInput,
+    ) -> Result<Option<SystemSetting>, String> {
         validate_setting_input(&input)?;
         let conn = self.connect()?;
         let exists: Option<i64> = conn
@@ -3671,7 +3899,9 @@ impl AppDb {
                 ],
             )
             .map_err(|e| format!("update setting failed: {e}"))?;
-        if affected == 0 { return Ok(None); }
+        if affected == 0 {
+            return Ok(None);
+        }
         self.system_setting(id)
     }
 
@@ -3708,8 +3938,8 @@ fn validate_wireframe_input(input: &ApiManWireframeInput) -> Result<(), String> 
         return Err("wireframe scene_json is required".to_string());
     }
     if scene != "{}" {
-        let _: serde_json::Value = serde_json::from_str(scene)
-            .map_err(|e| format!("scene_json is invalid JSON: {e}"))?;
+        let _: serde_json::Value =
+            serde_json::from_str(scene).map_err(|e| format!("scene_json is invalid JSON: {e}"))?;
     }
     if let Some(vp) = input.viewport_json.as_deref() {
         if !vp.trim().is_empty() {
@@ -3763,7 +3993,10 @@ impl AppDb {
             .optional()
             .map_err(|e| format!("lookup wireframe name failed: {e}"))?;
         if exists.is_some() {
-            return Err(format!("wireframe name already exists: {}", input.name.trim()));
+            return Err(format!(
+                "wireframe name already exists: {}",
+                input.name.trim()
+            ));
         }
         conn.execute(
             "INSERT INTO apiman_wireframes (name, description, scene_json, viewport_json)
@@ -3781,7 +4014,11 @@ impl AppDb {
             .ok_or_else(|| "created wireframe not found".to_string())
     }
 
-    pub fn update_wireframe(&self, id: i64, input: ApiManWireframeInput) -> Result<Option<ApiManWireframe>, String> {
+    pub fn update_wireframe(
+        &self,
+        id: i64,
+        input: ApiManWireframeInput,
+    ) -> Result<Option<ApiManWireframe>, String> {
         validate_wireframe_input(&input)?;
         let conn = self.connect()?;
         let exists: Option<i64> = conn
@@ -3793,7 +4030,10 @@ impl AppDb {
             .optional()
             .map_err(|e| format!("lookup wireframe name failed: {e}"))?;
         if exists.is_some() {
-            return Err(format!("wireframe name already exists: {}", input.name.trim()));
+            return Err(format!(
+                "wireframe name already exists: {}",
+                input.name.trim()
+            ));
         }
         let affected = conn
             .execute(
@@ -3809,7 +4049,9 @@ impl AppDb {
                 ],
             )
             .map_err(|e| format!("update wireframe failed: {e}"))?;
-        if affected == 0 { return Ok(None); }
+        if affected == 0 {
+            return Ok(None);
+        }
         self.wireframe(id)
     }
 
@@ -3897,7 +4139,11 @@ impl AppDb {
             .ok_or_else(|| "created report not found".to_string())
     }
 
-    pub fn update_report(&self, id: i64, input: ApiManReportInput) -> Result<Option<ApiManReport>, String> {
+    pub fn update_report(
+        &self,
+        id: i64,
+        input: ApiManReportInput,
+    ) -> Result<Option<ApiManReport>, String> {
         let name = input.name.trim();
         if name.is_empty() || name.len() > 128 {
             return Err("report name is required and must be 128 characters or less".to_string());
@@ -3927,7 +4173,9 @@ impl AppDb {
                 ],
             )
             .map_err(|e| format!("update report failed: {e}"))?;
-        if affected == 0 { return Ok(None); }
+        if affected == 0 {
+            return Ok(None);
+        }
         self.report(id)
     }
 
@@ -3979,7 +4227,9 @@ impl AppDb {
              FROM apiman_forms WHERE id = ?1",
             params![id],
             map_form_row,
-        ).optional().map_err(|e| format!("load form failed: {e}"))
+        )
+        .optional()
+        .map_err(|e| format!("load form failed: {e}"))
     }
 
     pub fn create_form(&self, input: ApiManFormInput) -> Result<ApiManForm, String> {
@@ -3989,39 +4239,65 @@ impl AppDb {
         }
         let conn = self.connect()?;
         let exists: Option<i64> = conn
-            .query_row("SELECT id FROM apiman_forms WHERE name = ?1", params![name], |row| row.get(0))
+            .query_row(
+                "SELECT id FROM apiman_forms WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )
             .optional()
             .map_err(|e| format!("lookup form name failed: {e}"))?;
-        if exists.is_some() { return Err(format!("form name already exists: {}", name)); }
+        if exists.is_some() {
+            return Err(format!("form name already exists: {}", name));
+        }
         conn.execute(
             "INSERT INTO apiman_forms (name, description, form_schema_json) VALUES (?1, ?2, ?3)",
-            params![name, input.description.unwrap_or_default().trim(), input.form_schema_json],
-        ).map_err(|e| format!("insert form failed: {e}"))?;
+            params![
+                name,
+                input.description.unwrap_or_default().trim(),
+                input.form_schema_json
+            ],
+        )
+        .map_err(|e| format!("insert form failed: {e}"))?;
         let id = conn.last_insert_rowid();
-        self.form(id)?.ok_or_else(|| "created form not found".to_string())
+        self.form(id)?
+            .ok_or_else(|| "created form not found".to_string())
     }
 
-    pub fn update_form(&self, id: i64, input: ApiManFormInput) -> Result<Option<ApiManForm>, String> {
+    pub fn update_form(
+        &self,
+        id: i64,
+        input: ApiManFormInput,
+    ) -> Result<Option<ApiManForm>, String> {
         let name = input.name.trim();
         if name.is_empty() || name.len() > 128 {
             return Err("form name is required and must be 128 characters or less".to_string());
         }
         let conn = self.connect()?;
         let exists: Option<i64> = conn
-            .query_row("SELECT id FROM apiman_forms WHERE name = ?1 AND id != ?2", params![name, id], |row| row.get(0))
-            .optional().map_err(|e| format!("lookup form name failed: {e}"))?;
-        if exists.is_some() { return Err(format!("form name already exists: {}", name)); }
+            .query_row(
+                "SELECT id FROM apiman_forms WHERE name = ?1 AND id != ?2",
+                params![name, id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("lookup form name failed: {e}"))?;
+        if exists.is_some() {
+            return Err(format!("form name already exists: {}", name));
+        }
         let affected = conn.execute(
             "UPDATE apiman_forms SET name = ?1, description = ?2, form_schema_json = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?4",
             params![name, input.description.unwrap_or_default().trim(), input.form_schema_json, id],
         ).map_err(|e| format!("update form failed: {e}"))?;
-        if affected == 0 { return Ok(None); }
+        if affected == 0 {
+            return Ok(None);
+        }
         self.form(id)
     }
 
     pub fn delete_form(&self, id: i64) -> Result<bool, String> {
         let conn = self.connect()?;
-        let affected = conn.execute("DELETE FROM apiman_forms WHERE id = ?1", params![id])
+        let affected = conn
+            .execute("DELETE FROM apiman_forms WHERE id = ?1", params![id])
             .map_err(|e| format!("delete form failed: {e}"))?;
         Ok(affected > 0)
     }
@@ -4078,13 +4354,23 @@ impl AppDb {
         }
         let conn = self.connect()?;
         let exists: Option<i64> = conn
-            .query_row("SELECT id FROM apiman_contents WHERE name = ?1", params![name], |row| row.get(0))
+            .query_row(
+                "SELECT id FROM apiman_contents WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )
             .optional()
             .map_err(|e| format!("lookup content name failed: {e}"))?;
-        if exists.is_some() { return Err(format!("content name already exists: {}", name)); }
+        if exists.is_some() {
+            return Err(format!("content name already exists: {}", name));
+        }
         conn.execute(
             "INSERT INTO apiman_contents (name, description, data_json) VALUES (?1, ?2, ?3)",
-            params![name, input.description.unwrap_or_default().trim(), input.data_json],
+            params![
+                name,
+                input.description.unwrap_or_default().trim(),
+                input.data_json
+            ],
         )
         .map_err(|e| format!("insert content failed: {e}"))?;
         let id = conn.last_insert_rowid();
@@ -4092,27 +4378,41 @@ impl AppDb {
             .ok_or_else(|| "created content not found".to_string())
     }
 
-    pub fn update_content(&self, id: i64, input: ApiManContentInput) -> Result<Option<ApiManContent>, String> {
+    pub fn update_content(
+        &self,
+        id: i64,
+        input: ApiManContentInput,
+    ) -> Result<Option<ApiManContent>, String> {
         let name = input.name.trim();
         if name.is_empty() || name.len() > 128 {
             return Err("content name is required and must be 128 characters or less".to_string());
         }
         let conn = self.connect()?;
         let exists: Option<i64> = conn
-            .query_row("SELECT id FROM apiman_contents WHERE name = ?1 AND id != ?2", params![name, id], |row| row.get(0))
-            .optional().map_err(|e| format!("lookup content name failed: {e}"))?;
-        if exists.is_some() { return Err(format!("content name already exists: {}", name)); }
+            .query_row(
+                "SELECT id FROM apiman_contents WHERE name = ?1 AND id != ?2",
+                params![name, id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("lookup content name failed: {e}"))?;
+        if exists.is_some() {
+            return Err(format!("content name already exists: {}", name));
+        }
         let affected = conn.execute(
             "UPDATE apiman_contents SET name = ?1, description = ?2, data_json = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?4",
             params![name, input.description.unwrap_or_default().trim(), input.data_json, id],
         ).map_err(|e| format!("update content failed: {e}"))?;
-        if affected == 0 { return Ok(None); }
+        if affected == 0 {
+            return Ok(None);
+        }
         self.content(id)
     }
 
     pub fn delete_content(&self, id: i64) -> Result<bool, String> {
         let conn = self.connect()?;
-        let affected = conn.execute("DELETE FROM apiman_contents WHERE id = ?1", params![id])
+        let affected = conn
+            .execute("DELETE FROM apiman_contents WHERE id = ?1", params![id])
             .map_err(|e| format!("delete content failed: {e}"))?;
         Ok(affected > 0)
     }

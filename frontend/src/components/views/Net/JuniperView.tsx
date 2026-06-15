@@ -30,28 +30,22 @@ export default function JuniperView() {
           <div className="card">
             <div className="card-header py-2"><strong style={{ fontSize: '.8125rem' }} id="juniperSettingsTitle">連線設定</strong></div>
             <div className="card-body juniper-form">
+              <input type="hidden" id="juniperDeviceName" value="default" />
+              <input type="hidden" id="juniperTimeout" value="10" />
               <div className="row g-3">
-                <div className="col-md-3">
-                  <label className="form-label" htmlFor="juniperDeviceName">設備名稱</label>
-                  <input type="text" className="form-control font-monospace" id="juniperDeviceName" placeholder="default" />
-                </div>
                 <div className="col-md-3">
                   <label className="form-label" htmlFor="juniperHost">管理 IP / Host</label>
                   <input type="text" className="form-control font-monospace" id="juniperHost" placeholder="10.20.50.2" />
                 </div>
-                <div className="col-md-2">
+                <div className="col-md-3">
                   <label className="form-label" htmlFor="juniperPort">SSH Port</label>
                   <input type="number" className="form-control font-monospace" id="juniperPort" min={1} max={65535} placeholder="22" />
                 </div>
-                <div className="col-md-2">
+                <div className="col-md-3">
                   <label className="form-label" htmlFor="juniperUsername">Username</label>
                   <input type="text" className="form-control font-monospace" id="juniperUsername" placeholder="root" />
                 </div>
-                <div className="col-md-2">
-                  <label className="form-label" htmlFor="juniperTimeout">Timeout</label>
-                  <input type="number" className="form-control font-monospace" id="juniperTimeout" min={1} max={120} placeholder="10" />
-                </div>
-                <div className="col-md-4">
+                <div className="col-md-3">
                   <label className="form-label" htmlFor="juniperPassword">Password</label>
                   <input type="password" className="form-control font-monospace" id="juniperPassword" autoComplete="new-password" />
                   <div className="text-muted mt-1" style={{ fontSize: '.75rem' }} id="juniperPasswordHint">留空代表保留既有密碼</div>

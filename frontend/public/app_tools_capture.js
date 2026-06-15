@@ -84,12 +84,13 @@
         logCurrentPath = null;
       });
       // ─── Tools event handlers ───
-      var toolsBase = '/miitai-fwm/0.52/backend/api/tools';
+      var toolsBase = '/api/tools';
       function toolsRun(endpoint, data, outputId) {
         var $out = $(outputId);
         $out.text('執行中...');
         $.post(toolsBase + '/' + endpoint, data, function (res) {
-          var text = res.output || res.error || JSON.stringify(res, null, 2);
+          var payload = (res && res.code === 0 && res.data) ? res.data : res;
+          var text = payload.output || payload.error || JSON.stringify(payload, null, 2);
           $out.text(text);
           logger.debug('工具執行結果: ' + endpoint, text.substring(0, 200));
         }, 'json').fail(function (xhr) {
@@ -111,8 +112,8 @@
         $('#toolsPingCBtn').prop('disabled', true);
         logger.info('Ping Class C 開始', network);
         $.post(toolsBase + '/ping-classc', { network: network }, function (res) {
-          if (res.code !== 0) { $status.text('錯誤: ' + (res.msg || '')); $('#toolsPingCBtn').prop('disabled', false); return; }
-          var data = res.data;
+          if (res.code !== undefined && res.code !== 0) { $status.text('錯誤: ' + (res.msg || '')); $('#toolsPingCBtn').prop('disabled', false); return; }
+          var data = res.data || res;
           var results = data.results || [];
           results.forEach(function (r, i) {
             var reachable = r.reachable;

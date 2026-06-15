@@ -16,10 +16,8 @@ import {
   Banner as SemiBanner,
   Tabs as SemiTabs,
   TabPane as SemiTabPane,
-  Avatar as SemiAvatar,
   Typography as SemiTypography,
   Divider as SemiDivider,
-  InputGroup as SemiInputGroup,
 } from '@douyinfe/semi-ui'
 import {
   IconPlus,
@@ -46,13 +44,12 @@ import {
   IconColorPalette,
   IconLoading,
   IconSetting,
-  IconChevronRight,
   IconChevronDown,
 } from '@douyinfe/semi-icons'
 import { createForm, onFieldValueChange } from '@formily/core'
 import { FormProvider, createSchemaField, connect, mapProps } from '@formily/react'
 import { getApiBase } from '../../../../utils/api'
-import 'semi-ui-css'
+import '@douyinfe/semi-ui/lib/es/_base/base.css'
 import './form-editor-layout.css'
 
 export type FormRecord = {
@@ -89,13 +86,6 @@ type FormField = {
   'x-component'?: string
   'x-component-props'?: Record<string, unknown>
   'x-decorator-props'?: Record<string, unknown>
-}
-
-type FormSchema = {
-  type: 'object'
-  title?: string
-  description?: string
-  properties: Record<string, FormField>
 }
 
 type Props = {
@@ -270,7 +260,7 @@ function stringifySchema(fields: FormField[]): string {
   fields.forEach((field) => {
     if (!field.name.trim()) return
     const tpl = getTemplate(field.type)
-    const { id, name, type, title, description, placeholder, required, disabled, hidden, 'x-component': comp, 'x-component-props': props } = field
+    const { id, name, type, title, description, placeholder, required, disabled, hidden, 'x-component': comp } = field
     const cleanProps: Record<string, unknown> = {}
     if (placeholder && placeholder !== tpl.defaultProps.placeholder) cleanProps.placeholder = placeholder
     if (comp && comp !== tpl.component) cleanProps['x-component'] = comp
@@ -307,6 +297,8 @@ type FieldProps = {
   multiple?: boolean
 }
 
+const mapFieldProps = (mapper: Record<string, boolean>) => mapProps(mapper as never)
+
 const PreviewInput = connect(
   (props: FieldProps) => (
     <SemiInput
@@ -317,7 +309,7 @@ const PreviewInput = connect(
       disabled={props.disabled}
     />
   ),
-  mapProps({ value: true, placeholder: true, type: true, disabled: true }),
+  mapFieldProps({ value: true, placeholder: true, type: true, disabled: true }),
 )
 
 const PreviewTextArea = connect(
@@ -330,26 +322,29 @@ const PreviewTextArea = connect(
       rows={3}
     />
   ),
-  mapProps({ value: true, placeholder: true, disabled: true }),
+  mapFieldProps({ value: true, placeholder: true, disabled: true }),
 )
 
 const PreviewInputNumber = connect(
   (props: FieldProps) => (
     <SemiInputNumber
       value={typeof props.value === 'number' ? props.value : undefined}
-      onChange={(v: number) => props.onChange?.(v)}
+      onChange={(v: string | number) => props.onChange?.(typeof v === 'number' ? v : Number(v))}
       placeholder={props.placeholder}
       disabled={props.disabled}
     />
   ),
-  mapProps({ value: true, placeholder: true, disabled: true }),
+  mapFieldProps({ value: true, placeholder: true, disabled: true }),
 )
 
 const PreviewSwitch = connect(
   (props: FieldProps) => (
-    <SemiSwitch checked={Boolean(props.value)} onChange={(v: boolean) => props.onChange?.(v)} disabled={props.disabled} text={props.text} />
+    <span className="d-inline-flex align-items-center gap-2">
+      <SemiSwitch checked={Boolean(props.value)} onChange={(v: boolean) => props.onChange?.(v)} disabled={props.disabled} />
+      {props.text && <span>{props.text}</span>}
+    </span>
   ),
-  mapProps({ value: true, disabled: true, text: true }),
+  mapFieldProps({ value: true, disabled: true, text: true }),
 )
 
 const PreviewCheckbox = connect(
@@ -358,7 +353,7 @@ const PreviewCheckbox = connect(
       {props.text}
     </SemiCheckbox>
   ),
-  mapProps({ value: true, disabled: true, text: true }),
+  mapFieldProps({ value: true, disabled: true, text: true }),
 )
 
 const PreviewSelect = connect(
@@ -370,7 +365,7 @@ const PreviewSelect = connect(
     return (
       <SemiSelect
         value={typeof props.value === 'string' || props.value === 'number' ? String(props.value) : ''}
-        onChange={(v: string | string[]) => props.onChange?.(v)}
+        onChange={(v: string | string[] | undefined) => props.onChange?.(v)}
         placeholder={props.placeholder}
         disabled={props.disabled}
         optionList={opts}
@@ -378,7 +373,7 @@ const PreviewSelect = connect(
       />
     )
   },
-  mapProps({ value: true, placeholder: true, options: true, disabled: true, multiple: true }),
+  mapFieldProps({ value: true, placeholder: true, options: true, disabled: true, multiple: true }),
 )
 
 const PreviewRadioGroup = connect(
@@ -396,29 +391,29 @@ const PreviewRadioGroup = connect(
       />
     )
   },
-  mapProps({ value: true, options: true, disabled: true }),
+  mapFieldProps({ value: true, options: true, disabled: true }),
 )
 
 const PreviewDatePicker = connect(
   (props: FieldProps) => (
     <SemiDatePicker
       value={typeof props.value === 'string' ? props.value : undefined}
-      onChange={(v: string) => props.onChange?.(v)}
+      onChange={(value: string | string[] | Date | Date[] | undefined) => props.onChange?.(value)}
       disabled={props.disabled}
     />
   ),
-  mapProps({ value: true, disabled: true }),
+  mapFieldProps({ value: true, disabled: true }),
 )
 
 const PreviewTimePicker = connect(
   (props: FieldProps) => (
     <SemiTimePicker
       value={typeof props.value === 'string' ? props.value : undefined}
-      onChange={(v: string) => props.onChange?.(v)}
+      onChange={(value: Date | Date[] | string | string[], input?: Date | Date[] | string | string[]) => props.onChange?.(input ?? value)}
       disabled={props.disabled}
     />
   ),
-  mapProps({ value: true, disabled: true }),
+  mapFieldProps({ value: true, disabled: true }),
 )
 
 const PreviewText = connect(
@@ -447,10 +442,10 @@ const PreviewFormItem = connect(
       </div>
     )
   },
-  mapProps({ title: true, required: true, description: true, decoratorProps: true }),
+  mapFieldProps({ title: true, required: true, description: true, decoratorProps: true }),
 )
 
-const { SchemaField } = createSchemaField({
+const SchemaField = createSchemaField({
   components: {
     Input: PreviewInput,
     'Input.TextArea': PreviewTextArea,
@@ -523,12 +518,6 @@ function buildFormSchema(fields: FormField[]): Record<string, unknown> {
   })
   return { type: 'object', properties }
 }
-
-function safeUid(prefix = 'f'): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-}
-
-const DEFAULT_OPTIONS_TEXT = '選項1, 選項2, 選項3'
 
 export default function FormEditorModal({ record, visible, onSaved, onClose }: Props) {
   const [name, setName] = useState(record?.name || '')
@@ -835,7 +824,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   }
 
   if (!visible) return null
-  const SafeSchemaField = typeof SchemaField !== 'undefined' ? SchemaField : null
+  const SafeSchemaField = SchemaField
 
   return (
     <>
@@ -1132,9 +1121,18 @@ function FieldPropsEditor({ field, onChange, onDelete }: { field: FormField; onC
       <div className="kyklos-form-props-row kyklos-form-props-toggles">
         <label>選項</label>
         <div className="d-flex flex-wrap gap-3">
-          <SemiSwitch checked={Boolean(field.required)} onChange={(v: boolean) => onChange({ required: v })} text="必填" />
-          <SemiSwitch checked={Boolean(field.disabled)} onChange={(v: boolean) => onChange({ disabled: v })} text="停用" />
-          <SemiSwitch checked={Boolean(field.hidden)} onChange={(v: boolean) => onChange({ hidden: v })} text="隱藏" />
+          <label className="d-inline-flex align-items-center gap-1 mb-0">
+            <SemiSwitch checked={Boolean(field.required)} onChange={(v: boolean) => onChange({ required: v })} />
+            <span>必填</span>
+          </label>
+          <label className="d-inline-flex align-items-center gap-1 mb-0">
+            <SemiSwitch checked={Boolean(field.disabled)} onChange={(v: boolean) => onChange({ disabled: v })} />
+            <span>停用</span>
+          </label>
+          <label className="d-inline-flex align-items-center gap-1 mb-0">
+            <SemiSwitch checked={Boolean(field.hidden)} onChange={(v: boolean) => onChange({ hidden: v })} />
+            <span>隱藏</span>
+          </label>
         </div>
       </div>
       <div className="kyklos-form-props-row kyklos-form-props-raw">

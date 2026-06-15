@@ -1,6 +1,6 @@
-use std::sync::Mutex;
 use chrono::Local;
 use serde_json::Value;
+use std::sync::Mutex;
 
 const MAX_ENTRIES: usize = 500;
 
@@ -45,15 +45,18 @@ impl ApiLogger {
             Ok(e) => e,
             Err(_) => return vec![],
         };
-        let result: Vec<Value> = entries.drain(..).map(|e| {
-            serde_json::json!({
-                "t": e.timestamp,
-                "l": e.level,
-                "a": e.api,
-                "m": e.message,
-                "d": e.detail,
+        let result: Vec<Value> = entries
+            .drain(..)
+            .map(|e| {
+                serde_json::json!({
+                    "t": e.timestamp,
+                    "l": e.level,
+                    "a": e.api,
+                    "m": e.message,
+                    "d": e.detail,
+                })
             })
-        }).collect();
+            .collect();
         result
     }
 }

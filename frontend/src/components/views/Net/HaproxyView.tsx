@@ -7,12 +7,12 @@ export default function HaproxyView() {
             <i className="bx bx-pulse me-1"></i><span id="haproxyStatusTabLabel">HAProxy 狀態</span>
           </button>
         </li>
-        <li className="nav-item" role="presentation">
+        <li className="nav-item d-none" role="presentation">
           <button className="nav-link" id="haproxy-web-tab" data-bs-toggle="tab" data-bs-target="#haproxyWebPane" type="button" role="tab">
             <i className="bx bx-world me-1"></i><span id="haproxyWebTabLabel">Web 負載平衡</span>
           </button>
         </li>
-        <li className="nav-item" role="presentation">
+        <li className="nav-item d-none" role="presentation">
           <button className="nav-link" id="haproxy-sql-tab" data-bs-toggle="tab" data-bs-target="#haproxySqlPane" type="button" role="tab">
             <i className="bx bx-data me-1"></i><span id="haproxySqlTabLabel">SQL Server 負載平衡</span>
           </button>
@@ -32,25 +32,29 @@ export default function HaproxyView() {
             </div>
             <div className="card-body" id="haproxyStatusBody"></div>
           </div>
-          <div className="d-flex gap-2 justify-content-end">
+          <div className="haproxy-status-actions">
             <button className="btn btn-outline-primary" id="haproxyReloadBtn"><i className="bx bx-refresh me-1"></i><span id="haproxyReloadLabel">Reload HAProxy</span></button>
             <button className="btn btn-outline-warning" id="haproxyRestartBtn"><i className="bx bx-power-off me-1"></i><span id="haproxyRestartLabel">Restart HAProxy</span></button>
           </div>
           <div className="card mt-3">
             <div className="card-header py-2 d-flex justify-content-between align-items-center">
               <strong style={{ fontSize: '.8125rem' }} id="haproxySavedTitle">已儲存負載平衡設定</strong>
-              <button className="btn btn-sm btn-outline-secondary" id="haproxySavedRefresh"><i className="bx bx-refresh me-1"></i><span className="haproxyRefreshLabel">重新整理</span></button>
+              <div className="d-flex flex-wrap gap-2 justify-content-end">
+                <button className="btn btn-sm btn-primary" id="haproxyAddLbBtn"><i className="bx bx-plus me-1"></i>新增</button>
+                <button className="btn btn-sm btn-outline-secondary" id="haproxySavedRefresh"><i className="bx bx-refresh me-1"></i><span className="haproxyRefreshLabel">重新整理</span></button>
+              </div>
             </div>
             <div className="card-body" id="haproxySavedBody"></div>
           </div>
         </div>
-        <div className="tab-pane fade" id="haproxyWebPane" role="tabpanel">
-          <div className="row g-3">
-            <div className="col-12">
+        <div className="haproxy-lb-pane d-none" id="haproxyWebPane">
+          <div className="row g-3 haproxy-lb-layout">
+            <div className="col-12 haproxy-lb-form-section">
               <div className="card">
                 <div className="card-header py-2"><strong style={{ fontSize: '.8125rem' }} id="haproxyWebTitle">Web Load Balance</strong></div>
                 <div className="card-body haproxy-form">
-                  <div className="row g-3">
+                  <div className="haproxy-edit-hint d-none" id="haproxyWebEditHint"></div>
+                  <div className="row g-3 haproxy-primary-fields">
                     <div className="col-md-6">
                       <label className="form-label" htmlFor="haproxyWebName">Frontend Name</label>
                       <input type="text" className="form-control font-monospace" id="haproxyWebName" defaultValue="web" />
@@ -59,6 +63,8 @@ export default function HaproxyView() {
                       <label className="form-label" htmlFor="haproxyWebPort">Listen Port</label>
                       <input type="number" className="form-control font-monospace" id="haproxyWebPort" min={1} max={65535} defaultValue={80} />
                     </div>
+                  </div>
+                  <div className="row g-3 mt-0 haproxy-secondary-fields">
                     <div className="col-md-6">
                       <label className="form-label" htmlFor="haproxyWebBalance">Balance Method</label>
                       <select className="form-select" id="haproxyWebBalance">
@@ -86,7 +92,7 @@ export default function HaproxyView() {
                 </div>
               </div>
             </div>
-            <div className="col-12">
+            <div className="col-12 haproxy-lb-preview-section">
               <div className="card">
                 <div className="card-header py-2">
                   <strong style={{ fontSize: '.8125rem' }} className="haproxyPreviewTitle">HAProxy Config Preview</strong>
@@ -102,13 +108,14 @@ export default function HaproxyView() {
             </div>
           </div>
         </div>
-        <div className="tab-pane fade" id="haproxySqlPane" role="tabpanel">
-          <div className="row g-3">
-            <div className="col-12">
+        <div className="haproxy-lb-pane d-none" id="haproxySqlPane">
+          <div className="row g-3 haproxy-lb-layout">
+            <div className="col-12 haproxy-lb-form-section">
               <div className="card">
                 <div className="card-header py-2"><strong style={{ fontSize: '.8125rem' }} id="haproxySqlTitle">SQL Server Load Balance</strong></div>
                 <div className="card-body haproxy-form">
-                  <div className="row g-3">
+                  <div className="haproxy-edit-hint d-none" id="haproxySqlEditHint"></div>
+                  <div className="row g-3 haproxy-primary-fields">
                     <div className="col-md-6">
                       <label className="form-label" htmlFor="haproxySqlName">Frontend Name</label>
                       <input type="text" className="form-control font-monospace" id="haproxySqlName" defaultValue="msql" />
@@ -117,6 +124,8 @@ export default function HaproxyView() {
                       <label className="form-label" htmlFor="haproxySqlPort">Listen Port</label>
                       <input type="number" className="form-control font-monospace" id="haproxySqlPort" min={1} max={65535} defaultValue={1433} />
                     </div>
+                  </div>
+                  <div className="row g-3 mt-0 haproxy-secondary-fields">
                     <div className="col-md-6">
                       <label className="form-label" htmlFor="haproxySqlBalance">Balance Method</label>
                       <select className="form-select" id="haproxySqlBalance">
@@ -146,7 +155,7 @@ export default function HaproxyView() {
                 </div>
               </div>
             </div>
-            <div className="col-12">
+            <div className="col-12 haproxy-lb-preview-section">
               <div className="card">
                 <div className="card-header py-2">
                   <strong style={{ fontSize: '.8125rem' }} className="haproxyPreviewTitle">HAProxy Config Preview</strong>
@@ -210,6 +219,18 @@ export default function HaproxyView() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+      <div id="haproxyHiddenPaneStore" className="d-none"></div>
+      <div className="modal fade" id="haproxyLbModal" tabIndex={-1} aria-hidden="true">
+        <div className="modal-dialog modal-xl modal-dialog-scrollable haproxy-lb-modal-dialog">
+          <div className="modal-content">
+            <div className="modal-header py-2">
+              <h5 className="modal-title" id="haproxyLbModalTitle">HAProxy 負載平衡</h5>
+              <button type="button" className="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div className="modal-body" id="haproxyLbModalBody"></div>
           </div>
         </div>
       </div>

@@ -1,17 +1,22 @@
-# Kyklos / Firewall-Man 防火牆管理操作手冊
+# Firewall-Man 防火牆管理操作說明
 
-本文件依照目前專案程式碼整理，目標是讓使用者知道「防火牆管理」頁面每個功能如何操作，以及如何確認規則真的有套用。
+本文件依照目前專案程式碼整理。防火牆管理頁面不是把規則先存到 SQLite，而是透過後端直接呼叫系統指令：
 
-目前你的主機是 Ubuntu，因此實際使用的是 Linux 後端：
+- Linux：`iptables` / `ip6tables`
+- macOS：`pfctl`
+- Windows：PowerShell NetSecurity
 
-- IPv4：`iptables`
-- IPv6：`ip6tables`
-- Web UI：`http://10.20.100.241:10002`
-- API 路由：維持舊版相容格式，沒有 `/api` prefix
+目前 Firewall-Man 主機是 Ubuntu，因此實際會走 Linux 的 `iptables` / `ip6tables`。
 
-## 1. 啟動與基本確認
+## 1. 執行前條件
 
-防火牆管理會直接操作系統防火牆，不是先寫入 SQLite。因此服務必須用 root 權限執行。
+Linux 防火牆管理要能正常套用，必須符合以下條件：
+
+1. Firewall-Man 服務要用 root 權限執行，或具備 `CAP_NET_ADMIN`。
+2. 系統上要有 `iptables` 指令。
+3. 若要管理 IPv6，系統上也要有 `ip6tables` 指令。
+4. Web UI 使用中的 process 必須是目前重新編譯後的新版 binary。
+5. 若在 container 內執行，container 必須具備操作 host firewall 的權限，否則畫面能開但規則不會作用到主機。
 
 建議啟動方式：
 
@@ -20,25 +25,36 @@ cd /workspaces/firewall-man
 sudo ./kyklos -a :10002
 ```
 
-確認 10002 port 是 `kyklos` 在監聽：
+若你目前仍使用舊檔名，也可能是：
+
+```bash
+sudo ./firewall-man -a :10002
+```
+
+請以實際編譯出的 binary 為準。目前 `Makefile` 的 release 目標會產出 `kyklos`。
+
+## 2. 確認服務是否真的跑新版
+
+查看 10002 port 目前由哪個 process 監聽：
 
 ```bash
 sudo ss -ltnp 'sport = :10002'
 ```
 
-確認目前 process 實際執行的檔案：
+假設看到 PID 是 `12345`，再確認它指向哪個 binary：
 
 ```bash
-sudo readlink -f /proc/<PID>/exe
+sudo readlink -f /proc/12345/exe
 ```
 
-確認平台 API：
+確認 API 可用：
 
 ```bash
-curl -u admin:admin http://127.0.0.1:10002/platform
+curl -i -u admin:admin http://127.0.0.1:10002/platform
+curl -i -u admin:admin http://127.0.0.1:10002/version
 ```
 
-確認防火牆列表 API：
+確認防火牆列表 API 可用：
 
 ```bash
 curl -u admin:admin -X POST http://127.0.0.1:10002/listRule \
@@ -47,259 +63,120 @@ curl -u admin:admin -X POST http://127.0.0.1:10002/listRule \
   -d 'protocol=ipv4'
 ```
 
-如果回傳 `Permission denied`、`Operation not permitted`、`you must be root`，代表 `kyklos` 沒有足夠權限操作 iptables。
+如果這裡回傳 `Permission denied`、`Operation not permitted`、`you must be root`，代表服務執行權限不對。
 
-## 2. 頁面基本概念
+## 3. 防火牆頁面概念
 
-左側進入：
+頁面上方的 `raw`、`mangle`、`nat`、`filter` 是 iptables table。
 
-```text
-網路工具 / 防火牆管理
+常用的是：
+
+- `filter`：一般允許、拒絕封包，例如 INPUT / OUTPUT / FORWARD。
+- `nat`：位址轉換、Port Forward，例如 PREROUTING / POSTROUTING。
+- `mangle`：封包標記或進階調整。
+- `raw`：較早期的封包處理，通常少用。
+
+每個 table 下面會列出 chain：
+
+- `INPUT`：進入 Firewall-Man 主機本機的流量。
+- `OUTPUT`：Firewall-Man 主機送出去的流量。
+- `FORWARD`：經過 Firewall-Man 轉送的流量。
+- `PREROUTING` / `POSTROUTING`：多見於 NAT table。
+
+每條規則的 `num` 是目前行號。刪除或修改規則時會用這個行號。
+
+## 4. UI 操作對應的後端行為
+
+防火牆 API 沒有 `/api` prefix，路由是舊版相容格式：
+
+- 查詢規則：`POST /listRule`
+- 查看目前表規則命令：`POST /listExec`
+- 清空規則：`POST /flushRule`
+- 刪除規則：`POST /deleteRule`
+- 清零計數：`POST /flushMetrics`
+- 修改單條規則：`POST /getRuleInfo` 後再 `POST /exec`
+- 匯出規則：`POST /export`
+- 匯入規則：`POST /import`
+- 手動執行命令：`POST /exec`
+
+後端會依 `protocol` 選擇：
+
+- `ipv4`：執行 `iptables`
+- `ipv6`：執行 `ip6tables`
+
+## 5. 新增規則的填寫方式
+
+在某個 chain 按「插入」或「追加」時，畫面會自動帶入前綴，例如：
+
+```bash
+iptables -t filter -A INPUT
 ```
 
-畫面上方有四個 iptables table：
+你只需要填前綴後面的條件，例如：
 
-- `filter`：最常用，控制允許或封鎖，例如 `INPUT`、`OUTPUT`、`FORWARD`。
-- `nat`：NAT、Port Forward、MASQUERADE，例如 `PREROUTING`、`POSTROUTING`。
-- `mangle`：封包標記、進階封包修改。
-- `raw`：較早期的封包處理，一般較少使用。
+```bash
+-p tcp --dport 8080 -j ACCEPT
+```
 
-畫面左上或上方有 IPv4 / IPv6 切換：
+最後後端實際執行會變成：
 
-- 選 `ipv4` 時，後端呼叫 `iptables`。
-- 選 `ipv6` 時，後端呼叫 `ip6tables`。
+```bash
+iptables -t filter -A INPUT -p tcp --dport 8080 -j ACCEPT
+```
 
-每個 table 下面會顯示 chain：
+常用欄位：
 
-- `INPUT`：進入 Firewall-Man 主機本機的封包。
-- `OUTPUT`：Firewall-Man 主機送出去的封包。
-- `FORWARD`：經過 Firewall-Man 轉送的封包。
-- `PREROUTING`：封包剛進入 NAT 流程時處理。
-- `POSTROUTING`：封包準備送出前處理。
+- 協定 `-p`：`tcp`、`udp`、`icmp`。
+- 來源 `-s`：來源 IP 或 CIDR，例如 `10.20.50.0/24`。
+- 目的 `-d`：目的 IP 或 CIDR。
+- 入介面 `-i`：例如 `enp6s0`。
+- 出介面 `-o`：例如 `enp7s0`。
+- 目的埠 `--dport`：例如 `22`、`80`、`443`。
+- 來源埠 `--sport`：通常較少填。
+- 連線狀態 `--ctstate`：例如 `NEW`、`ESTABLISHED`、`RELATED`。
+- 目標 `-j`：`ACCEPT`、`DROP`、`REJECT`、`LOG`、`MASQUERADE`、`DNAT`、`SNAT`。
 
-規則表格欄位：
-
-- `num`：規則行號，刪除、修改、清零單條規則時會用到。
-- `pkts` / `bytes`：命中封包數與流量。
-- `target`：動作，例如 `ACCEPT`、`DROP`、`REJECT`、`MASQUERADE`。
-- `prot`：協定，例如 `tcp`、`udp`、`icmp`、`all`。
-- `in` / `out`：入口與出口介面。
-- `source` / `destination`：來源與目的位址。
-- `action`：延伸條件，例如 `tcp dpt:80`。
-
-## 3. 按鈕用途
-
-每個 chain 區塊上方的按鈕：
-
-| 按鈕 | 用途 |
-|---|---|
-| 插入 | 在該 chain 前方插入規則，實際走 `iptables -I` |
-| 添加 | 在該 chain 最後追加規則，實際走 `iptables -A` |
-| 清零計數 | 清空該 chain 的封包與 bytes 計數，實際走 `iptables -Z` |
-| 清空鏈 | 清空該 chain 所有規則，實際走 `iptables -F <chain>` |
-| 重新整理 | 重新讀取該 chain |
-| 查看命令 | 顯示該 chain 目前對應的 `iptables-save` 內容 |
-
-每條規則右側的按鈕：
-
-| 按鈕 | 用途 |
-|---|---|
-| 清零 | 只清零該規則行號的計數 |
-| 刪除 | 刪除該規則行號 |
-
-右側固定操作按鈕：
-
-| 按鈕 | 用途 |
-|---|---|
-| 清空所有表規則 | 對 raw/mangle/nat/filter 執行 `-F`，風險高 |
-| 清空當前表規則 | 清空目前選取 table 的所有 chain 規則 |
-| 清空自定義空鏈 | 對所有 table 執行 `-X`，刪除沒有被引用的自定義 chain |
-| 清零所有表計數 | 對所有 table 執行 `-Z` |
-| 清零當前表計數 | 對目前 table 執行 `-Z` |
-| 查看當前表規則 | 顯示目前 table 的 `iptables-save -t <table>` |
-| 執行命令 | 手動送 iptables 參數 |
-| 導出規則 | 匯出目前防火牆規則 |
-| 導入規則 | 貼上 `iptables-save` 格式並匯入 |
-| 命令文件 | 顯示 iptables 命令參考 |
-
-## 4. 新增規則：最重要的操作方式
-
-新增規則建議使用 chain 內的「插入」或「添加」按鈕，不要一開始就用「執行命令」。
-
-操作流程：
-
-1. 選擇 `ipv4` 或 `ipv6`。
-2. 選擇 table，通常先選 `filter`。
-3. 找到要操作的 chain，例如 `INPUT`。
-4. 按「插入」或「添加」。
-5. 在彈窗內填欄位。
-6. 按「產出」，確認上方預覽命令。
-7. 按「確認」套用。
-8. 頁面會重新載入該 chain。
-
-「插入」與「添加」差異：
-
-- 插入：用 `-I`，通常會放在 chain 前面，優先匹配。
-- 添加：用 `-A`，放在 chain 最後，可能被前面的 DROP 規則先擋掉。
-
-正式放行服務時，通常建議先用「插入」。
-
-## 5. 常用新增範例
+## 6. 常見範例
 
 允許外部連到本機 TCP 8080：
 
-```text
+```bash
+table: filter
+chain: INPUT
+操作: 追加
+條件: -p tcp --dport 8080 -j ACCEPT
+```
+
+允許 10.20.50.0/24 連到本機 SSH：
+
+```bash
 table: filter
 chain: INPUT
 操作: 插入
-協定: tcp
-目的埠: 8080
-目標: ACCEPT
+條件: -p tcp -s 10.20.50.0/24 --dport 22 -j ACCEPT
 ```
 
-等同：
+封鎖某個來源 IP：
 
 ```bash
-iptables -t filter -I INPUT -p tcp --dport 8080 -j ACCEPT
-```
-
-只允許 10.20.50.0/24 連 SSH：
-
-```text
 table: filter
 chain: INPUT
 操作: 插入
-協定: tcp
-來源: 10.20.50.0/24
-目的埠: 22
-目標: ACCEPT
+條件: -s 10.20.50.123 -j DROP
 ```
 
-等同：
+NAT 出口轉換，常見於內網對外：
 
 ```bash
-iptables -t filter -I INPUT -p tcp -s 10.20.50.0/24 --dport 22 -j ACCEPT
-```
-
-封鎖單一來源 IP：
-
-```text
-table: filter
-chain: INPUT
-操作: 插入
-來源: 10.20.50.123
-目標: DROP
-```
-
-等同：
-
-```bash
-iptables -t filter -I INPUT -s 10.20.50.123 -j DROP
-```
-
-允許已建立連線回應封包：
-
-```text
-table: filter
-chain: INPUT
-操作: 插入
-比對模組: conntrack
-連線狀態: ESTABLISHED, RELATED
-目標: ACCEPT
-```
-
-等同：
-
-```bash
-iptables -t filter -I INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-```
-
-內網透過 enp6s0 NAT 出去：
-
-```text
 table: nat
 chain: POSTROUTING
-操作: 添加
-來源: 10.20.50.0/24
-出介面: enp6s0
-目標: MASQUERADE
+操作: 追加
+條件: -s 10.20.50.0/24 -o enp6s0 -j MASQUERADE
 ```
 
-等同：
+## 7. 「執行命令」按鈕注意事項
 
-```bash
-iptables -t nat -A POSTROUTING -s 10.20.50.0/24 -o enp6s0 -j MASQUERADE
-```
-
-## 6. 修改規則
-
-目前 UI 的修改方式是點規則列最左邊的 `num` 欄位。
-
-操作流程：
-
-1. 找到要修改的規則。
-2. 點該列最左邊的 `num` 行號。
-3. 後端會呼叫 `/getRuleInfo` 取得該行規則。
-4. UI 會把 `-A` 改成 `-R <chain> <num>`。
-5. 在彈窗內修改欄位或命令。
-6. 按「確認」後套用。
-
-範例：
-
-```bash
-iptables -t filter -R INPUT 3 -p tcp --dport 8080 -j ACCEPT
-```
-
-注意：修改規則時，如果點到 checkbox、空白區、或非規則列，可能沒有 table/chain/id，會出現：
-
-```text
-GetRuleInfo args error. table: chain: id:
-```
-
-這代表前端沒有帶到規則資訊，不是 iptables 本身錯誤。請改點規則列最左邊的 `num` 欄位。
-
-## 7. 刪除規則
-
-刪除單條規則：
-
-1. 找到該規則。
-2. 按右側「刪除」。
-3. 確認彈窗。
-4. 後端會執行：
-
-```bash
-iptables -t <table> -D <chain> <num>
-```
-
-例如刪除 `filter` table、`INPUT` chain 的第 3 條：
-
-```bash
-iptables -t filter -D INPUT 3
-```
-
-注意：iptables 行號會隨刪除而變動。連續刪多條時，請每刪一次重新確認行號。
-
-## 8. 清零計數與清空規則
-
-清零計數只會清除 `pkts` / `bytes`，不會刪除規則：
-
-```bash
-iptables -t filter -Z INPUT
-iptables -t filter -Z INPUT 3
-```
-
-清空規則會刪除規則，風險較高：
-
-```bash
-iptables -t filter -F INPUT
-iptables -t filter -F
-```
-
-正式環境操作前建議先匯出備份。
-
-## 9. 執行命令的正確方式
-
-「執行命令」只需要輸入 iptables 後面的參數，不要輸入完整 `iptables`。
+「執行命令」雖然畫面會顯示 `iptables`，但輸入框只要填參數，不要填完整指令。
 
 正確：
 
@@ -313,271 +190,88 @@ iptables -t filter -F
 iptables -t filter -L -n -v --line-numbers
 ```
 
-原因是後端已經會自己呼叫 `iptables` 或 `ip6tables`。如果你輸入完整指令，會變成類似：
+原因是後端已經固定呼叫 `iptables` binary。若輸入完整指令，會變成類似：
 
 ```bash
 iptables iptables -t filter -L -n -v --line-numbers
 ```
 
-這會失敗。
+這會執行失敗。
 
-手動新增 8080 放行時，輸入：
+## 8. 目前 UI 的限制
 
-```bash
--t filter -I INPUT -p tcp --dport 8080 -j ACCEPT
-```
+目前 `/exec` 會把輸入用空白切成參數後直接傳給 `iptables`。因此含有複雜引號的規則可能不適合從「執行命令」直接輸入。
 
-不要輸入：
+例如 comment 這類需要保留空白的內容：
 
 ```bash
-iptables -t filter -I INPUT -p tcp --dport 8080 -j ACCEPT
+-m comment --comment "allow web service" -j ACCEPT
 ```
 
-## 10. 匯出與匯入
+可能被切成多個參數，導致結果不如預期。建議第一版先使用無空白的 comment，或改用匯入完整 `iptables-save` 格式。
 
-「導出規則」會呼叫 `/export`，Linux 後端使用 `iptables-save`。
+## 9. 排錯流程
 
-你也可以在主機手動備份：
+如果主管測試覺得沒有正常執行，建議照下面順序確認。
+
+確認服務是否 root 執行：
 
 ```bash
-sudo iptables-save > /tmp/iptables-backup.rules
-sudo ip6tables-save > /tmp/ip6tables-backup.rules
-```
-
-「導入規則」會呼叫 `/import`，Linux 後端使用 `iptables-restore`。
-
-匯入內容應該是 `iptables-save` 格式，不是單行 `iptables -A ...` 指令。例如：
-
-```text
-*filter
-:INPUT ACCEPT [0:0]
-:FORWARD ACCEPT [0:0]
-:OUTPUT ACCEPT [0:0]
--A INPUT -p tcp --dport 8080 -j ACCEPT
-COMMIT
-```
-
-## 11. 如何確認真的有套用
-
-UI 新增規則後，建議用主機命令確認。
-
-查看 filter table：
-
-```bash
-sudo iptables -t filter -nvL --line-numbers
-```
-
-查看 NAT table：
-
-```bash
-sudo iptables -t nat -nvL --line-numbers
-```
-
-查看完整 save 格式：
-
-```bash
-sudo iptables-save
-```
-
-如果是 IPv6：
-
-```bash
-sudo ip6tables -t filter -nvL --line-numbers
-sudo ip6tables-save
-```
-
-用 curl 測試本機 port 是否被放行：
-
-```bash
-curl -I http://10.20.100.241:8080
-```
-
-用 nc 測試 TCP port：
-
-```bash
-nc -zv 10.20.100.241 8080
-```
-
-觀察規則計數是否增加：
-
-```bash
-sudo iptables -t filter -nvL INPUT --line-numbers
-```
-
-如果 `pkts` / `bytes` 沒增加，代表流量沒有打到該規則，可能是順序不對、table/chain 選錯、介面條件不符、或服務本身沒有監聽。
-
-## 12. 常見測試情境
-
-測試 1：開放 Web UI 10002
-
-```text
-table: filter
-chain: INPUT
-操作: 插入
-協定: tcp
-目的埠: 10002
-目標: ACCEPT
-```
-
-主機確認：
-
-```bash
-sudo iptables -t filter -nvL INPUT --line-numbers
-```
-
-外部測試：
-
-```bash
-curl -I http://10.20.100.241:10002
-```
-
-測試 2：只允許 10.20.50.0/24 連 10002
-
-```text
-table: filter
-chain: INPUT
-操作: 插入
-協定: tcp
-來源: 10.20.50.0/24
-目的埠: 10002
-目標: ACCEPT
-```
-
-測試 3：阻擋特定 IP
-
-```text
-table: filter
-chain: INPUT
-操作: 插入
-來源: 10.20.50.123
-目標: DROP
-```
-
-測試 4：Juniper 管理網段 NAT 出外網
-
-```text
-table: nat
-chain: POSTROUTING
-操作: 添加
-來源: 10.20.50.0/24
-出介面: enp6s0
-目標: MASQUERADE
-```
-
-## 13. 常見問題
-
-### 13.1 UI 顯示成功，但主機查不到規則
-
-請確認：
-
-```bash
-sudo ss -ltnp 'sport = :10002'
-sudo readlink -f /proc/<PID>/exe
 ps -eo pid,user,cmd | grep -E 'kyklos|firewall-man'
 ```
 
-如果不是 root 執行，iptables 可能不會成功。
+確認後端 API 讀得到規則：
 
-### 13.2 IPv4 / IPv6 選錯
+```bash
+curl -u admin:admin -X POST http://127.0.0.1:10002/listRule \
+  -d 'table=filter' \
+  -d 'chain=' \
+  -d 'protocol=ipv4'
+```
 
-UI 上選 `ipv4` 才會操作 `iptables`。
+確認系統指令看到同一份規則：
 
-UI 上選 `ipv6` 才會操作 `ip6tables`。
+```bash
+sudo iptables -t filter -nvL --line-numbers
+sudo iptables-save -t filter
+```
 
-請分別確認：
+確認不是 IPv4 / IPv6 選錯：
 
 ```bash
 sudo iptables -t filter -nvL --line-numbers
 sudo ip6tables -t filter -nvL --line-numbers
 ```
 
-### 13.3 iptables-nft 與 iptables-legacy 不一致
-
-Ubuntu 22.04 預設常見是 `iptables-nft`。確認目前系統使用哪個 backend：
+確認 iptables backend：
 
 ```bash
 sudo iptables --version
 sudo update-alternatives --display iptables
 ```
 
-如果主管用 `iptables-legacy` 看，而 Kyklos 用 `iptables-nft` 寫，會以為沒有套用。
+若系統同時有 `iptables-nft` 與 `iptables-legacy`，請確認主管測試看的規則與 Firewall-Man 操作的是同一個 backend。
 
-### 13.4 規則順序錯誤
-
-iptables 是由上往下匹配。若前面已經有 DROP，後面再 ACCEPT 可能不會生效。
-
-解法：
-
-- 放行規則用「插入」而不是「添加」。
-- 查看 `num` 順序。
-- 必要時修改或刪除前面的 DROP。
-
-### 13.5 防火牆規則正確，但服務仍連不上
-
-請確認服務本身有監聽：
+確認目前監聽的不是舊 process：
 
 ```bash
-sudo ss -ltnp
+sudo ss -ltnp 'sport = :10002'
+sudo readlink -f /proc/<PID>/exe
 ```
 
-例如 8080 沒有任何服務 listen，即使防火牆 ACCEPT，連線仍會失敗。
+## 10. 安全提醒
 
-### 13.6 `GetRuleInfo args error. table: chain: id:`
+以下按鈕會直接影響主機防火牆：
 
-代表修改規則時沒有帶到 table、chain、id。通常是點錯位置。
+- 清空所有表規則
+- 清空當前表規則
+- 匯入規則
+- 執行命令
 
-正確做法：
-
-- 點規則表格最左邊的 `num` 欄位進行修改。
-- 不要點 Port 管理或其他頁面的 checkbox 觸發防火牆規則編輯。
-
-## 14. API 對照表
-
-| API | 方法 | 說明 |
-|---|---|---|
-| `/listRule` | POST | 列出規則 |
-| `/listExec` | POST | 顯示 save 格式規則 |
-| `/flushRule` | POST | 清空規則 |
-| `/deleteRule` | POST | 刪除指定行號規則 |
-| `/flushMetrics` | POST | 清零計數 |
-| `/getRuleInfo` | POST | 取得指定行號規則 |
-| `/flushEmptyCustomChain` | POST | 清除空的自定義 chain |
-| `/export` | POST | 匯出規則 |
-| `/import` | POST | 匯入規則 |
-| `/exec` | POST | 執行手動參數 |
-
-常用 curl 範例：
+正式操作前建議先匯出目前規則，保留可回復版本：
 
 ```bash
-curl -u admin:admin -X POST http://127.0.0.1:10002/listRule \
-  -d 'table=filter' \
-  -d 'chain=INPUT' \
-  -d 'protocol=ipv4'
+sudo iptables-save > /tmp/iptables-backup.rules
+sudo ip6tables-save > /tmp/ip6tables-backup.rules
 ```
 
-```bash
-curl -u admin:admin -X POST http://127.0.0.1:10002/exec \
-  -d 'protocol=ipv4' \
-  -d 'args=-t filter -I INPUT -p tcp --dport 8080 -j ACCEPT'
-```
-
-```bash
-curl -u admin:admin -X POST http://127.0.0.1:10002/deleteRule \
-  -d 'table=filter' \
-  -d 'chain=INPUT' \
-  -d 'id=3' \
-  -d 'protocol=ipv4'
-```
-
-## 15. 安全建議
-
-正式操作前先備份：
-
-```bash
-sudo iptables-save > /tmp/iptables-backup-$(date +%Y%m%d%H%M%S).rules
-sudo ip6tables-save > /tmp/ip6tables-backup-$(date +%Y%m%d%H%M%S).rules
-```
-
-避免直接清空所有表規則，除非已確認主機可從 console 或其他方式救援。
-
-若要修改 SSH 或 Web UI port 的規則，先開第二個連線視窗確認新規則有效，再關閉原連線。

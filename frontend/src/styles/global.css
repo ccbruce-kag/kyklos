@@ -240,8 +240,14 @@
 #shellView { position: relative; z-index: 1; }
 #terminal, #terminal .xterm { height: 100%; width: 100%; }
 #terminal .xterm-helper-textarea { z-index: 10; }
+.rule-editor-dialog { width: 100%; max-width: 100%; overflow-x: hidden; }
+.rule-editor-dialog .row { --bs-gutter-x: .75rem; --bs-gutter-y: .5rem; }
+.rule-editor-dialog .form-control,
+.rule-editor-dialog .form-select,
+.rule-editor-dialog textarea { width: 100%; max-width: 100%; min-width: 0; }
+.rule-editor-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .375rem; }
 .rule-editor-preview { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: .8125rem; resize: vertical; min-height: 52px; }
-.rule-editor-field { margin-bottom: .5rem; }
+.rule-editor-field { margin-bottom: .5rem; min-width: 0; }
 .rule-editor-field label { font-size: .6875rem; font-weight: 600; color: var(--bs-secondary-color); margin-bottom: .125rem; text-transform: uppercase; letter-spacing: .03em; display: flex; align-items: center; gap: .25rem; }
 .rule-editor-field label code { font-size: .6875rem; background: var(--bs-tertiary-bg); padding: 0 .3rem; border-radius: 3px; }
 .rule-editor-field select, .rule-editor-field input { font-size: .8125rem; font-family: 'Cascadia Code', monospace; }
@@ -250,6 +256,19 @@
 .rule-editor-ctstate input { width: auto; }
 .rule-editor-section { border-top: 1px solid var(--bs-border-color); padding-top: .75rem; margin-top: .5rem; }
 .rule-editor-section:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+.kyklos-copy-toast.layui-layer-msg {
+  border: 1px solid rgba(25, 135, 84, .35);
+  border-radius: 8px;
+  background: #f0fff6;
+  color: #0f5132;
+  box-shadow: 0 12px 32px rgba(15, 81, 50, .24);
+  font-size: .95rem;
+  font-weight: 700;
+  padding: .35rem .6rem;
+}
+.kyklos-copy-toast .layui-layer-content {
+  padding: .75rem 1rem .75rem 2.35rem;
+}
 .tab-bar { display:flex; background:var(--bs-tertiary-bg); border-bottom:2px solid var(--bs-primary); overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; flex-shrink:0; padding:0; min-height:34px; }
 .tab-item { display:flex; align-items:center; gap:4px; padding:6px 10px; font-size:.75rem; cursor:pointer; border-right:1px solid var(--bs-border-color); white-space:nowrap; user-select:none; transition:background .12s; flex-shrink:0; position:relative; }
 .tab-item:hover { background:var(--bs-tertiary-bg); filter:brightness(1.1); }

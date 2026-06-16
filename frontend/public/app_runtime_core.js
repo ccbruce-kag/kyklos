@@ -208,7 +208,7 @@
           const msg = lang.clearConfirmPrefix + (t ? ' ' + t + ' ' + lang.tableWord : '') + (!c ? lang.allRulesSuffix : ' ' + c + lang.chainRulesSuffix);
           layer.confirm(msg, function () {
             $.post("/flushRule", { table: t, chain: c, protocol: currentProtocol }, function (r) {
-              if (r.code === 0) { layer.msg(lang.flushRuleSuccess); if (done) done(); return false; }
+              if (r.code === 0) { if (done) done(r); return false; }
               layer.alert(r.msg);
             }, "json");
           });
@@ -218,7 +218,7 @@
           const msg = lang.clearConfirmPrefix + (t ? ' ' + t + ' ' + lang.tableWord : '') + (c ? ' ' + c + ' ' + lang.chainWord : '') + (!id ? lang.allMetricsSuffix : lang.ruleMetricsPrefix + id + lang.ruleMetricsSuffix);
           layer.confirm(msg, function () {
             $.post("/flushMetrics", { table: t, chain: c, id: id, protocol: currentProtocol }, function (r) {
-              if (r.code === 0) { layer.msg(lang.flushMetricsSuccess); if (done) done(); return false; }
+              if (r.code === 0) { if (done) done(r); return false; }
               layer.alert(r.msg);
             }, "json");
           });
@@ -228,7 +228,7 @@
           const msg = currentLang === "zh" ? `確認清除 ${t} 表 ${c} 鏈的第 ${id} 條規則？` : currentLang === "ja" ? `${t} テーブル ${c} チェインのルール #${id} を削除しますか？` : `Confirm to clear ${t} table ${c} chain rule #${id}?`;
           layer.confirm(msg, function () {
             $.post("/deleteRule", { table: t, chain: c, id: id, protocol: currentProtocol }, function (r) {
-              if (r.code === 0) { layer.msg(lang.flushRuleSuccess); if (done) done(); return false; }
+              if (r.code === 0) { if (done) done(r); return false; }
               layer.alert(r.msg);
             }, "json");
           });
@@ -278,7 +278,7 @@
         }
       }
       // ─── Load rules ───
-      function loadListRule(tableName, chainName) {
+      function loadListRule(tableName, chainName, done) {
         const lang = i18n[currentLang];
         logger.debug('載入規則列表', (chainName || '全部鏈') + '@' + tableName);
         ipt.listRule(tableName, chainName || "", function (res) {
@@ -296,10 +296,14 @@
             renderDocContent();
           } else {
             const el = $("#" + chainName.replace(/\s/g, '_'));
-            if (res.data[el.data("type")] && res.data[el.data("type")].length > 0) {
-              el.html($(buildTableHTML(chainName, tableName, res.data[el.data("type")][0], el.data("type"))).html());
+            const type = el.data("type");
+            if (type && res.data[type] && res.data[type].length > 0) {
+              el.replaceWith(tableHTML(type, tableName, res.data[type][0]));
+            } else {
+              loadListRule(tableName);
             }
           }
+          if (done) done(res);
         });
       }
       // ─── Load initial (only if no tabs restored) ───
@@ -313,6 +317,38 @@
         loadListRule(initialTable);
       }
       renderDocContent();
+      function chainActionContext(el) {
+        const btn = $(el);
+        const box = btn.closest(".chain-actions");
+        return {
+          table: btn.data("table") || box.data("table"),
+          chain: btn.data("chain") || box.data("chain")
+        };
+      }
+      function firewallToast(title, message, detail, icon) {
+        if (window.showKToast) {
+          window.showKToast({
+            title: title,
+            message: message || '',
+            detail: detail || '',
+            icon: icon || 'bx-check-shield',
+            delay: 5600
+          });
+          return;
+        }
+        layer.msg(title, { icon: 1, important: true, message: message || '', detail: detail || '' });
+      }
+      function deleteRuleSuccessTitle() {
+        if (currentLang === "ja") return "ルールを削除しました！";
+        if (currentLang === "en") return "Rule deleted successfully!";
+        return "刪除規則成功！";
+      }
+      function commandDumpHtml(data) {
+        var note = currentPlatform === "linux"
+          ? '<div class="alert alert-info py-2 mb-2" style="font-size:.8125rem">此處為 <code>iptables-save</code> 格式，既有規則會以 <code>-A CHAIN</code> 顯示；若你用「插入」新增，請以規則順序確認是否在前面。</div>'
+          : '';
+        return note + `<pre class="modal-pre">${data || ''}</pre>`;
+      }
       // ─── Tab switch ───
       $(document).on("click", ".iptables-table .nav-link", function () {
         const t = $(this).attr("id").replace("tab-", "");
@@ -323,69 +359,73 @@
       });
       // ─── Chain action handlers ───
       $(document).on("click", ".chain-reload", function () {
-        const t = $(this).data("table"), c = $(this).data("chain");
+        const ctx = chainActionContext(this), t = ctx.table, c = ctx.chain;
         logger.debug('重新載入鏈', c + '@' + t);
-        loadListRule(t, c);
+        loadListRule(t, "", function () {
+          firewallToast(i18n[currentLang].refreshSuccess || '刷新成功', c + '@' + t, currentCommandBinary() + ' -t ' + t + ' -nvL ' + c, 'bx-refresh');
+        });
       });
       $(document).on("click", ".chain-insert", function () {
-        const table = $(this).data("table"), c = $(this).data("chain");
+        const ctx = chainActionContext(this), table = ctx.table, c = ctx.chain;
         const prefix = chainCommandPrefix(table, c, "-I");
         if (currentPlatform === "linux") {
           ruleEditor({ title: i18n[currentLang].insertRuleTitle, prefix: prefix, val: "", confirmCb: function(val) {
             const cmd = chainExecArgsStr(table, c, "-I", val);
             logger.info('插入規則', c + '@' + table, prefix + ' ' + val);
-            ipt.exec(cmd, function () { loadListRule(table, c, false); layer.msg(i18n[currentLang].insertSuccess); logger.debug('插入規則完成'); });
+            ipt.exec(cmd, function () { loadListRule(table); firewallToast(i18n[currentLang].insertSuccess, c + '@' + table, prefix + ' ' + val); logger.debug('插入規則完成'); });
           }});
         } else {
           execView(i18n[currentLang].insertRuleTitle, prefix, i18n[currentLang].rulePlaceholder, "", function (val) {
             const cmd = chainExecArgsStr(table, c, "-I", val);
             logger.info('插入規則', c + '@' + table, prefix + ' ' + val);
-            ipt.exec(cmd, function () { loadListRule(table, c, false); layer.msg(i18n[currentLang].insertSuccess); logger.debug('插入規則完成'); });
+            ipt.exec(cmd, function () { loadListRule(table); firewallToast(i18n[currentLang].insertSuccess, c + '@' + table, prefix + ' ' + val); logger.debug('插入規則完成'); });
           });
         }
       });
       $(document).on("click", ".chain-append", function () {
-        const table = $(this).data("table"), c = $(this).data("chain");
+        const ctx = chainActionContext(this), table = ctx.table, c = ctx.chain;
         const prefix = chainCommandPrefix(table, c, "-A");
         if (currentPlatform === "linux") {
           ruleEditor({ title: i18n[currentLang].appendRuleTitle, prefix: prefix, val: "", confirmCb: function(val) {
             const cmd = chainExecArgsStr(table, c, "-A", val);
             logger.info('追加規則', c + '@' + table, prefix + ' ' + val);
-            ipt.exec(cmd, function () { loadListRule(table, c, false); layer.msg(i18n[currentLang].appendSuccess); logger.debug('追加規則完成'); });
+            ipt.exec(cmd, function () { loadListRule(table); firewallToast(i18n[currentLang].appendSuccess, c + '@' + table, prefix + ' ' + val); logger.debug('追加規則完成'); });
           }});
         } else {
           execView(i18n[currentLang].appendRuleTitle, prefix, i18n[currentLang].rulePlaceholder, "", function (val) {
             const cmd = chainExecArgsStr(table, c, "-A", val);
             logger.info('追加規則', c + '@' + table, prefix + ' ' + val);
-            ipt.exec(cmd, function () { loadListRule(table, c, false); layer.msg(i18n[currentLang].appendSuccess); logger.debug('追加規則完成'); });
+            ipt.exec(cmd, function () { loadListRule(table); firewallToast(i18n[currentLang].appendSuccess, c + '@' + table, prefix + ' ' + val); logger.debug('追加規則完成'); });
           });
         }
       });
       $(document).on("click", ".chain-flush", function () {
-        const t = $(this).data("table"), c = $(this).data("chain");
+        const ctx = chainActionContext(this), t = ctx.table, c = ctx.chain;
         logger.info('清空鏈規則', c + '@' + t);
-        ipt.flushRule(t, c, function () { loadListRule(t, c); logger.debug('清空鏈規則完成', c + '@' + t); });
+        ipt.flushRule(t, c, function () { loadListRule(t); firewallToast(i18n[currentLang].flushRuleSuccess, c + '@' + t, currentCommandBinary() + ' -t ' + t + ' -F ' + c, 'bx-trash'); logger.debug('清空鏈規則完成', c + '@' + t); });
       });
       $(document).on("click", ".chain-flush-metrics", function () {
-        const t = $(this).data("table"), c = $(this).data("chain");
+        const ctx = chainActionContext(this), t = ctx.table, c = ctx.chain;
         logger.info('清空鏈計數', c + '@' + t);
-        ipt.flushMetrics(t, c, "", function () { loadListRule(t, c); logger.debug('清空鏈計數完成', c + '@' + t); });
+        ipt.flushMetrics(t, c, "", function () { loadListRule(t); firewallToast(i18n[currentLang].flushMetricsSuccess, c + '@' + t, currentCommandBinary() + ' -t ' + t + ' -Z ' + c, 'bx-refresh'); logger.debug('清空鏈計數完成', c + '@' + t); });
       });
       $(document).on("click", ".flush-metrics", function () {
         const t = $(this).data("table"), c = $(this).data("chain"), id = $(this).data("id");
         logger.info('清零規則計數', c + '@' + t + '#' + id);
-        ipt.flushMetrics(t, c, id, function () { loadListRule(t, c); logger.debug('清零規則計數完成', '#' + id); });
+        ipt.flushMetrics(t, c, id, function () { loadListRule(t); firewallToast(i18n[currentLang].flushMetricsSuccess, c + '@' + t + '#' + id, currentCommandBinary() + ' -t ' + t + ' -Z ' + c + ' ' + id, 'bx-refresh'); logger.debug('清零規則計數完成', '#' + id); });
       });
       $(document).on("click", ".chain-exec", function () {
-        const t = $(this).data("table"), c = $(this).data("chain");
+        const ctx = chainActionContext(this), t = ctx.table, c = ctx.chain;
         logger.debug('檢視鏈命令', c + '@' + t);
         ipt.listExec(t, c, function (res) {
-          layer.open({ title: t + " · " + c, content: `<pre class="modal-pre">${res.data || ''}</pre>`, btn: [i18n[currentLang].btnOk], area: ["auto", "400px"] });
+          layer.open({ title: t + " · " + c, content: commandDumpHtml(res.data), btn: [i18n[currentLang].btnOk], area: ["auto", "400px"] });
         });
       });
-      $(document).on("click", ".rule-table tbody>tr>td:first-child", function () {
-        const btn = $(this).parent().find(".delete-rule");
-        const t = btn.data("table"), c = btn.data("chain"), id = btn.data("id");
+      function openRuleEdit(trigger) {
+        const btn = $(trigger).closest("tr").find(".delete-rule");
+        const t = $(trigger).data("table") || btn.data("table");
+        const c = $(trigger).data("chain") || btn.data("chain");
+        const id = $(trigger).data("id") || btn.data("id");
         logger.debug('編輯規則請求', c + '@' + t + '#' + id);
         ipt.getRuleInfo(t, c, id, function (info) {
           info = info.replace("-A ", "-R ").replace(c, c + " " + id + " ");
@@ -394,31 +434,37 @@
           ruleEditor({ title: editTitle, prefix: currentCommandBinary() + " -t " + t, val: info, confirmCb: function(val) {
             const cmd = "-t " + t + " " + val;
             logger.info('修改規則', c + '@' + t + '#' + id, currentCommandBinary() + ' ' + cmd);
-            ipt.exec(cmd, function () { loadListRule(t, c); layer.msg(i18n[currentLang].updateSuccess); logger.debug('修改規則完成'); });
+            ipt.exec(cmd, function () { loadListRule(t); firewallToast(i18n[currentLang].updateSuccess, c + '@' + t + '#' + id, currentCommandBinary() + ' ' + cmd); logger.debug('修改規則完成'); });
           }});
         } else {
           execView(editTitle, currentCommandBinary() + " -t " + t, "", info, function (val) {
             const cmd = currentPlatform !== "linux" ? val : "-t " + t + " " + val;
             logger.info('修改規則', c + '@' + t + '#' + id, currentCommandBinary() + ' ' + cmd);
-            ipt.exec(cmd, function () { loadListRule(t, c); layer.msg(i18n[currentLang].updateSuccess); logger.debug('修改規則完成'); });
+            ipt.exec(cmd, function () { loadListRule(t); firewallToast(i18n[currentLang].updateSuccess, c + '@' + t + '#' + id, currentCommandBinary() + ' ' + cmd); logger.debug('修改規則完成'); });
           });
         }
         });
+      }
+      $(document).on("click", ".edit-rule", function () {
+        openRuleEdit(this);
+      });
+      $(document).on("click", ".rule-table tbody>tr>td:first-child", function () {
+        openRuleEdit(this);
       });
       $(document).on("click", ".delete-rule", function () {
         const t = $(this).data("table"), c = $(this).data("chain"), id = $(this).data("id");
         logger.info('刪除規則', c + '@' + t + '#' + id);
-        ipt.deleteRule(t, c, id, function () { loadListRule(t, c); logger.debug('刪除規則完成', '#' + id); });
+        ipt.deleteRule(t, c, id, function () { loadListRule(t); firewallToast(deleteRuleSuccessTitle(), c + '@' + t + '#' + id, currentCommandBinary() + ' -t ' + t + ' -D ' + c + ' ' + id, 'bx-trash'); logger.debug('刪除規則完成', '#' + id); });
       });
       // ─── Global action buttons ───
       $("#clear-all-rule").click(function () {
         logger.info('清空所有表規則');
-        ipt.flushRule("", "", function () { loadListRule(currentTableName()); logger.debug('清空所有表規則完成'); });
+        ipt.flushRule("", "", function () { loadListRule(currentTableName()); firewallToast(i18n[currentLang].flushRuleSuccess, i18n[currentLang].allRulesSuffix || 'all rules', currentCommandBinary() + ' flush all tables', 'bx-trash'); logger.debug('清空所有表規則完成'); });
       });
       $("#clear-current-table-rule").click(function () {
         const tn = currentTableName();
         logger.info('清空當前表規則', tn);
-        ipt.flushRule(tn, "", function () { loadListRule(tn); logger.debug('清空當前表規則完成', tn); });
+        ipt.flushRule(tn, "", function () { loadListRule(tn); firewallToast(i18n[currentLang].flushRuleSuccess, tn, currentCommandBinary() + ' -t ' + tn + ' -F', 'bx-trash'); logger.debug('清空當前表規則完成', tn); });
       });
       $("#export-all-rule").click(function () {
         const lang = i18n[currentLang];
@@ -427,7 +473,12 @@
           layer.open({
             title: lang.exportDialogTitle, content: `<pre class="modal-pre">${data || ''}</pre>`,
             btn: [lang.btnCopy, lang.btnDownload, lang.btnOk], area: ["auto", "500px"],
-            btn1() { copyText($, data); layer.msg(lang.copySuccess, { icon: 1 }); logger.debug('規則已複製'); },
+            btn1(idx, layero) {
+              copyText($, data, $(layero).find('.modal-pre').get(0)).then(function (copied) {
+                firewallToast(copied ? lang.copySuccess : '複製失敗，請手動複製', 'iptables-save output', '', copied ? 'bx-copy-alt' : 'bx-error-circle');
+                logger.debug(copied ? '規則已複製' : '規則複製失敗');
+              });
+            },
             btn2() {
               $("#createInvote").attr("href", "data:text/plain;charset=utf-8," + encodeURIComponent(data)).attr("download", "fw-rules.txt").get(0).click();
               logger.debug('規則已下載');
@@ -446,12 +497,12 @@
       });
       $("#clear-all-metrics").click(function () {
         logger.info('清零所有表計數');
-        ipt.flushMetrics("", "", "", function () { loadListRule(currentTableName()); logger.debug('清零所有表計數完成'); });
+        ipt.flushMetrics("", "", "", function () { loadListRule(currentTableName()); firewallToast(i18n[currentLang].flushMetricsSuccess, i18n[currentLang].allMetricsSuffix || 'all counters', currentCommandBinary() + ' -Z', 'bx-refresh'); logger.debug('清零所有表計數完成'); });
       });
       $("#clear-current-table-metrics").click(function () {
         const tn = currentTableName();
         logger.info('清零當前表計數', tn);
-        ipt.flushMetrics(tn, "", "", function () { loadListRule(tn); logger.debug('清零當前表計數完成', tn); });
+        ipt.flushMetrics(tn, "", "", function () { loadListRule(tn); firewallToast(i18n[currentLang].flushMetricsSuccess, tn, currentCommandBinary() + ' -t ' + tn + ' -Z', 'bx-refresh'); logger.debug('清零當前表計數完成', tn); });
       });
       $("#clear-all-empty-chain").click(function () {
         logger.info('清空自定義空鏈');
@@ -472,7 +523,7 @@
         const t = currentTableName();
         logger.debug('檢視當前表命令', t);
         ipt.listExec(t, "", function (res) {
-          layer.open({ title: fwDisplayName() + " " + i18n[currentLang].tableLabel + ": " + t, content: `<pre class="modal-pre">${res.data || ''}</pre>`, btn: [i18n[currentLang].btnOk] });
+          layer.open({ title: fwDisplayName() + " " + i18n[currentLang].tableLabel + ": " + t, content: commandDumpHtml(res.data), btn: [i18n[currentLang].btnOk] });
         });
       });
       $("#open-iptables-doc").click(function () {

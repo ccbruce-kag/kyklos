@@ -4,8 +4,49 @@ var _orig_ready = $;
     // ─── layer polyfill (layui.layer → Bootstrap) ───
     let modalInstance = null;
     let toastIdx = 0;
+    function toastEsc(value) {
+      return $('<span>').text(value == null ? '' : String(value)).html();
+    }
+    function showKToast(opts) {
+      opts = opts || {};
+      const idx = ++toastIdx;
+      const title = opts.title || opts.text || '';
+      const message = opts.message || '';
+      const detail = opts.detail || '';
+      const icon = opts.icon || 'bx-check-circle';
+      const delay = Number(opts.delay || opts.time || 5200);
+      const extraClass = opts.className ? ' ' + opts.className : '';
+      const html = `<div id="t${idx}" class="toast haproxy-toast kyklos-action-toast${extraClass}" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="${delay}">
+        <div class="toast-body d-flex align-items-start gap-3">
+          <div class="haproxy-toast-icon"><i class="bx ${toastEsc(icon)}"></i></div>
+          <div class="flex-grow-1">
+            <div class="haproxy-toast-title">${toastEsc(title)}</div>
+            ${message ? `<div class="haproxy-toast-message">${toastEsc(message)}</div>` : ''}
+            ${detail ? `<div class="haproxy-toast-detail">${toastEsc(detail)}</div>` : ''}
+          </div>
+        </div>
+      </div>`;
+      $('#toastContainer').append(html);
+      const el = document.getElementById('t' + idx);
+      const t = new bootstrap.Toast(el, { delay });
+      el.addEventListener('hidden.bs.toast', function () { $(el).remove(); });
+      t.show();
+      setTimeout(() => { $(`#t${idx}`).remove(); }, delay + 1000);
+    }
+    window.showKToast = showKToast;
     const layer = {
       msg(text, opts) {
+        if (opts && (opts.skin === 'kyklos-copy-toast' || opts.important || opts.toast)) {
+          showKToast({
+            title: text,
+            message: opts.message || '',
+            detail: opts.detail || '',
+            icon: opts.iconClass || (opts.icon === 1 ? 'bx-check-circle' : 'bx-info-circle'),
+            delay: opts.time || 5200,
+            className: opts.className || ''
+          });
+          return;
+        }
         const idx = ++toastIdx;
         const icon = (opts && opts.icon === 1) ? 'bx-check-circle text-success' : 'bx-info-circle text-primary';
         const html = `<div id="t${idx}" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="2000">
@@ -384,7 +425,7 @@ var _orig_ready = $;
         viewTable: "查看當前表規則", execCmd: "執行命令", exportRule: "導出規則", importRule: "導入規則", doc: "命令文件",
         protocolLabel: "協議", tabRaw: "raw", tabMangle: "mangle", tabNat: "nat", tabFilter: "filter",
         nativeChain: "原生鏈", customChain: "自定義鏈", insert: "插入", append: "添加", zero: "清零",
-        zeroCounters: "清零計數", delete: "刪除", refresh: "刷新", refreshSuccess: "刷新成功", viewCmd: "查看命令",
+        zeroCounters: "清零計數", edit: "編輯", delete: "刪除", refresh: "刷新", refreshSuccess: "刷新成功", viewCmd: "查看命令",
         warning: "提示", confirm: "確認", cancel: "取消", insertRuleTitle: "插入規則", appendRuleTitle: "添加規則",
         rulePlaceholder: "請輸入規則", execCommandTitleTpl: "執行 {cmd} 命令", inputCommand: "輸入命令",
         commandSuccess: "命令執行成功", importPromptTpl: "粘貼 {cmd} 規則", importSuccess: "導入規則成功！",
@@ -482,7 +523,7 @@ var _orig_ready = $;
         viewTable: "View Current Table", execCmd: "Run Command", exportRule: "Export Rules", importRule: "Import Rules", doc: "Command Reference",
         protocolLabel: "Protocol", tabRaw: "raw", tabMangle: "mangle", tabNat: "nat", tabFilter: "filter",
         nativeChain: "System Chains", customChain: "Custom Chains", insert: "Insert", append: "Append", zero: "Zero",
-        zeroCounters: "Zero Counters", delete: "Delete", refresh: "Refresh", refreshSuccess: "Refreshed", viewCmd: "View Command",
+        zeroCounters: "Zero Counters", edit: "Edit", delete: "Delete", refresh: "Refresh", refreshSuccess: "Refreshed", viewCmd: "View Command",
         warning: "Warning", confirm: "OK", cancel: "Cancel", insertRuleTitle: "Insert Rule", appendRuleTitle: "Append Rule",
         rulePlaceholder: "Enter rule arguments", execCommandTitleTpl: "Run {cmd} command", inputCommand: "Command",
         commandSuccess: "Command executed successfully", importPromptTpl: "Paste {cmd} rules",
@@ -581,7 +622,7 @@ var _orig_ready = $;
         viewTable: "現在のテーブルを表示", execCmd: "コマンドを実行", exportRule: "ルールをエクスポート", importRule: "ルールをインポート", doc: "コマンドリファレンス",
         protocolLabel: "プロトコル", tabRaw: "raw", tabMangle: "mangle", tabNat: "nat", tabFilter: "filter",
         nativeChain: "システムチェイン", customChain: "カスタムチェイン", insert: "挿入", append: "追加", zero: "ゼロ",
-        zeroCounters: "カウンタをゼロ", delete: "削除", refresh: "更新", refreshSuccess: "更新完了", viewCmd: "コマンドを表示",
+        zeroCounters: "カウンタをゼロ", edit: "編集", delete: "削除", refresh: "更新", refreshSuccess: "更新完了", viewCmd: "コマンドを表示",
         warning: "確認", confirm: "OK", cancel: "キャンセル", insertRuleTitle: "ルールを挿入", appendRuleTitle: "ルールを追加",
         rulePlaceholder: "ルールを入力", execCommandTitleTpl: "{cmd} コマンドを実行", inputCommand: "コマンドを入力",
         commandSuccess: "コマンドが正常に実行されました", importPromptTpl: "{cmd} ルールを貼り付け", importSuccess: "ルールのインポートが完了しました！",

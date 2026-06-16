@@ -12,6 +12,7 @@
           <td>${r.pkts}</td><td>${r.bytes}</td><td>${r.target}</td><td>${r.prot}</td><td>${r.opt}</td>
           <td>${r.in || ''}</td><td>${r.out || ''}</td><td>${r.source}</td><td>${r.destination}</td><td class="text-truncate" style="max-width:200px">${r.action}</td>
           <td><div class="btn-group btn-group-xs chain-actions">
+            <button class="btn btn-outline-primary edit-rule" data-table="${tableName}" data-chain="${data.title.chain}" data-id="${r.num}">${lang.edit || '編輯'}</button>
             <button class="btn btn-outline-info flush-metrics" data-table="${tableName}" data-chain="${data.title.chain}" data-id="${r.num}">${lang.zero}</button>
             <button class="btn btn-outline-danger delete-rule" data-table="${tableName}" data-chain="${data.title.chain}" data-id="${r.num}">${lang.delete}</button>
           </div></td></tr>`;
@@ -20,12 +21,12 @@
         <div class="card-header py-2"><strong>${title}</strong></div>
         <div class="card-body p-2">
           <div class="mb-2 chain-actions" data-table="${tableName}" data-chain="${data.title.chain}">
-            <button class="btn btn-primary btn-sm chain-insert">${lang.insert}</button>
-            <button class="btn btn-outline-primary btn-sm chain-append">${lang.append}</button>
-            <button class="btn btn-outline-warning btn-sm chain-flush-metrics">${lang.zeroCounters}</button>
-            <button class="btn btn-outline-danger btn-sm chain-flush">${lang.clearChain}</button>
-            <button class="btn btn-outline-secondary btn-sm chain-reload">${lang.refresh}</button>
-            <button class="btn btn-outline-info btn-sm chain-exec">${lang.viewCmd}</button>
+            <button class="btn btn-primary btn-sm chain-insert" data-table="${tableName}" data-chain="${data.title.chain}">${lang.insert}</button>
+            <button class="btn btn-outline-primary btn-sm chain-append" data-table="${tableName}" data-chain="${data.title.chain}">${lang.append}</button>
+            <button class="btn btn-outline-warning btn-sm chain-flush-metrics" data-table="${tableName}" data-chain="${data.title.chain}">${lang.zeroCounters}</button>
+            <button class="btn btn-outline-danger btn-sm chain-flush" data-table="${tableName}" data-chain="${data.title.chain}">${lang.clearChain}</button>
+            <button class="btn btn-outline-secondary btn-sm chain-reload" data-table="${tableName}" data-chain="${data.title.chain}">${lang.refresh}</button>
+            <button class="btn btn-outline-info btn-sm chain-exec" data-table="${tableName}" data-chain="${data.title.chain}">${lang.viewCmd}</button>
           </div>
           <div class="table-responsive"><table class="table table-sm table-bordered table-hover rule-table mb-0">
             <thead class="table-light"><tr>
@@ -153,6 +154,49 @@
         if (f.target) p.push('-j', f.target);
         return p.join(' ');
       }
+      function isValidIpv4Cidr(value) {
+        if (!value) return true;
+        var parts = String(value).trim().split('/');
+        if (parts.length > 2 || !parts[0] || parts[0].indexOf('..') >= 0) return false;
+        var octets = parts[0].split('.');
+        if (octets.length !== 4) return false;
+        for (var i = 0; i < octets.length; i++) {
+          if (!/^\d+$/.test(octets[i])) return false;
+          var n = Number(octets[i]);
+          if (n < 0 || n > 255) return false;
+        }
+        if (parts.length === 2) {
+          if (!/^\d+$/.test(parts[1])) return false;
+          var mask = Number(parts[1]);
+          if (mask < 0 || mask > 32) return false;
+        }
+        return true;
+      }
+      function isValidPortList(value) {
+        if (!value) return true;
+        var items = String(value).trim().split(',');
+        for (var i = 0; i < items.length; i++) {
+          var item = items[i].trim();
+          if (!item) return false;
+          var range = item.split(':');
+          if (range.length > 2) return false;
+          for (var j = 0; j < range.length; j++) {
+            if (!/^\d+$/.test(range[j])) return false;
+            var n = Number(range[j]);
+            if (n < 1 || n > 65535) return false;
+          }
+          if (range.length === 2 && Number(range[0]) > Number(range[1])) return false;
+        }
+        return true;
+      }
+      function validateRuleFields(f) {
+        var errors = [];
+        if (f.source && !isValidIpv4Cidr(f.source)) errors.push('來源 IP / CIDR 格式錯誤：' + f.source);
+        if (f.destination && !isValidIpv4Cidr(f.destination)) errors.push('目的 IP / CIDR 格式錯誤：' + f.destination);
+        if (f.dport && !isValidPortList(f.dport)) errors.push('目的埠格式錯誤：' + f.dport);
+        if (f.sport && !isValidPortList(f.sport)) errors.push('來源埠格式錯誤：' + f.sport);
+        return errors;
+      }
       const fields = parseRuleTxt(val || '');
       const ctStates = ['NEW','ESTABLISHED','RELATED','INVALID','SNAT','DNAT'];
       const rChainOpts = ['INPUT','FORWARD','OUTPUT','DOCKER','DOCKER-BRIDGE','DOCKER-CT','DOCKER-FORWARD','DOCKER-INTERNAL','DOCKER-USER',
@@ -177,12 +221,13 @@
         openDialog(ifOpts);
       }, 'json');
       function openDialog(ifaceOpts) {
+        const dialogWidth = Math.min(980, Math.max(320, window.innerWidth - 32)) + 'px';
         const html =
-          '<div style="min-width:560px">' +
+          '<div class="rule-editor-dialog">' +
             '<div class="rule-editor-section">' +
               '<label class="form-label fw-semibold">' + prefix + '</label>' +
               '<textarea class="form-control rule-editor-preview rule-preview-input" rows="2" style="font-family:monospace">' + (val||'').replace(/"/g,'&quot;') + '</textarea>' +
-              '<div class="d-flex justify-content-end mt-1"><button class="btn btn-outline-primary btn-sm rule-gen-btn">產出</button> <button class="btn btn-outline-info btn-sm rule-parse-btn">🔍 Parsing</button></div>' +
+              '<div class="rule-editor-toolbar mt-1"><button class="btn btn-outline-primary btn-sm rule-gen-btn">產出</button> <button class="btn btn-outline-info btn-sm rule-parse-btn">🔍 Parsing</button></div>' +
             '</div>' +
             '<div class="rule-editor-section">' +
               '<div class="row g-2">' +
@@ -219,8 +264,71 @@
             '</div>' +
           '</div>';
         console.log('產出按鈕被按下');
+        function collectRuleCommand($l) {
+          var $dialog = $l && $l.find('.rule-editor-dialog').length ? $l.find('.rule-editor-dialog').last() : $('.rule-editor-dialog').last();
+          var $root = $dialog.closest('.layui-layer');
+          if (!$root.length) $root = $dialog;
+          function readVal(selector) {
+            var el = $root.find(selector).get(0) || $dialog.find(selector).get(0);
+            return el ? ($(el).val() || '') : '';
+          }
+          var p = {
+            protocol: readVal('.field-protocol'),
+            source: readVal('.field-source'),
+            destination: readVal('.field-dest'),
+            target: readVal('.field-target'),
+            match: readVal('.field-match'),
+            inIf: readVal('.field-in-if'),
+            outIf: readVal('.field-out-if'),
+            dport: readVal('.field-dport'),
+            sport: readVal('.field-sport'),
+            ctstate: [],
+            icmpType: readVal('.field-icmp-type')
+          };
+          $root.find('.field-ctstate:checked').each(function(){ p.ctstate.push($(this).val()); });
+          var parts = [];
+          var aChain = readVal('.field-a-chain');
+          var rChain = readVal('.field-r-chain');
+          var rNum = readVal('.field-r-num') || '1';
+          if (aChain) parts.push('-A', aChain);
+          if (rChain) parts.push('-R', rChain, rNum);
+          var cmd = buildCmd(p);
+          if (parts.length) cmd = parts.join(' ') + ' ' + cmd;
+          return { cmd: cmd.trim(), fields: p };
+        }
+        function hasTarget(ruleText) {
+          return /(^|\s)-j\s+\S+/.test(ruleText || '');
+        }
+        function copyToast(success) {
+          if (window.showKToast) {
+            window.showKToast({
+              title: success ? '已複製命令' : '複製失敗',
+              message: success ? '可直接貼到終端機或規則文件' : '瀏覽器阻擋剪貼簿存取，已幫你選取命令，請手動複製',
+              icon: success ? 'bx-copy-alt' : 'bx-error-circle',
+              delay: 5600,
+              className: success ? '' : ' is-disabled'
+            });
+            return;
+          }
+          layer.msg(success ? '已複製命令' : '複製失敗，請手動複製', {
+            icon: 1,
+            time: 2200,
+            offset: '120px',
+            shade: 0.18,
+            shadeClose: true,
+            area: ['260px', 'auto'],
+            skin: 'kyklos-copy-toast'
+          });
+        }
+        function syncRuleCommand($l) {
+          var result = collectRuleCommand($l);
+          var cmd = result.cmd;
+          $l.find('.rule-preview-input').val(cmd);
+          $l.find('.rule-full-cmd').val((prefix ? prefix + ' ' : '') + cmd);
+          return result;
+        }
         layer.open({
-          title: title, area: ['700px', 'auto'],
+          title: title, area: [dialogWidth, 'auto'],
           content: html,
           btn: [lang.confirm, lang.cancel],
           success: function(layero) {
@@ -240,40 +348,8 @@
               if (initChain) $l.find('.field-r-chain').val(initChain);
               $l.find('.field-r-num').val(initNum);
             })();
-            function rebuildPrefixToks() {
-              var parts = [];
-              var aChain = $l.find('.field-a-chain').val();
-              var rChain = $l.find('.field-r-chain').val();
-              var rNum = $l.find('.field-r-num').val() || '1';
-              if (aChain) parts.push('-A', aChain);
-              if (rChain) parts.push('-R', rChain, rNum);
-              return parts;
-            }
             function syncFld() {
-              var p = {
-                protocol: $l.find('.field-protocol').val(),
-                source: $l.find('.field-source').val(),
-                destination: $l.find('.field-dest').val(),
-                target: $l.find('.field-target').val(),
-                match: $l.find('.field-match').val(),
-                inIf: $l.find('.field-in-if').val(),
-                outIf: $l.find('.field-out-if').val(),
-                dport: $l.find('.field-dport').val(),
-                sport: $l.find('.field-sport').val(),
-                ctstate: [],
-                icmpType: $l.find('.field-icmp-type').val()
-              };
-              $l.find('.field-ctstate:checked').each(function(){ p.ctstate.push($(this).val()); });
-              var prefixToks = rebuildPrefixToks();
-              var cmd = buildCmd(p);
-              if (prefixToks.length) cmd = prefixToks.join(' ') + ' ' + cmd;
-              cmd = cmd.trim();
-              console.log('syncFld 欄位值:', JSON.stringify(p));
-              console.log('prefixToks:', prefixToks);
-              console.log('buildCmd:', buildCmd(p));
-              console.log('最終 cmd:', cmd);
-              $l.find('.rule-preview-input').val(cmd);
-              $l.find('.rule-full-cmd').val((prefix ? prefix + ' ' : '') + cmd);
+              return syncRuleCommand($l);
             }
             var timer;
             $l.find('.field-a-chain,.field-r-chain,.field-r-num').on('change', syncFld);
@@ -301,23 +377,35 @@
             console.log('設定產出按鈕事件');
             $l.find('.rule-gen-btn').on('click', function() {
               console.log('產出按鈕被按下');
-              syncFld();
+              var generated = syncFld();
               var previewVal = $l.find('.rule-preview-input').val();
               var fullCmdVal = $l.find('.rule-full-cmd').val();
               console.log('預覽框:', previewVal);
               console.log('產出命令:', fullCmdVal);
               if (!previewVal && !fullCmdVal) {
                 console.warn('產出結果為空，請確認下方欄位有填入值');
+              } else if (generated && generated.fields && !generated.fields.target) {
+                layer.msg('請選擇目標，例如 ACCEPT / DROP', { icon: 0, time: 1800, offset: '120px', shade: 0.08 });
               } else {
                 console.info('產出成功，已填入 rule-preview-input');
               }
             });
             $l.find('.rule-parse-btn').on('click', doParse);
             $l.find('.rule-copy-btn').on('click', function() {
-              var txt = $l.find('.rule-full-cmd').val();
+              var previewBeforeSync = ($l.find('.rule-preview-input').val() || '').trim();
+              var generated = syncRuleCommand($l);
+              var txt = generated.cmd ? $l.find('.rule-full-cmd').val() : '';
+              if (!hasTarget(generated.cmd) && hasTarget(previewBeforeSync)) {
+                txt = (prefix ? prefix + ' ' : '') + previewBeforeSync;
+              }
+              txt = (txt || '').trim();
               if (!txt) return;
-              copyText($, txt);
-              layer.msg('已複製', { icon: 1, time: 1200 });
+              copyText($, txt, $l.find('.rule-full-cmd').get(0)).then(function (copied) {
+                if (!copied) {
+                  $l.find('.rule-full-cmd').val(txt).focus().select();
+                }
+                copyToast(copied);
+              });
             });
             $l.find('.rule-preview-input').on('input', function(){
               clearTimeout(timer);
@@ -326,7 +414,35 @@
             syncFld();
           },
           btn1: function(idx, layero) {
-            confirmCb($(layero).find('.rule-preview-input').val() || '');
+            var $l = $(layero);
+            var previewBeforeSync = ($l.find('.rule-preview-input').val() || '').trim();
+            var generated = syncRuleCommand($l);
+            var ruleText = generated.cmd;
+            if ((!ruleText || !hasTarget(ruleText)) && hasTarget(previewBeforeSync)) {
+              ruleText = previewBeforeSync;
+            }
+            if (!ruleText || !hasTarget(ruleText)) {
+              var f = generated.fields || {};
+              function safeField(v) {
+                return $('<span>').text(v || '-').html();
+              }
+              layer.alert(
+                '請先填寫規則條件並選擇目標，例如 ACCEPT / DROP，再按「產出」或「確認」。<br><br>' +
+                '目前讀到：協定=' + safeField(f.protocol) +
+                '，目的埠=' + safeField(f.dport) +
+                '，目標=' + safeField(f.target)
+              );
+              return false;
+            }
+            var validationErrors = validateRuleFields(generated.fields || {});
+            if (validationErrors.length) {
+              layer.alert(
+                '規則欄位格式不正確，請修正後再確認。<br><br>' +
+                validationErrors.map(function (e) { return '・' + $('<span>').text(e).html(); }).join('<br>')
+              );
+              return false;
+            }
+            confirmCb(ruleText);
             _hideModal();
           },
           btn2: function(idx, layero) {
@@ -336,9 +452,62 @@
         });
       }
     }
-    function copyText($, str) {
-      $("#copy").text(str).show();
-      document.getElementById("copy").select();
-      document.execCommand("copy", false, null);
-      $("#copy").hide();
+    function copyText($, str, sourceEl) {
+      if (!str) return Promise.resolve(false);
+      if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(str)
+          .then(function () { return true; })
+          .catch(function () { return fallbackCopyText(str, sourceEl); });
+      }
+      return Promise.resolve(fallbackCopyText(str, sourceEl));
+    }
+    function fallbackCopyText(str, sourceEl) {
+      var copied = false;
+      function onCopy(e) {
+        try {
+          if (e.clipboardData) {
+            e.clipboardData.setData("text/plain", str);
+            e.preventDefault();
+            copied = true;
+          }
+        } catch (_) {}
+      }
+      document.addEventListener("copy", onCopy, true);
+      try {
+        document.execCommand("copy");
+      } catch (_) {
+      } finally {
+        document.removeEventListener("copy", onCopy, true);
+      }
+      if (copied) return true;
+      if (sourceEl && typeof sourceEl.select === "function") {
+        try {
+          sourceEl.focus();
+          sourceEl.select();
+          if (typeof sourceEl.setSelectionRange === "function") {
+            sourceEl.setSelectionRange(0, sourceEl.value.length);
+          }
+          return document.execCommand("copy");
+        } catch (_) {}
+      }
+      var el = document.createElement("textarea");
+      el.value = str;
+      el.setAttribute("readonly", "");
+      el.style.position = "fixed";
+      el.style.left = "0";
+      el.style.top = "0";
+      el.style.width = "1px";
+      el.style.height = "1px";
+      el.style.opacity = "0.01";
+      document.body.appendChild(el);
+      try {
+        el.focus();
+        el.select();
+        el.setSelectionRange(0, el.value.length);
+        return document.execCommand("copy");
+      } catch (e) {
+        return false;
+      } finally {
+        document.body.removeChild(el);
+      }
     }

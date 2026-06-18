@@ -1,6 +1,6 @@
 #[path = "reverse-proxy/src/lib.rs"]
 #[allow(dead_code)]
-mod hyper_reverse_proxy;
+pub mod hyper_reverse_proxy;
 
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -23,7 +23,18 @@ pub fn start_background_from_env() {
 
     let address = std::env::var("KYKLOS_REVERSE_PROXY_ADDRESS")
         .unwrap_or_else(|_| DEFAULT_ADDRESS.to_string());
-    let target = std::env::var("KYKLOS_REVERSE_PROXY_TARGET").ok();
+    let target = std::env::var("KYKLOS_REVERSE_PROXY_TARGET")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let enabled = std::env::var("KYKLOS_REVERSE_PROXY_ENABLE")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false);
+    if target.is_none() && !enabled {
+        info!(
+            "reverse proxy service not started; set KYKLOS_REVERSE_PROXY_TARGET or KYKLOS_REVERSE_PROXY_ENABLE=1 to enable"
+        );
+        return;
+    }
 
     tokio::spawn(async move {
         let addr: SocketAddr = match address.parse() {

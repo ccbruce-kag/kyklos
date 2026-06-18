@@ -36,6 +36,7 @@
         ai: function() { setTimeout(function(){$('#aiInput').focus();},100); },
         juniper: function() { loadJuniperAll(); },
         haproxy: function() { ensureHaproxyDefaults(); loadHaproxyStatus(); loadHaproxySaved(); },
+        kyklosHa: function() { ensureKyklosHaDefaults(); loadKyklosHaAll(); },
         nginx: function() { loadNginxEnv(); },
         netplan: function() { loadNetplanInterfaces(); },
         pcap: function() { pcapLoadInterfaces(); },
@@ -61,7 +62,7 @@
         dashboard: 'menuDash', workflow: 'menuWorkflow', netArch: 'menuNetArch', erdDiagram: 'menuErdDiagram', wireframe: 'menuWireframe', reportEditor: 'menuReportEditor', formEditor: 'menuFormEditor',
         role: 'menuRole', unit: 'menuUnit', user: 'menuUser', dictionary: 'menuDictionary', systemSetting: 'menuSystemSetting',
         firewallMan: 'menuFirewallMan', juniper: 'menuJuniper',
-        haproxy: 'menuHaproxy', nginx: 'menuNginx', netplan: 'menuNetplan',
+        haproxy: 'menuHaproxy', kyklosHa: 'menuKyklosHa', nginx: 'menuNginx', netplan: 'menuNetplan',
         pcap: 'menuPcap', snmp: 'menuSnmp', apiman: 'menuApiManNew', dbman: 'menuDbManNew', security: 'menuSecurityCvs',
         tools: 'menuTools', system: 'menuSys', shell: 'menuShell', widgets: 'menuWidgets', logViewer: 'menuLogViewer', crontab: 'menuCrontab', ai: 'menuAI',
       };
@@ -76,7 +77,7 @@
       });
       $('#logClear').on('click', function () { logger.clear(); });
       function inactiveAllLeaf() {
-        $('#menuDash,#menuWorkflow,#menuNetArch,#menuErdDiagram,#menuWireframe,#menuReportEditor,#menuFormEditor,#menuRole,#menuUnit,#menuUser,#menuDictionary,#menuSystemSetting,#menuFirewallMan,#menuJuniper,#menuHaproxy,#menuNginx,#menuNetplan,#menuPcap,#menuSnmp,#menuSys,#menuTools,#menuShell,#menuWidgets,#menuLogViewer,#menuCrontab,#menuApiManNew,#menuDbManNew,#menuSecurityCvs,#menuSecurityScan,#menuAI,#menuDoc').removeClass('active');
+        $('#menuDash,#menuWorkflow,#menuNetArch,#menuErdDiagram,#menuWireframe,#menuReportEditor,#menuFormEditor,#menuRole,#menuUnit,#menuUser,#menuDictionary,#menuSystemSetting,#menuFirewallMan,#menuJuniper,#menuHaproxy,#menuKyklosHa,#menuNginx,#menuNetplan,#menuPcap,#menuSnmp,#menuSys,#menuTools,#menuShell,#menuWidgets,#menuLogViewer,#menuCrontab,#menuApiManNew,#menuDbManNew,#menuSecurityCvs,#menuSecurityScan,#menuAI,#menuDoc').removeClass('active');
       }
       function hideAllViews() {
         hideAllWorkViews();
@@ -120,6 +121,7 @@
             menuFirewallManLink: 'firewallMan',
             menuJuniperLink: 'juniper',
             menuHaproxyLink: 'haproxy',
+            menuKyklosHaLink: 'kyklosHa',
             menuNginxLink: 'nginx',
             menuNetplanLink: 'netplan',
             menuSysLink: 'system',
@@ -151,6 +153,7 @@
       console.log('[app.js] menu click handlers bound, menuDashLink found:', !!$('#menuDashLink').length, 'tableTabs found:', !!$('#tableTabs').length);
       $('#menuJuniperLink').on('click', function (e) { e.preventDefault(); switchView('juniper'); });
       $('#menuHaproxyLink').on('click', function (e) { e.preventDefault(); switchView('haproxy'); });
+      $('#menuKyklosHaLink').on('click', function (e) { e.preventDefault(); switchView('kyklosHa'); });
       $('#menuNginxLink').on('click', function (e) { e.preventDefault(); switchView('nginx'); });
       $('#menuNetplanLink').on('click', function (e) { e.preventDefault(); switchView('netplan'); });
       $('#menuApiManNewLink').on('click', function (e) {
@@ -239,6 +242,12 @@
             done(r.data);
           }, "json");
         },
+        createCustomChain(t, c, done) {
+          $.post("/createCustomChain", { table: t, chain: c, protocol: currentProtocol }, function (r) {
+            if (r.code !== 0) { layer.alert(r.msg); return false; }
+            if (done) done(r);
+          }, "json");
+        },
         exec(args, done) {
           $.post("/exec", { args: args, protocol: currentProtocol }, function (r) {
             if (r.code !== 0) { layer.alert(r.msg); return false; }
@@ -289,9 +298,14 @@
               body.append(`<h5 class="text-primary mt-0 mb-3"><i class="bx bx-server me-1"></i>${lang.nativeChain}</h5>`);
               res.data.system.forEach(function (s) { body.append(tableHTML("system", tableName, s)); });
             }
+            body.append(`<hr><div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+              <h5 class="text-primary mb-0"><i class="bx bx-git-branch me-1"></i>${lang.customChain}</h5>
+              <button class="btn btn-outline-primary btn-sm" id="create-custom-chain"><i class="bx bx-plus me-1"></i>${lang.createCustomChain || '新增自定義鏈'}</button>
+            </div>`);
             if (res.data.custom && res.data.custom.length > 0) {
-              body.append(`<hr><h5 class="text-primary mb-3"><i class="bx bx-git-branch me-1"></i>${lang.customChain}</h5>`);
               res.data.custom.forEach(function (c) { body.append(tableHTML("custom", tableName, c)); });
+            } else {
+              body.append(`<div class="alert alert-light border py-2 mb-3">${lang.noCustomChain || '目前沒有自定義鏈。'}</div>`);
             }
             renderDocContent();
           } else {
@@ -369,7 +383,7 @@
         const ctx = chainActionContext(this), table = ctx.table, c = ctx.chain;
         const prefix = chainCommandPrefix(table, c, "-I");
         if (currentPlatform === "linux") {
-          ruleEditor({ title: i18n[currentLang].insertRuleTitle, prefix: prefix, val: "", confirmCb: function(val) {
+          ruleEditor({ title: i18n[currentLang].insertRuleTitle, prefix: prefix, val: "", currentChain: c, confirmCb: function(val) {
             const cmd = chainExecArgsStr(table, c, "-I", val);
             logger.info('插入規則', c + '@' + table, prefix + ' ' + val);
             ipt.exec(cmd, function () { loadListRule(table); firewallToast(i18n[currentLang].insertSuccess, c + '@' + table, prefix + ' ' + val); logger.debug('插入規則完成'); });
@@ -386,7 +400,7 @@
         const ctx = chainActionContext(this), table = ctx.table, c = ctx.chain;
         const prefix = chainCommandPrefix(table, c, "-A");
         if (currentPlatform === "linux") {
-          ruleEditor({ title: i18n[currentLang].appendRuleTitle, prefix: prefix, val: "", confirmCb: function(val) {
+          ruleEditor({ title: i18n[currentLang].appendRuleTitle, prefix: prefix, val: "", currentChain: c, confirmCb: function(val) {
             const cmd = chainExecArgsStr(table, c, "-A", val);
             logger.info('追加規則', c + '@' + table, prefix + ' ' + val);
             ipt.exec(cmd, function () { loadListRule(table); firewallToast(i18n[currentLang].appendSuccess, c + '@' + table, prefix + ' ' + val); logger.debug('追加規則完成'); });
@@ -427,11 +441,19 @@
         const c = $(trigger).data("chain") || btn.data("chain");
         const id = $(trigger).data("id") || btn.data("id");
         logger.debug('編輯規則請求', c + '@' + t + '#' + id);
+        function normalizeReplaceRule(val) {
+          var rule = (val || '').trim();
+          if (!rule) return rule;
+          if (/^-R\s+\S+\s+\d+(\s|$)/.test(rule)) return rule;
+          rule = rule.replace(/^-(A|I)\s+\S+(\s+\d+)?\s+/, '').replace(/^-R\s+\S+\s+\d+\s+/, '');
+          return ('-R ' + c + ' ' + id + ' ' + rule).trim();
+        }
         ipt.getRuleInfo(t, c, id, function (info) {
-          info = info.replace("-A ", "-R ").replace(c, c + " " + id + " ");
+          info = normalizeReplaceRule(info);
           const editTitle = currentLang === "zh" ? `修改 ${t}表, ${c}鏈, 第${id}條規則` : currentLang === "ja" ? `${t} テーブル, ${c} チェイン, ルール #${id} を編集` : `Edit ${t} table, ${c} chain, rule #${id}`;
         if (currentPlatform === "linux") {
-          ruleEditor({ title: editTitle, prefix: currentCommandBinary() + " -t " + t, val: info, confirmCb: function(val) {
+          ruleEditor({ title: editTitle, prefix: currentCommandBinary() + " -t " + t, val: info, currentChain: c, confirmCb: function(val) {
+            val = normalizeReplaceRule(val);
             const cmd = "-t " + t + " " + val;
             logger.info('修改規則', c + '@' + t + '#' + id, currentCommandBinary() + ' ' + cmd);
             ipt.exec(cmd, function () { loadListRule(t); firewallToast(i18n[currentLang].updateSuccess, c + '@' + t + '#' + id, currentCommandBinary() + ' ' + cmd); logger.debug('修改規則完成'); });
@@ -507,6 +529,23 @@
       $("#clear-all-empty-chain").click(function () {
         logger.info('清空自定義空鏈');
         ipt.flushEmptyCustomChain(function () { loadListRule(currentTableName()); logger.debug('清空自定義空鏈完成'); });
+      });
+      $(document).on("click", "#create-custom-chain", function () {
+        const table = currentTableName();
+        const title = i18n[currentLang].createCustomChain || '新增自定義鏈';
+        layer.prompt({ title: title, value: 'TEST_CHAIN' }, function (value) {
+          const chain = (value || '').trim();
+          if (!/^[0-9A-Za-z_-]+$/.test(chain)) {
+            layer.alert(i18n[currentLang].invalidCustomChain || '鏈名稱只能使用英數、底線或減號。');
+            return false;
+          }
+          logger.info('新增自定義鏈', table + '@' + chain, currentCommandBinary() + ' -t ' + table + ' -N ' + chain);
+          ipt.createCustomChain(table, chain, function () {
+            loadListRule(table);
+            firewallToast(i18n[currentLang].createCustomChainSuccess || '新增自定義鏈成功！', table + '@' + chain, currentCommandBinary() + ' -t ' + table + ' -N ' + chain, 'bx-git-branch');
+            logger.debug('新增自定義鏈完成', chain);
+          });
+        });
       });
       $("#exec-iptables").click(function () {
         execView(t("execCommandTitleTpl"), fwDisplayName(), i18n[currentLang].inputCommand, "", function (val) {

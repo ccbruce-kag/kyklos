@@ -592,19 +592,19 @@
           var sites = res.data || [];
           if (!sites.length) { $('#nginxSiteListBody').html('<div class="text-muted p-2">' + (i18n[currentLang].dashNoData || 'No data') + '</div>'); return; }
           var lang = i18n[currentLang];
-          var html = '<div class="table-responsive"><table class="table table-sm table-hover mb-0">' +
+          var html = '<div class="table-responsive nginx-table-wrap"><table class="table table-sm table-hover nginx-table mb-0">' +
             '<thead><tr><th>' + (lang.nginxSiteName || 'Site Name') + '</th><th>' + (lang.nginxServerName || 'Server Name') + '</th>' +
             '<th>' + (lang.nginxType || 'Type') + '</th><th>' + (lang.nginxStatus || 'Status') + '</th><th>' + (lang.nginxActions || 'Actions') + '</th></tr></thead><tbody>';
           sites.forEach(function (s) {
             var enabled = s.enabled ? '<span class="badge bg-label-success">' + (lang.nginxEnabled || 'Enabled') + '</span>' : '<span class="badge bg-label-secondary">Disabled</span>';
             var typeLabel = s.site_type === 'reverse_proxy' ? (lang.nginxReverseProxy || 'Reverse Proxy') : (lang.nginxStaticSite || 'Static Site');
             html += '<tr data-name="' + escHtml(s.site_name) + '">' +
-              '<td><strong>' + escHtml(s.site_name) + '</strong></td>' +
+              '<td><button type="button" class="btn btn-link p-0 text-start fw-semibold nginx-site-name-link">' + escHtml(s.site_name) + '</button></td>' +
               '<td><code>' + escHtml(s.server_name) + '</code></td>' +
               '<td>' + typeLabel + '</td>' +
               '<td>' + enabled + '</td>' +
-              '<td><button class="btn btn-sm btn-outline-primary nginx-edit-site me-1"><i class="bx bx-edit"></i></button>' +
-              '<button class="btn btn-sm btn-outline-danger nginx-delete-site"><i class="bx bx-trash"></i></button></td></tr>';
+              '<td><div class="nginx-row-actions"><button class="btn btn-sm btn-outline-primary nginx-edit-site"><i class="bx bx-edit"></i></button>' +
+              '<button class="btn btn-sm btn-outline-danger nginx-delete-site"><i class="bx bx-trash"></i></button></div></td></tr>';
           });
           html += '</tbody></table></div>';
           $('#nginxSiteListBody').html(html);
@@ -616,10 +616,12 @@
       $('#nginxEditSiteName').val(site.site_name || '');
       $('#nginxSiteName').val(site.site_name || '').prop('readonly', true);
       $('#nginxServerName').val(site.server_name || '_');
+      $('#nginxListenPort').val(site.listen_port || 80);
       $('#nginxSiteType').val(site.site_type || 'server');
       $('#nginxDocRoot').val(site.document_root || '/var/www/html');
       $('#nginxProxyPass').val(site.reverse_proxy_pass || '');
       $('#nginxSiteEnabled').prop('checked', site.enabled !== false);
+      updateNginxSiteEnabledLabel();
       $('#nginxSiteConfig').val(site.config_content || '');
       $('#nginxDeleteSiteBtn').show();
       toggleNginxSiteType();
@@ -628,14 +630,22 @@
       $('#nginxEditSiteName').val('');
       $('#nginxSiteName').val('').prop('readonly', false);
       $('#nginxServerName').val('_');
+      $('#nginxListenPort').val('80');
       $('#nginxSiteType').val('server');
       $('#nginxDocRoot').val('/var/www/html');
       $('#nginxProxyPass').val('http://127.0.0.1:3000');
       $('#nginxSiteEnabled').prop('checked', true);
+      updateNginxSiteEnabledLabel();
       $('#nginxSiteConfig').val('');
       $('#nginxDeleteSiteBtn').hide();
       $('#nginxSitePreviewResult').empty();
       toggleNginxSiteType();
+    }
+    function updateNginxSiteEnabledLabel() {
+      var enabled = $('#nginxSiteEnabled').is(':checked');
+      var label = enabled ? (i18n[currentLang].nginxEnabled || '啟用') : (i18n[currentLang].nginxDisabled || '停用');
+      $('#nginxSiteEnabledLabel').text(label);
+      $('.nginx-site-status-switch').toggleClass('is-off', !enabled);
     }
     function toggleNginxSiteType() {
       var t = $('#nginxSiteType').val();
@@ -655,7 +665,7 @@
           var modules = res.data || [];
           if (!modules.length) { $('#nginxModuleListBody').html('<div class="text-muted p-2">' + (i18n[currentLang].dashNoData || 'No data') + '</div>'); return; }
           var lang = i18n[currentLang];
-          var html = '<div class="table-responsive"><table class="table table-sm table-hover mb-0">' +
+          var html = '<div class="table-responsive nginx-table-wrap"><table class="table table-sm table-hover nginx-table mb-0">' +
             '<thead><tr><th>' + (lang.nginxModuleName || 'Module Name') + '</th><th>' + (lang.nginxStatus || 'Status') + '</th><th>' + (lang.nginxActions || 'Actions') + '</th></tr></thead><tbody>';
           modules.forEach(function (m) {
             var enabled = m.enabled;

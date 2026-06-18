@@ -286,6 +286,15 @@ impl IptablesCmd {
         Ok(list[id_int - 1].to_string())
     }
 
+    pub async fn create_custom_chain(&self, table: &str, chain: &str) -> Result<(), String> {
+        if chain.is_empty() {
+            return Err("CreateCustomChain args error. chain is empty".to_string());
+        }
+        let tbl = if table.is_empty() { "filter" } else { table };
+        self.run_iptables(&["-t", tbl, "-N", chain]).await?;
+        Ok(())
+    }
+
     pub async fn flush_empty_custom_chain(&self) -> Result<(), String> {
         let mut first_err = None;
         for tbl in &["raw", "mangle", "nat", "filter"] {
@@ -358,6 +367,10 @@ impl FirewallCmd for IptablesCmd {
 
     async fn get_rule_info(&self, table: &str, chain: &str, id: &str) -> Result<String, String> {
         self.get_rule_info(table, chain, id).await
+    }
+
+    async fn create_custom_chain(&self, table: &str, chain: &str) -> Result<(), String> {
+        self.create_custom_chain(table, chain).await
     }
 
     async fn flush_empty_custom_chain(&self) -> Result<(), String> {

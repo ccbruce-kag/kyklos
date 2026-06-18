@@ -91,6 +91,12 @@ export default function Sidebar() {
                 <div className="text-truncate" id="menuHaproxyLabel">HaProxy 管理</div>
               </a>
             </li>
+            <li className="menu-item" id="menuKyklosHa">
+              <a href="#" className="menu-link" id="menuKyklosHaLink">
+                <i className="menu-icon tf-icons bx bx-git-branch"></i>
+                <div className="text-truncate" id="menuKyklosHaLabel">Kyklos HA</div>
+              </a>
+            </li>
             <li className="menu-item" id="menuNginx">
               <a href="#" className="menu-link" id="menuNginxLink">
                 <i className="menu-icon tf-icons bx bx-windows"></i>

@@ -1033,5 +1033,411 @@
     }
     function chainExecArgsStr(tableName, chainName, flag, val) {
       if (currentPlatform !== "linux") return val;
+      val = (val || "").trim();
+      if (/^-(A|I|R)\s+\S+/.test(val)) return "-t " + tableName + " " + val;
       return "-t " + tableName + " " + flag + " " + chainName + " " + val;
     }
+
+    // ─── Kyklos HA ───
+    var kyklosHaBase = null;
+    var kyklosHaBaseCandidates = ['/kyklos-ha', '/api/kyklos-ha', 'kyklos-ha', 'api/kyklos-ha'];
+    var kyklosHaSavedItems = {};
+    var kyklosHaSavedServers = {};
+
+    function kyklosHaUrl(path) { return kyklosHaBase + path; }
+    function kyklosHaEsc(value) { return $('<span>').text(value == null ? '' : String(value)).html(); }
+    function kyklosHaToast(title, message, detail, danger) {
+      if (window.showKToast) {
+        window.showKToast({
+          title: title,
+          message: message || '',
+          detail: detail || '',
+          icon: danger ? 'bx-error-circle' : 'bx-check-circle',
+          delay: 6500
+        });
+      } else {
+        layer.msg(title, { icon: danger ? 2 : 1, time: 3000 });
+      }
+    }
+    function kyklosHaAjaxError(xhr, textStatus, errorThrown) {
+      if (xhr && xhr.responseJSON && xhr.responseJSON.msg) return xhr.responseJSON.msg;
+      if (xhr && xhr.responseText) return xhr.responseText;
+      return errorThrown || textStatus || 'Unknown error';
+    }
+    function kyklosHaShortError(message) {
+      message = String(message || '').trim();
+      var firstLine = message.split(/\r?\n/)[0] || message;
+      firstLine = firstLine.replace(/\s+\{["{].*$/, '');
+      if (firstLine.length > 220) firstLine = firstLine.slice(0, 217) + '...';
+      return firstLine || 'Unknown error';
+    }
+    function detectKyklosHaApi(done) {
+      if (kyklosHaBase) { if (done) done(); return; }
+      var candidates = kyklosHaBaseCandidates.slice();
+      var errors = [];
+      function tryNext() {
+        if (!candidates.length) {
+          var msg = 'Kyklos HA API route not found. Tried: ' + kyklosHaBaseCandidates.join(', ') + (errors.length ? '\n' + errors.join('\n') : '');
+          $('#kyklosHaStatusBody').html('<div class="text-danger p-2">' + kyklosHaEsc(msg) + '</div>');
+          logger.error('Kyklos HA API route not found', msg);
+          return;
+        }
+        var base = candidates.shift();
+        $.get(base + '/status')
+          .done(function () { kyklosHaBase = base; if (done) done(); })
+          .fail(function (xhr) {
+            errors.push(base + ' -> HTTP ' + (xhr.status || 0));
+            tryNext();
+          });
+      }
+      tryNext();
+    }
+    function kyklosHaPost(path, data, done) {
+      detectKyklosHaApi(function () {
+        $.post(kyklosHaUrl(path), data, function (res) {
+          if (res.code !== 0) {
+            logger.error('Kyklos HA API 錯誤', res.msg);
+            kyklosHaToast('Kyklos HA 操作失敗', kyklosHaShortError(res.msg), '', true);
+            return;
+          }
+          if (done) done(res);
+        }, 'json').fail(function (xhr, textStatus, errorThrown) {
+          var msg = kyklosHaAjaxError(xhr, textStatus, errorThrown);
+          logger.error('Kyklos HA API 錯誤', msg);
+          kyklosHaToast('Kyklos HA 操作失敗', kyklosHaShortError(msg), '', true);
+        });
+      });
+    }
+    function kyklosHaServerRow(kind, data) {
+      data = data || {};
+      var name = data.name || (kind === 'web' ? 'web1' : 'sql_node1');
+      var ip = data.ip || (kind === 'web' ? '127.0.0.1' : '10.20.100.248');
+      var port = data.port || (kind === 'web' ? 80 : 1433);
+      var enabled = data.enabled !== false;
+      var statusClass = enabled ? '' : ' is-off';
+      return '<tr data-server-id="' + kyklosHaEsc(data.id || '') + '">' +
+        '<td><input class="form-control form-control-sm font-monospace kyklos-ha-server-name" value="' + kyklosHaEsc(name) + '"></td>' +
+        '<td><input class="form-control form-control-sm font-monospace kyklos-ha-server-ip" value="' + kyklosHaEsc(ip) + '"></td>' +
+        '<td><input type="number" class="form-control form-control-sm font-monospace kyklos-ha-server-port" min="1" max="65535" value="' + kyklosHaEsc(port) + '"></td>' +
+        '<td><label class="form-check form-switch haproxy-status-switch' + statusClass + '"><input class="form-check-input kyklos-ha-server-enabled" type="checkbox"' + (enabled ? ' checked' : '') + '><span class="form-check-label">' + (enabled ? '啟用' : '停用') + '</span></label></td>' +
+        '<td><button type="button" class="btn btn-sm btn-outline-danger kyklos-ha-remove-server"><i class="bx bx-trash me-1"></i>刪除</button></td>' +
+        '</tr>';
+    }
+    function ensureKyklosHaDefaults() {
+      if (!$('#kyklosHaWebServers tbody tr').length) {
+        $('#kyklosHaWebServers tbody')
+          .append(kyklosHaServerRow('web', { name: 'web1', ip: '127.0.0.1', port: 18091 }))
+          .append(kyklosHaServerRow('web', { name: 'web2', ip: '127.0.0.1', port: 18092 }));
+      }
+      if (!$('#kyklosHaTcpServers tbody tr').length) {
+        $('#kyklosHaTcpServers tbody')
+          .append(kyklosHaServerRow('tcp', { name: 'sql_node1', ip: '10.20.100.248', port: 1433 }))
+          .append(kyklosHaServerRow('tcp', { name: 'sql_node2', ip: '10.20.100.249', port: 1433 }));
+      }
+    }
+    function collectKyklosHaServers(selector) {
+      var servers = [];
+      $(selector).find('tbody tr').each(function () {
+        var row = $(this);
+        servers.push({
+          name: row.find('.kyklos-ha-server-name').val().trim(),
+          ip: row.find('.kyklos-ha-server-ip').val().trim(),
+          port: Number(row.find('.kyklos-ha-server-port').val()),
+          enabled: row.find('.kyklos-ha-server-enabled').is(':checked')
+        });
+      });
+      return servers;
+    }
+    function resetKyklosHaForm(kind) {
+      if (kind === 'web') {
+        $('#kyklosHaWebId').val('');
+        $('#kyklosHaWebName').val('web-ha');
+        $('#kyklosHaWebBind').val('0.0.0.0');
+        $('#kyklosHaWebPort').val(18080);
+        $('#kyklosHaWebBalance').val('roundrobin');
+        $('#kyklosHaWebHealthPath').val('/');
+        $('#kyklosHaWebEnabled').prop('checked', true);
+        $('#kyklosHaWebServers tbody').empty()
+          .append(kyklosHaServerRow('web', { name: 'web1', ip: '127.0.0.1', port: 18091 }))
+          .append(kyklosHaServerRow('web', { name: 'web2', ip: '127.0.0.1', port: 18092 }));
+      } else {
+        $('#kyklosHaTcpId').val('');
+        $('#kyklosHaTcpName').val('sql-ha');
+        $('#kyklosHaTcpBind').val('0.0.0.0');
+        $('#kyklosHaTcpPort').val(1433);
+        $('#kyklosHaTcpBalance').val('source');
+        $('#kyklosHaTcpEnabled').prop('checked', true);
+        $('#kyklosHaTcpServers tbody').empty()
+          .append(kyklosHaServerRow('tcp', { name: 'sql_node1', ip: '10.20.100.248', port: 1433 }))
+          .append(kyklosHaServerRow('tcp', { name: 'sql_node2', ip: '10.20.100.249', port: 1433 }));
+      }
+    }
+    function loadKyklosHaAll() {
+      detectKyklosHaApi(function () {
+        loadKyklosHaStatus();
+        loadKyklosHaSaved();
+      });
+    }
+    function showKyklosHaModal(kind) {
+      var modalId = kind === 'web' ? 'kyklosHaWebModal' : 'kyklosHaTcpModal';
+      var modal = document.getElementById(modalId);
+      if (modal) bootstrap.Modal.getOrCreateInstance(modal).show();
+    }
+    function hideKyklosHaModal(kind) {
+      var modalId = kind === 'web' ? 'kyklosHaWebModal' : 'kyklosHaTcpModal';
+      var modal = document.getElementById(modalId);
+      if (modal) bootstrap.Modal.getOrCreateInstance(modal).hide();
+    }
+    function loadKyklosHaStatus() {
+      detectKyklosHaApi(function () {
+        $('#kyklosHaStatusBody').html('<div class="text-muted p-2">Loading...</div>');
+        $.get(kyklosHaUrl('/status'), function (res) {
+          if (res.code !== 0) {
+            $('#kyklosHaStatusBody').html('<div class="text-danger p-2">' + kyklosHaEsc(res.msg) + '</div>');
+            return;
+          }
+          var rt = (res.data && res.data.runtime) || {};
+          var services = rt.services || [];
+          var rows = services.map(function (item) {
+            return '<tr><td>' + kyklosHaEsc(item.name) + '</td><td>' + kyklosHaEsc(item.mode) + '</td><td class="font-monospace">' + kyklosHaEsc(item.listen) + '</td><td>' + kyklosHaEsc(item.balance_method) + '</td><td>' + kyklosHaEsc(item.backend_count) + '</td><td>' + kyklosHaEsc(item.active_connections) + '</td></tr>';
+          }).join('');
+          $('#kyklosHaStatusBody').html(
+            '<div class="haproxy-status-summary mb-3">' +
+              '<div><div class="sys-card-label">Listener</div><div class="haproxy-status-value">' + kyklosHaEsc(rt.listener_count || 0) + '</div></div>' +
+              '<div><div class="sys-card-label">Runtime</div><div class="haproxy-status-value">' + (rt.running ? 'Running' : 'Stopped') + '</div></div>' +
+              '<div><div class="sys-card-label">Engine</div><div class="haproxy-status-value">Rust / Tokio</div></div>' +
+            '</div>' +
+            '<div class="table-responsive"><table class="table table-sm haproxy-table kyklos-ha-runtime-table mb-0"><thead><tr><th>Name</th><th>Mode</th><th>Listen</th><th>Balance</th><th>Backends</th><th>Active</th></tr></thead><tbody>' +
+              (rows || '<tr><td colspan="6" class="text-muted">尚未啟用 Listener</td></tr>') +
+            '</tbody></table></div>'
+          );
+          logger.info('Kyklos HA 狀態已載入', 'listeners=' + (rt.listener_count || 0));
+        }).fail(function (xhr, textStatus, errorThrown) {
+          $('#kyklosHaStatusBody').html('<div class="text-danger p-2">' + kyklosHaEsc(kyklosHaAjaxError(xhr, textStatus, errorThrown)) + '</div>');
+        });
+      });
+    }
+    function loadKyklosHaSaved() {
+      detectKyklosHaApi(function () {
+        $('#kyklosHaSavedBody').html('<div class="text-muted">Loading...</div>');
+        $.get(kyklosHaUrl('/status'), function (res) {
+          if (res.code !== 0) { $('#kyklosHaSavedBody').html('<div class="text-danger">' + kyklosHaEsc(res.msg) + '</div>'); return; }
+          var payload = res.data || {};
+          var items = payload.services || [];
+          var runningServiceIds = {};
+          ((payload.runtime && payload.runtime.services) || []).forEach(function (runtimeService) {
+            runningServiceIds[String(runtimeService.id)] = true;
+          });
+          kyklosHaSavedItems = {};
+          kyklosHaSavedServers = {};
+          if (!items.length) {
+            $('#kyklosHaSavedBody').html('<div class="text-muted">尚未儲存 Kyklos HA 設定</div>');
+            return;
+          }
+          var html = '<div class="kyklos-ha-saved-list">';
+          items.forEach(function (item) {
+            var servers = item.servers || [];
+            if (!servers.length) servers = [{ id: '', name: '-', ip: '-', port: '-', enabled: false }];
+            var enabled = item.enabled !== false;
+            var serviceRunning = !!runningServiceIds[String(item.id)];
+            item._running = serviceRunning;
+            kyklosHaSavedItems[String(item.id)] = item;
+            html += '<div class="kyklos-ha-service-card">' +
+              '<div class="kyklos-ha-service-head">' +
+                '<div class="kyklos-ha-service-main">' +
+                  '<button type="button" class="btn btn-link p-0 kyklos-ha-edit-service kyklos-ha-service-name" data-id="' + kyklosHaEsc(item.id) + '">' + kyklosHaEsc(item.name) + '</button>' +
+                  '<div class="kyklos-ha-service-meta">' +
+                    '<span class="font-monospace">' + kyklosHaEsc((item.bind_addr || '0.0.0.0') + ':' + item.listen_port) + '</span>' +
+                    '<span>' + kyklosHaEsc(item.mode) + '</span>' +
+                    '<span>' + kyklosHaEsc(item.balance_method) + '</span>' +
+                    '<span class="' + (serviceRunning ? 'text-success' : 'text-muted') + '">' + (serviceRunning ? 'Running' : 'Stopped') + '</span>' +
+                  '</div>' +
+                '</div>' +
+                '<div class="kyklos-ha-service-controls">' +
+                  '<label class="form-check form-switch haproxy-status-switch' + (enabled ? '' : ' is-off') + '"><input type="checkbox" class="form-check-input kyklos-ha-toggle-service" data-id="' + kyklosHaEsc(item.id) + '"' + (enabled ? ' checked' : '') + '><span class="form-check-label">' + (enabled ? '啟用' : '停用') + '</span></label>' +
+                  '<button type="button" class="btn btn-sm btn-outline-secondary kyklos-ha-edit-service" data-id="' + kyklosHaEsc(item.id) + '"><i class="bx bx-cog me-1"></i>Service</button>' +
+                  '<button type="button" class="btn btn-sm btn-outline-danger kyklos-ha-delete-service" data-id="' + kyklosHaEsc(item.id) + '"><i class="bx bx-trash me-1"></i>刪除</button>' +
+                '</div>' +
+              '</div>' +
+              (serviceRunning ? '<div class="alert alert-warning py-2 px-3 mb-2">Service 執行中，Backend 編輯、刪除、啟停已鎖定。請先停用 Service 後再調整 Backend。</div>' : '') +
+              '<div class="kyklos-ha-backend-head"><span>Backend</span><span>Address</span><span>Status</span><span>操作</span></div>' +
+              '<div class="kyklos-ha-backend-list">';
+            servers.forEach(function (server, idx) {
+              if (server.id) kyklosHaSavedServers[String(server.id)] = { service: item, server: server };
+              var serverEnabled = server.enabled !== false;
+              var backendLocked = serviceRunning && !!server.id;
+              html += '<div class="kyklos-ha-backend-row">' +
+                '<div class="kyklos-ha-backend-name"><span class="fw-semibold">' + kyklosHaEsc(server.name) + '</span></div>' +
+                '<div class="kyklos-ha-backend-address font-monospace">' + kyklosHaEsc(server.ip) + ':' + kyklosHaEsc(server.port) + '</div>' +
+                '<div><label class="form-check form-switch haproxy-status-switch' + (serverEnabled ? '' : ' is-off') + '"><input type="checkbox" class="form-check-input kyklos-ha-toggle-backend" data-id="' + kyklosHaEsc(server.id) + '"' + (serverEnabled ? ' checked' : '') + (server.id && !backendLocked ? '' : ' disabled') + '><span class="form-check-label">' + (serverEnabled ? '啟用' : '停用') + '</span></label></div>' +
+                '<div class="kyklos-ha-backend-actions">' +
+                  (server.id ? '<button type="button" class="btn btn-sm btn-outline-primary kyklos-ha-edit-backend" data-id="' + kyklosHaEsc(server.id) + '"' + (backendLocked ? ' disabled title="請先停用 Service"' : '') + '><i class="bx bx-edit-alt me-1"></i>編輯</button>' : '') +
+                  (server.id ? '<button type="button" class="btn btn-sm btn-outline-danger kyklos-ha-delete-backend" data-id="' + kyklosHaEsc(server.id) + '"' + (backendLocked ? ' disabled title="請先停用 Service"' : '') + '><i class="bx bx-trash me-1"></i>刪除</button>' : '') +
+                '</div>' +
+              '</div>';
+            });
+            html += '</div></div>';
+          });
+          html += '</div>';
+          $('#kyklosHaSavedBody').html(html);
+        }).fail(function (xhr, textStatus, errorThrown) {
+          $('#kyklosHaSavedBody').html('<div class="text-danger">' + kyklosHaEsc(kyklosHaAjaxError(xhr, textStatus, errorThrown)) + '</div>');
+        });
+      });
+    }
+    function fillKyklosHaForm(item) {
+      var kind = item.mode === 'http' ? 'web' : 'tcp';
+      if (kind === 'web') {
+        $('#kyklosHaWebId').val(item.id || '');
+        $('#kyklosHaWebName').val(item.name || '');
+        $('#kyklosHaWebBind').val(item.bind_addr || '0.0.0.0');
+        $('#kyklosHaWebPort').val(item.listen_port || 18080);
+        $('#kyklosHaWebBalance').val(item.balance_method || 'roundrobin');
+        $('#kyklosHaWebHealthPath').val(item.health_check_path || '/');
+        $('#kyklosHaWebEnabled').prop('checked', item.enabled !== false);
+        $('#kyklosHaWebServers tbody').empty();
+        (item.servers || []).forEach(function (server) { $('#kyklosHaWebServers tbody').append(kyklosHaServerRow('web', server)); });
+        showKyklosHaModal('web');
+      } else {
+        $('#kyklosHaTcpId').val(item.id || '');
+        $('#kyklosHaTcpName').val(item.name || '');
+        $('#kyklosHaTcpBind').val(item.bind_addr || '0.0.0.0');
+        $('#kyklosHaTcpPort').val(item.listen_port || 1433);
+        $('#kyklosHaTcpBalance').val(item.balance_method || 'source');
+        $('#kyklosHaTcpEnabled').prop('checked', item.enabled !== false);
+        $('#kyklosHaTcpServers tbody').empty();
+        (item.servers || []).forEach(function (server) { $('#kyklosHaTcpServers tbody').append(kyklosHaServerRow('tcp', server)); });
+        showKyklosHaModal('tcp');
+      }
+    }
+    function saveKyklosHa(kind) {
+      var data;
+      if (kind === 'web') {
+        data = {
+          id: $('#kyklosHaWebId').val(),
+          name: $('#kyklosHaWebName').val().trim(),
+          bind_addr: $('#kyklosHaWebBind').val().trim(),
+          listen_port: $('#kyklosHaWebPort').val(),
+          balance_method: $('#kyklosHaWebBalance').val(),
+          health_check_path: $('#kyklosHaWebHealthPath').val().trim(),
+          health_check: '1',
+          enabled: $('#kyklosHaWebEnabled').is(':checked') ? '1' : '0',
+          servers: JSON.stringify(collectKyklosHaServers('#kyklosHaWebServers'))
+        };
+      } else {
+        data = {
+          id: $('#kyklosHaTcpId').val(),
+          name: $('#kyklosHaTcpName').val().trim(),
+          bind_addr: $('#kyklosHaTcpBind').val().trim(),
+          listen_port: $('#kyklosHaTcpPort').val(),
+          balance_method: $('#kyklosHaTcpBalance').val(),
+          health_check: '1',
+          enabled: $('#kyklosHaTcpEnabled').is(':checked') ? '1' : '0',
+          servers: JSON.stringify(collectKyklosHaServers('#kyklosHaTcpServers'))
+        };
+      }
+      if (!data.id) delete data.id;
+      kyklosHaPost(kind === 'web' ? '/web' : '/tcp', data, function () {
+        kyklosHaToast('Kyklos HA 已同步', data.name, 'Listener 狀態已依資料庫設定更新');
+        loadKyklosHaAll();
+        hideKyklosHaModal(kind);
+      });
+    }
+    function openKyklosHaBackendEditor(id) {
+      var saved = kyklosHaSavedServers[String(id)];
+      if (!saved) return;
+      if (saved.service && saved.service._running) {
+        kyklosHaToast('Backend 已鎖定', saved.service.name || '', '請先停用 Service，再編輯 Backend。');
+        return;
+      }
+      var server = saved.server;
+      var enabled = server.enabled !== false;
+      layer.open({
+        title: '編輯 Backend',
+        area: ['720px', 'auto'],
+        content: '<div class="row g-3">' +
+          '<div class="col-md-4"><label class="form-label">Name</label><input id="kyklosHaBackendEditName" class="form-control font-monospace" value="' + kyklosHaEsc(server.name || '') + '"></div>' +
+          '<div class="col-md-5"><label class="form-label">IP</label><input id="kyklosHaBackendEditIp" class="form-control font-monospace" value="' + kyklosHaEsc(server.ip || '') + '"></div>' +
+          '<div class="col-md-3"><label class="form-label">Port</label><input id="kyklosHaBackendEditPort" type="number" min="1" max="65535" class="form-control font-monospace" value="' + kyklosHaEsc(server.port || '') + '"></div>' +
+          '<div class="col-12"><label class="form-check form-switch haproxy-status-switch' + (enabled ? '' : ' is-off') + '"><input id="kyklosHaBackendEditEnabled" class="form-check-input" type="checkbox"' + (enabled ? ' checked' : '') + '><span class="form-check-label">' + (enabled ? '啟用' : '停用') + '</span></label></div>' +
+        '</div>',
+        btn: ['儲存', '取消'],
+        btn1: function () {
+          kyklosHaPost('/backend-servers/' + encodeURIComponent(id), {
+            name: $('#kyklosHaBackendEditName').val().trim(),
+            ip: $('#kyklosHaBackendEditIp').val().trim(),
+            port: $('#kyklosHaBackendEditPort').val(),
+            enabled: $('#kyklosHaBackendEditEnabled').is(':checked') ? '1' : '0'
+          }, function () {
+            layer.close();
+            kyklosHaToast('Backend 已更新', server.name || '', '');
+            loadKyklosHaAll();
+          });
+        }
+      });
+    }
+    $(document).on('click', '#kyklosHaRefreshBtn', function () { loadKyklosHaAll(); kyklosHaToast('Kyklos HA 已重新整理', '', ''); });
+    $(document).on('click', '#kyklosHaSyncBtn', function () { kyklosHaPost('/sync', {}, function () { kyklosHaToast('Kyklos HA Listener 已同步', '', ''); loadKyklosHaAll(); }); });
+    $(document).on('click', '#kyklosHaNewWebBtn', function () { resetKyklosHaForm('web'); showKyklosHaModal('web'); });
+    $(document).on('click', '#kyklosHaNewTcpBtn', function () { resetKyklosHaForm('tcp'); showKyklosHaModal('tcp'); });
+    $(document).on('click', '#kyklosHaWebAddServer', function () { $('#kyklosHaWebServers tbody').append(kyklosHaServerRow('web')); });
+    $(document).on('click', '#kyklosHaTcpAddServer', function () { $('#kyklosHaTcpServers tbody').append(kyklosHaServerRow('tcp')); });
+    $(document).on('click', '.kyklos-ha-remove-server', function () { $(this).closest('tr').remove(); });
+    $(document).on('change', '.kyklos-ha-server-enabled,.kyklos-ha-toggle-service,.kyklos-ha-toggle-backend', function () {
+      $(this).siblings('.form-check-label').text($(this).is(':checked') ? '啟用' : '停用');
+      $(this).closest('.haproxy-status-switch').toggleClass('is-off', !$(this).is(':checked'));
+    });
+    $(document).on('click', '#kyklosHaWebSave', function () { saveKyklosHa('web'); });
+    $(document).on('click', '#kyklosHaTcpSave', function () { saveKyklosHa('tcp'); });
+    $(document).on('click', '.kyklos-ha-edit-service', function () {
+      var item = kyklosHaSavedItems[String($(this).data('id'))];
+      if (item) fillKyklosHaForm(item);
+    });
+    $(document).on('click', '.kyklos-ha-delete-service', function () {
+      var id = $(this).data('id');
+      layer.confirm('確認刪除此 Kyklos HA 設定並停止 Listener？', function () {
+        kyklosHaPost('/services/' + encodeURIComponent(id) + '/delete', {}, function () {
+          kyklosHaToast('Kyklos HA 設定已刪除', 'id=' + id, 'Listener 已停止');
+          loadKyklosHaAll();
+        });
+      });
+    });
+    $(document).on('change', '.kyklos-ha-toggle-service', function () {
+      var id = $(this).data('id');
+      var enabled = $(this).is(':checked');
+      kyklosHaPost('/services/' + encodeURIComponent(id) + '/enabled', { enabled: enabled ? '1' : '0' }, function () {
+        kyklosHaToast('Kyklos HA 服務狀態已更新', enabled ? '啟用' : '停用', '');
+        loadKyklosHaAll();
+      });
+    });
+    $(document).on('click', '.kyklos-ha-edit-backend', function () { openKyklosHaBackendEditor($(this).data('id')); });
+    $(document).on('change', '.kyklos-ha-toggle-backend', function () {
+      var id = $(this).data('id');
+      var saved = kyklosHaSavedServers[String(id)];
+      if (saved && saved.service && saved.service._running) {
+        this.checked = !this.checked;
+        $(this).siblings('.form-check-label').text(this.checked ? '啟用' : '停用');
+        $(this).closest('.haproxy-status-switch').toggleClass('is-off', !this.checked);
+        kyklosHaToast('Backend 已鎖定', saved.service.name || '', '請先停用 Service，再切換 Backend 狀態。');
+        return;
+      }
+      var enabled = $(this).is(':checked');
+      kyklosHaPost('/backend-servers/' + encodeURIComponent(id) + '/enabled', { enabled: enabled ? '1' : '0' }, function () {
+        kyklosHaToast('Backend 狀態已更新', enabled ? '啟用' : '停用', '');
+        loadKyklosHaAll();
+      });
+    });
+    $(document).on('click', '.kyklos-ha-delete-backend', function () {
+      var id = $(this).data('id');
+      var saved = kyklosHaSavedServers[String(id)];
+      if (saved && saved.service && saved.service._running) {
+        kyklosHaToast('Backend 已鎖定', saved.service.name || '', '請先停用 Service，再刪除 Backend。');
+        return;
+      }
+      layer.confirm('確認刪除此 Backend？', function () {
+        kyklosHaPost('/backend-servers/' + encodeURIComponent(id) + '/delete', {}, function () {
+          kyklosHaToast('Backend 已刪除', 'id=' + id, '');
+          loadKyklosHaAll();
+        });
+      });
+    });

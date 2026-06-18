@@ -140,6 +140,10 @@ $rules | ForEach-Object {
         self.run_powershell(&script).await
     }
 
+    async fn create_custom_chain(&self, _table: &str, _chain: &str) -> Result<(), String> {
+        Err("Windows 防火牆不支援自定義鏈。".to_string())
+    }
+
     async fn flush_empty_custom_chain(&self) -> Result<(), String> {
         Err("Windows 防火牆不支援自定義鏈。".to_string())
     }

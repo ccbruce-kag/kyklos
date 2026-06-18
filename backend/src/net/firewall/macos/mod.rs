@@ -236,6 +236,10 @@ impl FirewallCmd for PfctlCmd {
         Err(format!("rule #{} not found", id))
     }
 
+    async fn create_custom_chain(&self, _table: &str, _chain: &str) -> Result<(), String> {
+        Err("custom chains are not supported on pfctl".to_string())
+    }
+
     async fn flush_empty_custom_chain(&self) -> Result<(), String> {
         Err("custom chains are not supported on pfctl".to_string())
     }

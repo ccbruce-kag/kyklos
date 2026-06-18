@@ -6,6 +6,7 @@ import SystemView from './views/Dash/SystemView'
 import WorkflowDesignerView from './views/Dash/WorkflowDesignerView'
 import FirewallView from './views/Net/FirewallView'
 import HaproxyView from './views/Net/HaproxyView'
+import KyklosHaView from './views/Net/KyklosHaView'
 import NginxView from './views/Net/NginxView'
 import JuniperView from './views/Net/JuniperView'
 import NetplanView from './views/Net/NetplanView'
@@ -61,6 +62,7 @@ export default function Layout() {
                 <FirewallView />
                 <JuniperView />
                 <HaproxyView />
+                <KyklosHaView />
                 <NginxView />
                 <NetplanView />
                 <PcapView />

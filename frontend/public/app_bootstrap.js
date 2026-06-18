@@ -161,7 +161,7 @@ var _orig_ready = $;
     const WORK_VIEW_MODES = [
       'dashboard', 'workflow', 'netArch', 'erdDiagram', 'wireframe', 'reportEditor', 'formEditor',
       'role', 'unit', 'user', 'dictionary', 'systemSetting',
-      'firewallMan', 'system', 'juniper', 'haproxy', 'nginx', 'netplan',
+      'firewallMan', 'system', 'juniper', 'haproxy', 'kyklosHa', 'nginx', 'netplan',
       'pcap', 'snmp', 'sftp', 'samba', 'apiman', 'dbman', 'security', 'tools', 'ai',
       'shell', 'widgets', 'logViewer', 'crontab'
     ];
@@ -210,6 +210,7 @@ var _orig_ready = $;
         ai: lang.aiLabel || 'AI Assistant',
         tools: lang.toolsLabel || 'Tools',
         haproxy: lang.haproxyLabel || 'HAProxy Management',
+        kyklosHa: lang.kyklosHaLabel || 'Kyklos HA',
         nginx: lang.nginxLabel || 'Nginx Management',
         juniper: lang.juniperLabel || 'Juniper Settings',
         netplan: lang.netplanLabel || 'Netplan Config',
@@ -226,7 +227,7 @@ var _orig_ready = $;
         wireframe: 'bx-pen', reportEditor: 'bx-file', formEditor: 'bx-list-check',
         role: 'bx-id-card', unit: 'bx-buildings', user: 'bx-user',
         dictionary: 'bx-book', systemSetting: 'bx-slider',
-        shell: 'bx-terminal', widgets: 'bx-cube', logViewer: 'bx-file', crontab: 'bx-time-five', ai: 'bx-bot', tools: 'bx-wrench', haproxy: 'bx-transfer',
+        shell: 'bx-terminal', widgets: 'bx-cube', logViewer: 'bx-file', crontab: 'bx-time-five', ai: 'bx-bot', tools: 'bx-wrench', haproxy: 'bx-transfer', kyklosHa: 'bx-git-branch',
         nginx: 'bx-windows', juniper: 'bx-network-chart', netplan: 'bx-wifi',
         apiman: 'bx-link', dbman: 'bx-data', security: 'bx-shield',
       };
@@ -426,6 +427,7 @@ var _orig_ready = $;
         protocolLabel: "協議", tabRaw: "raw", tabMangle: "mangle", tabNat: "nat", tabFilter: "filter",
         nativeChain: "原生鏈", customChain: "自定義鏈", insert: "插入", append: "添加", zero: "清零",
         zeroCounters: "清零計數", edit: "編輯", delete: "刪除", refresh: "刷新", refreshSuccess: "刷新成功", viewCmd: "查看命令",
+        createCustomChain: "新增自定義鏈", createCustomChainSuccess: "新增自定義鏈成功！", invalidCustomChain: "鏈名稱只能使用英數、底線或減號。", noCustomChain: "目前沒有自定義鏈。",
         warning: "提示", confirm: "確認", cancel: "取消", insertRuleTitle: "插入規則", appendRuleTitle: "添加規則",
         rulePlaceholder: "請輸入規則", execCommandTitleTpl: "執行 {cmd} 命令", inputCommand: "輸入命令",
         commandSuccess: "命令執行成功", importPromptTpl: "粘貼 {cmd} 規則", importSuccess: "導入規則成功！",
@@ -473,17 +475,19 @@ var _orig_ready = $;
         nginxLabel: "Nginx 管理", nginxEnv: "環境設定", nginxSites: "網站管理", nginxModules: "模組管理",
         nginxEnvTitle: "Nginx 環境設定", nginxBin: "Nginx 執行檔路徑", nginxConfigDir: "設定目錄", nginxSitesDir: "sites-enabled 目錄",
         nginxModulesDir: "modules-enabled 目錄", nginxConfDDir: "conf.d 目錄", nginxTest: "測試設定", nginxReload: "重新載入",
-        nginxSaveEnv: "儲存環境設定", nginxSiteFormTitle: "網站設定", nginxSiteName: "網站名稱", nginxServerName: "Server Name",
+        nginxStart: "啟動", nginxStop: "停止", nginxRestart: "重啟",
+        nginxSaveEnv: "儲存環境設定", nginxSiteFormTitle: "網站設定", nginxSiteName: "網站名稱", nginxServerName: "Server Name", nginxListenPort: "Listen Port",
         nginxSiteType: "網站類型", nginxStaticSite: "靜態網站 (Server)", nginxReverseProxy: "反向代理 (Reverse Proxy)",
-        nginxDocRoot: "Document Root", nginxProxyPass: "Proxy Pass", nginxEnabled: "啟用", nginxCustomConfig: "自訂 Config（留空自動產生）",
-        nginxSaveSite: "儲存網站", nginxPreviewSite: "預覽設定", nginxDeleteSite: "刪除", nginxSiteList: "網站列表",
+        nginxDocRoot: "Document Root", nginxProxyPass: "Proxy Pass", nginxEnabled: "啟用", nginxDisabled: "停用", nginxSiteStatus: "狀態", nginxCustomConfig: "自訂 Config（留空自動產生）",
+        nginxSaveSite: "儲存網站", nginxPreviewSite: "預覽設定", nginxWriteSite: "寫入設定檔", nginxRemoveSiteFile: "移除設定檔", nginxWriteTestReload: "寫入後測試並 Reload", nginxDeleteSite: "刪除", nginxSiteList: "網站列表",
         nginxRefresh: "重新整理", nginxModuleAdd: "新增模組", nginxModuleName: "模組名稱", nginxAddModule: "新增模組",
         nginxScanModules: "從系統掃描", nginxModuleList: "模組列表", nginxType: "類型", nginxStatus: "狀態", nginxActions: "操作",
         nginxConfirmDelete: "確認刪除此網站？", nginxConfirmDeleteFile: "確認刪除 sites-enabled 中的檔案？",
         nginxSiteAdded: "網站已新增", nginxSiteUpdated: "網站已更新", nginxSiteDeleted: "網站已刪除",
         nginxEnvSaved: "環境設定已儲存", nginxTestSuccess: "設定測試完成", nginxReloadSuccess: "Nginx 已重新載入",
+        nginxSiteFileWritten: "設定檔已寫入", nginxSiteFileRemoved: "設定檔已移除", nginxWriteTestReloadDone: "寫入、測試、Reload 完成",
         nginxModuleAdded: "模組已新增", nginxModuleToggled: "模組狀態已切換",
-        haproxyLabel: "HAProxy 管理", haproxyStatus: "HAProxy 狀態", haproxyWeb: "Web 負載平衡", haproxySql: "SQL Server 負載平衡", haproxyTest: "連線測試",
+        kyklosHaLabel: "Kyklos HA", haproxyLabel: "HAProxy 管理", haproxyStatus: "HAProxy 狀態", haproxyWeb: "Web 負載平衡", haproxySql: "SQL Server 負載平衡", haproxyTest: "連線測試",
         haproxyReload: "Reload HAProxy", haproxyRestart: "Restart HAProxy", haproxyInstalled: "是否已安裝", haproxyService: "Service 狀態",
         haproxyConfigPath: "設定檔路徑", haproxyConfigValid: "設定檔驗證", haproxyVersion: "版本", haproxyGenerate: "產生設定預覽",
         haproxyValidate: "驗證設定", haproxyApply: "驗證並套用", haproxyAddServer: "新增 Server", haproxyPreview: "HAProxy Config Preview",
@@ -524,6 +528,7 @@ var _orig_ready = $;
         protocolLabel: "Protocol", tabRaw: "raw", tabMangle: "mangle", tabNat: "nat", tabFilter: "filter",
         nativeChain: "System Chains", customChain: "Custom Chains", insert: "Insert", append: "Append", zero: "Zero",
         zeroCounters: "Zero Counters", edit: "Edit", delete: "Delete", refresh: "Refresh", refreshSuccess: "Refreshed", viewCmd: "View Command",
+        createCustomChain: "Create Custom Chain", createCustomChainSuccess: "Custom chain created!", invalidCustomChain: "Chain name may only contain letters, numbers, underscores, or hyphens.", noCustomChain: "No custom chains.",
         warning: "Warning", confirm: "OK", cancel: "Cancel", insertRuleTitle: "Insert Rule", appendRuleTitle: "Append Rule",
         rulePlaceholder: "Enter rule arguments", execCommandTitleTpl: "Run {cmd} command", inputCommand: "Command",
         commandSuccess: "Command executed successfully", importPromptTpl: "Paste {cmd} rules",
@@ -572,17 +577,19 @@ var _orig_ready = $;
         nginxLabel: "Nginx Management", nginxEnv: "Environment", nginxSites: "Sites", nginxModules: "Modules",
         nginxEnvTitle: "Nginx Environment", nginxBin: "Nginx Binary", nginxConfigDir: "Config Dir", nginxSitesDir: "sites-enabled Dir",
         nginxModulesDir: "modules-enabled Dir", nginxConfDDir: "conf.d Dir", nginxTest: "Test Config", nginxReload: "Reload",
-        nginxSaveEnv: "Save Environment", nginxSiteFormTitle: "Site Settings", nginxSiteName: "Site Name", nginxServerName: "Server Name",
+        nginxStart: "Start", nginxStop: "Stop", nginxRestart: "Restart",
+        nginxSaveEnv: "Save Environment", nginxSiteFormTitle: "Site Settings", nginxSiteName: "Site Name", nginxServerName: "Server Name", nginxListenPort: "Listen Port",
         nginxSiteType: "Site Type", nginxStaticSite: "Static Site (Server)", nginxReverseProxy: "Reverse Proxy",
-        nginxDocRoot: "Document Root", nginxProxyPass: "Proxy Pass", nginxEnabled: "Enabled", nginxCustomConfig: "Custom Config (leave blank to auto-generate)",
-        nginxSaveSite: "Save Site", nginxPreviewSite: "Preview Config", nginxDeleteSite: "Delete", nginxSiteList: "Site List",
+        nginxDocRoot: "Document Root", nginxProxyPass: "Proxy Pass", nginxEnabled: "Enabled", nginxDisabled: "Disabled", nginxSiteStatus: "Status", nginxCustomConfig: "Custom Config (leave blank to auto-generate)",
+        nginxSaveSite: "Save Site", nginxPreviewSite: "Preview Config", nginxWriteSite: "Write Config File", nginxRemoveSiteFile: "Remove Config File", nginxWriteTestReload: "Write, Test & Reload", nginxDeleteSite: "Delete", nginxSiteList: "Site List",
         nginxRefresh: "Refresh", nginxModuleAdd: "Add Module", nginxModuleName: "Module Name", nginxAddModule: "Add Module",
         nginxScanModules: "Scan from System", nginxModuleList: "Module List", nginxType: "Type", nginxStatus: "Status", nginxActions: "Actions",
         nginxConfirmDelete: "Confirm delete this site?", nginxConfirmDeleteFile: "Confirm delete file from sites-enabled?",
         nginxSiteAdded: "Site added", nginxSiteUpdated: "Site updated", nginxSiteDeleted: "Site deleted",
         nginxEnvSaved: "Environment saved", nginxTestSuccess: "Config test completed", nginxReloadSuccess: "Nginx reloaded",
+        nginxSiteFileWritten: "Config file written", nginxSiteFileRemoved: "Config file removed", nginxWriteTestReloadDone: "Write, test and reload completed",
         nginxModuleAdded: "Module added", nginxModuleToggled: "Module toggled",
-        haproxyLabel: "HAProxy Management", haproxyStatus: "HAProxy Status", haproxyWeb: "Web Load Balance", haproxySql: "SQL Server Load Balance", haproxyTest: "Connection Test",
+        kyklosHaLabel: "Kyklos HA", haproxyLabel: "HAProxy Management", haproxyStatus: "HAProxy Status", haproxyWeb: "Web Load Balance", haproxySql: "SQL Server Load Balance", haproxyTest: "Connection Test",
         haproxyReload: "Reload HAProxy", haproxyRestart: "Restart HAProxy", haproxyInstalled: "Installed", haproxyService: "Service Status",
         haproxyConfigPath: "Config Path", haproxyConfigValid: "Config Valid", haproxyVersion: "Version", haproxyGenerate: "Generate Preview",
         haproxyValidate: "Validate Config", haproxyApply: "Validate & Apply", haproxyAddServer: "Add Server", haproxyPreview: "HAProxy Config Preview",
@@ -623,6 +630,7 @@ var _orig_ready = $;
         protocolLabel: "プロトコル", tabRaw: "raw", tabMangle: "mangle", tabNat: "nat", tabFilter: "filter",
         nativeChain: "システムチェイン", customChain: "カスタムチェイン", insert: "挿入", append: "追加", zero: "ゼロ",
         zeroCounters: "カウンタをゼロ", edit: "編集", delete: "削除", refresh: "更新", refreshSuccess: "更新完了", viewCmd: "コマンドを表示",
+        createCustomChain: "カスタムチェインを追加", createCustomChainSuccess: "カスタムチェインを追加しました！", invalidCustomChain: "チェイン名には英数字、アンダースコア、ハイフンのみ使用できます。", noCustomChain: "カスタムチェインはありません。",
         warning: "確認", confirm: "OK", cancel: "キャンセル", insertRuleTitle: "ルールを挿入", appendRuleTitle: "ルールを追加",
         rulePlaceholder: "ルールを入力", execCommandTitleTpl: "{cmd} コマンドを実行", inputCommand: "コマンドを入力",
         commandSuccess: "コマンドが正常に実行されました", importPromptTpl: "{cmd} ルールを貼り付け", importSuccess: "ルールのインポートが完了しました！",
@@ -670,17 +678,19 @@ var _orig_ready = $;
         nginxLabel: "Nginx 管理", nginxEnv: "環境設定", nginxSites: "サイト管理", nginxModules: "モジュール管理",
         nginxEnvTitle: "Nginx 環境設定", nginxBin: "Nginx 実行ファイル", nginxConfigDir: "設定ディレクトリ", nginxSitesDir: "sites-enabled ディレクトリ",
         nginxModulesDir: "modules-enabled ディレクトリ", nginxConfDDir: "conf.d ディレクトリ", nginxTest: "設定テスト", nginxReload: "再読み込み",
-        nginxSaveEnv: "環境設定を保存", nginxSiteFormTitle: "サイト設定", nginxSiteName: "サイト名", nginxServerName: "Server Name",
+        nginxStart: "起動", nginxStop: "停止", nginxRestart: "再起動",
+        nginxSaveEnv: "環境設定を保存", nginxSiteFormTitle: "サイト設定", nginxSiteName: "サイト名", nginxServerName: "Server Name", nginxListenPort: "Listen Port",
         nginxSiteType: "サイトタイプ", nginxStaticSite: "静的サイト (Server)", nginxReverseProxy: "リバースプロキシ",
-        nginxDocRoot: "Document Root", nginxProxyPass: "Proxy Pass", nginxEnabled: "有効", nginxCustomConfig: "カスタム Config（空欄で自動生成）",
-        nginxSaveSite: "サイトを保存", nginxPreviewSite: "設定をプレビュー", nginxDeleteSite: "削除", nginxSiteList: "サイト一覧",
+        nginxDocRoot: "Document Root", nginxProxyPass: "Proxy Pass", nginxEnabled: "有効", nginxDisabled: "無効", nginxSiteStatus: "状態", nginxCustomConfig: "カスタム Config（空欄で自動生成）",
+        nginxSaveSite: "サイトを保存", nginxPreviewSite: "設定をプレビュー", nginxWriteSite: "設定ファイルを書き込み", nginxRemoveSiteFile: "設定ファイルを削除", nginxWriteTestReload: "書き込み後テストして Reload", nginxDeleteSite: "削除", nginxSiteList: "サイト一覧",
         nginxRefresh: "更新", nginxModuleAdd: "モジュール追加", nginxModuleName: "モジュール名", nginxAddModule: "追加",
         nginxScanModules: "システムからスキャン", nginxModuleList: "モジュール一覧", nginxType: "タイプ", nginxStatus: "状態", nginxActions: "操作",
         nginxConfirmDelete: "このサイトを削除しますか？", nginxConfirmDeleteFile: "sites-enabled のファイルを削除しますか？",
         nginxSiteAdded: "サイトを追加しました", nginxSiteUpdated: "サイトを更新しました", nginxSiteDeleted: "サイトを削除しました",
         nginxEnvSaved: "環境設定を保存しました", nginxTestSuccess: "設定テストが完了しました", nginxReloadSuccess: "Nginx を再読み込みしました",
+        nginxSiteFileWritten: "設定ファイルを書き込みました", nginxSiteFileRemoved: "設定ファイルを削除しました", nginxWriteTestReloadDone: "書き込み、テスト、Reload が完了しました",
         nginxModuleAdded: "モジュールを追加しました", nginxModuleToggled: "モジュール状態を変更しました",
-        haproxyLabel: "HAProxy 管理", haproxyStatus: "HAProxy 状態", haproxyWeb: "Web ロードバランス", haproxySql: "SQL Server ロードバランス", haproxyTest: "接続テスト",
+        kyklosHaLabel: "Kyklos HA", haproxyLabel: "HAProxy 管理", haproxyStatus: "HAProxy 状態", haproxyWeb: "Web ロードバランス", haproxySql: "SQL Server ロードバランス", haproxyTest: "接続テスト",
         haproxyReload: "HAProxy Reload", haproxyRestart: "HAProxy Restart", haproxyInstalled: "インストール済み", haproxyService: "Service 状態",
         haproxyConfigPath: "設定ファイル", haproxyConfigValid: "設定検証", haproxyVersion: "バージョン", haproxyGenerate: "設定プレビュー生成",
         haproxyValidate: "設定を検証", haproxyApply: "検証して適用", haproxyAddServer: "Server 追加", haproxyPreview: "HAProxy Config Preview",
@@ -749,9 +759,30 @@ var _orig_ready = $;
       $('#menuGroupNetLabel').text(lng.menuGroupNet || 'Network Tools');
       $('#menuFirewallManLabel').text(lng.firewallManLabel || 'FirewallMan');
       $('#menuHaproxyLabel').text(lng.haproxyLabel || 'HaProxy 管理');
+      $('#menuKyklosHaLabel').text(lng.kyklosHaLabel || 'Kyklos HA');
       $('#menuNginxLabel').text(lng.nginxLabel || 'Nginx 管理');
       $('#menuNetplanLabel').text(lng.netplanLabel || 'Netplan 設定');
       $('#menuJuniperLabel').text(lng.juniperLabel || 'Juniper 設定');
+      $('#nginxEnvTabLabel').text(lng.nginxEnv || '環境設定');
+      $('#nginxSitesTabLabel').text(lng.nginxSites || '網站管理');
+      $('#nginxModulesTabLabel').text(lng.nginxModules || '模組管理');
+      $('#nginxEnvTitle').text(lng.nginxEnvTitle || 'Nginx 環境設定');
+      $('#nginxStartLabel').text(lng.nginxStart || '啟動');
+      $('#nginxStopLabel').text(lng.nginxStop || '停止');
+      $('#nginxRestartLabel').text(lng.nginxRestart || '重啟');
+      $('#nginxTestLabel').text(lng.nginxTest || '測試設定');
+      $('#nginxReloadLabel').text(lng.nginxReload || '重新載入');
+      $('#nginxSaveEnvLabel').text(lng.nginxSaveEnv || '儲存環境設定');
+      $('#nginxSiteFormTitle').text(lng.nginxSiteFormTitle || '網站設定');
+      $('#nginxListenPortLabel').text(lng.nginxListenPort || 'Listen Port');
+      $('#nginxSiteStatusLabel').text(lng.nginxSiteStatus || '狀態');
+      $('#nginxSiteEnabledLabel').text($('#nginxSiteEnabled').is(':checked') ? (lng.nginxEnabled || '啟用') : (lng.nginxDisabled || '停用'));
+      $('#nginxSaveSiteLabel').text(lng.nginxSaveSite || '儲存網站');
+      $('#nginxPreviewSiteLabel').text(lng.nginxPreviewSite || '預覽設定');
+      $('#nginxWriteSiteLabel').text(lng.nginxWriteSite || '寫入設定檔');
+      $('#nginxWriteTestReloadLabel').text(lng.nginxWriteTestReload || '寫入後測試並 Reload');
+      $('#nginxRemoveSiteFileLabel').text(lng.nginxRemoveSiteFile || '移除設定檔');
+      $('#nginxDeleteSiteLabel').text(lng.nginxDeleteSite || '刪除');
       $('#menuGroupSysLabel').text(lng.menuGroupSys || '系統工具');
       $('#menuToolsLabel').text(lng.toolsLabel || '系統工具');
       $('#menuShellLabel').text(lng.shellLabel || 'Shell');

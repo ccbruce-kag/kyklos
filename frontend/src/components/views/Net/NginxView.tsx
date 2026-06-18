@@ -1,6 +1,6 @@
 export default function NginxView() {
   return (
-    <div id="nginxView" style={{ display: 'none' }}>
+    <div id="nginxView" className="network-tool-view" style={{ display: 'none' }}>
       <ul className="nav nav-tabs nav-fill mb-3" id="nginxTabs" role="tablist">
         <li className="nav-item" role="presentation">
           <button className="nav-link active" id="nginx-env-tab" data-bs-toggle="tab" data-bs-target="#nginxEnvPane" type="button" role="tab">
@@ -26,28 +26,31 @@ export default function NginxView() {
             </div>
             <div className="card-body haproxy-form">
               <div className="row g-3">
-                <div className="col-md-4">
+                <div className="col-xl-6 col-12">
                   <label className="form-label" htmlFor="nginxBin">Nginx 執行檔路徑</label>
                   <input type="text" className="form-control font-monospace" id="nginxBin" placeholder="nginx" />
                 </div>
-                <div className="col-md-4">
+                <div className="col-xl-6 col-12">
                   <label className="form-label" htmlFor="nginxConfigDir">設定目錄</label>
                   <input type="text" className="form-control font-monospace" id="nginxConfigDir" placeholder="/etc/nginx" />
                 </div>
-                <div className="col-md-4">
+                <div className="col-xl-6 col-12">
                   <label className="form-label" htmlFor="nginxSitesEnabledDir">sites-enabled 目錄</label>
                   <input type="text" className="form-control font-monospace" id="nginxSitesEnabledDir" placeholder="/etc/nginx/sites-enabled" />
                 </div>
-                <div className="col-md-4">
+                <div className="col-xl-6 col-12">
                   <label className="form-label" htmlFor="nginxModulesEnabledDir">modules-enabled 目錄</label>
                   <input type="text" className="form-control font-monospace" id="nginxModulesEnabledDir" placeholder="/etc/nginx/modules-enabled" />
                 </div>
-                <div className="col-md-4">
+                <div className="col-xl-6 col-12">
                   <label className="form-label" htmlFor="nginxConfDDir">conf.d 目錄</label>
                   <input type="text" className="form-control font-monospace" id="nginxConfDDir" placeholder="/etc/nginx/conf.d" />
                 </div>
               </div>
-              <div className="d-flex justify-content-end gap-2 mt-3">
+              <div className="d-flex flex-wrap justify-content-end gap-2 mt-3">
+                <button className="btn btn-outline-primary" id="nginxStartBtn"><i className="bx bx-play me-1"></i><span id="nginxStartLabel">啟動</span></button>
+                <button className="btn btn-outline-secondary" id="nginxStopBtn"><i className="bx bx-stop me-1"></i><span id="nginxStopLabel">停止</span></button>
+                <button className="btn btn-outline-warning" id="nginxRestartBtn"><i className="bx bx-reset me-1"></i><span id="nginxRestartLabel">重啟</span></button>
                 <button className="btn btn-outline-success" id="nginxTestBtn"><i className="bx bx-check-shield me-1"></i><span id="nginxTestLabel">測試設定</span></button>
                 <button className="btn btn-outline-info" id="nginxReloadBtn"><i className="bx bx-refresh me-1"></i><span id="nginxReloadLabel">重新載入</span></button>
                 <button className="btn btn-primary" id="nginxSaveEnvBtn"><i className="bx bx-save me-1"></i><span id="nginxSaveEnvLabel">儲存環境設定</span></button>
@@ -72,6 +75,10 @@ export default function NginxView() {
                     <input type="text" className="form-control font-monospace" id="nginxServerName" placeholder="_" />
                   </div>
                   <div className="mb-2">
+                    <label className="form-label" htmlFor="nginxListenPort" id="nginxListenPortLabel">Listen Port</label>
+                    <input type="number" min="1" max="65535" className="form-control font-monospace" id="nginxListenPort" placeholder="80" defaultValue="80" />
+                  </div>
+                  <div className="mb-2">
                     <label className="form-label" htmlFor="nginxSiteType">網站類型</label>
                     <select className="form-select" id="nginxSiteType">
                       <option value="server">靜態網站 (Server)</option>
@@ -87,18 +94,22 @@ export default function NginxView() {
                     <input type="text" className="form-control font-monospace" id="nginxProxyPass" placeholder="http://127.0.0.1:3000" />
                   </div>
                   <div className="mb-2">
-                    <label className="form-label" htmlFor="nginxSiteEnabled">
-                      <input type="checkbox" id="nginxSiteEnabled" defaultChecked />
-                      <span id="nginxSiteEnabledLabel">啟用</span>
+                    <label className="form-label d-block" id="nginxSiteStatusLabel">狀態</label>
+                    <label className="form-check form-switch haproxy-status-switch nginx-site-status-switch mb-0" htmlFor="nginxSiteEnabled">
+                      <input className="form-check-input" type="checkbox" role="switch" id="nginxSiteEnabled" defaultChecked />
+                      <span className="form-check-label" id="nginxSiteEnabledLabel">啟用</span>
                     </label>
                   </div>
                   <div className="mb-2">
                     <label className="form-label" htmlFor="nginxSiteConfig">自訂 Config（留空自動產生）</label>
                     <textarea className="form-control font-monospace" id="nginxSiteConfig" rows={4} style={{ fontSize: '.75rem' }}></textarea>
                   </div>
-                  <div className="d-flex gap-2">
+                  <div className="d-flex flex-wrap gap-2">
                     <button className="btn btn-primary" id="nginxSaveSiteBtn"><i className="bx bx-save me-1"></i><span id="nginxSaveSiteLabel">儲存網站</span></button>
                     <button className="btn btn-outline-secondary" id="nginxPreviewSiteBtn"><i className="bx bx-code-alt me-1"></i><span id="nginxPreviewSiteLabel">預覽設定</span></button>
+                    <button className="btn btn-outline-primary" id="nginxWriteSiteBtn"><i className="bx bx-file-plus me-1"></i><span id="nginxWriteSiteLabel">寫入設定檔</span></button>
+                    <button className="btn btn-outline-success" id="nginxWriteTestReloadBtn"><i className="bx bx-check-double me-1"></i><span id="nginxWriteTestReloadLabel">寫入後測試並 Reload</span></button>
+                    <button className="btn btn-outline-warning" id="nginxRemoveSiteFileBtn"><i className="bx bx-file-blank me-1"></i><span id="nginxRemoveSiteFileLabel">移除設定檔</span></button>
                     <button className="btn btn-outline-danger" id="nginxDeleteSiteBtn" style={{ display: 'none' }}><i className="bx bx-trash me-1"></i><span id="nginxDeleteSiteLabel">刪除</span></button>
                   </div>
                   <div className="mt-2" id="nginxSitePreviewResult"></div>

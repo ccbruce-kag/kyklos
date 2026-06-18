@@ -87,7 +87,7 @@
         detectNginxApi(function () {
           $.post(nginxUrl('/env'), data, function (res) {
             if (res.code !== 0) { layer.alert(res.msg); return; }
-            layer.msg(i18n[currentLang].nginxEnvSaved || 'Environment saved', { icon: 1 });
+            showNginxToast(i18n[currentLang].nginxEnvSaved || '環境設定已儲存', 'Nginx 環境路徑已更新。', data.nginx_bin + ' · ' + data.config_dir, 'bx-save');
             logger.debug('Nginx 環境設定已儲存');
           });
         });
@@ -116,12 +116,52 @@
           });
         });
       });
+      function showNginxToast(title, message, detail, icon, className) {
+        var opts = {
+          important: true,
+          toast: true,
+          message: message || '',
+          detail: detail || '',
+          iconClass: icon || 'bx-check-circle',
+          time: 6500,
+          className: 'nginx-toast' + (className ? ' ' + className : '')
+        };
+        layer.msg(title, opts);
+      }
+      function runNginxServiceAction(action, label) {
+        logger.info(label + ' Nginx');
+        $('#nginxEnvResult').html('<div class="text-muted">' + escHtml(label) + '...</div>');
+        detectNginxApi(function () {
+          $.post(nginxUrl('/' + action), {}, function (res) {
+            var output = res.data || res.msg || 'No output';
+            var cls = res.code === 0 ? 'text-success' : 'text-danger';
+            $('#nginxEnvResult').html('<pre class="' + cls + '" style="font-size:.75rem;background:var(--bs-tertiary-bg);padding:.5rem;border-radius:4px">' + escHtml(output) + '</pre>');
+            if (res.code === 0) showNginxToast('Nginx ' + label + '完成', '服務指令已執行。', output, action === 'stop' ? 'bx-stop-circle' : 'bx-check-circle', action === 'stop' ? 'is-disabled' : '');
+            else layer.alert(output);
+            logger.debug('Nginx ' + label + '結果', output);
+          }).fail(function (xhr) {
+            var msg = xhr.responseText || xhr.statusText || 'Request failed';
+            $('#nginxEnvResult').html('<pre class="text-danger" style="font-size:.75rem;background:var(--bs-tertiary-bg);padding:.5rem;border-radius:4px">' + escHtml(msg) + '</pre>');
+            layer.alert(msg);
+          });
+        });
+      }
+      $('#nginxStartBtn').on('click', function () { runNginxServiceAction('start', i18n[currentLang].nginxStart || '啟動'); });
+      $('#nginxStopBtn').on('click', function () { runNginxServiceAction('stop', i18n[currentLang].nginxStop || '停止'); });
+      $('#nginxRestartBtn').on('click', function () { runNginxServiceAction('restart', i18n[currentLang].nginxRestart || '重啟'); });
+      $('#nginxSiteEnabled').on('change', function () {
+        var enabled = $(this).is(':checked');
+        var label = enabled ? (i18n[currentLang].nginxEnabled || '啟用') : (i18n[currentLang].nginxDisabled || '停用');
+        $('#nginxSiteEnabledLabel').text(label);
+        $('.nginx-site-status-switch').toggleClass('is-off', !enabled);
+      });
       $('#nginxSaveSiteBtn').on('click', function () {
         var editName = $('#nginxEditSiteName').val();
         var isEdit = !!editName;
         var data = {
           site_name: $('#nginxSiteName').val().trim(),
           server_name: $('#nginxServerName').val().trim(),
+          listen_port: $('#nginxListenPort').val().trim(),
           site_type: $('#nginxSiteType').val(),
           document_root: $('#nginxDocRoot').val().trim(),
           reverse_proxy_pass: $('#nginxProxyPass').val().trim(),
@@ -129,22 +169,115 @@
           config_content: $('#nginxSiteConfig').val().trim() || null
         };
         if (!data.site_name) { layer.msg('Site name required', { icon: 2 }); return; }
+        var listenPort = parseInt(data.listen_port, 10);
+        if (!listenPort || listenPort < 1 || listenPort > 65535) {
+          layer.alert('Listen Port must be between 1 and 65535');
+          return;
+        }
         logger.info((isEdit ? '更新' : '新增') + ' Nginx 網站', data.site_name);
         detectNginxApi(function () {
           if (isEdit) {
             $.post(nginxUrl('/sites/' + encodeURIComponent(editName)), data, function (res) {
               if (res.code !== 0) { layer.alert(res.msg); return; }
-              layer.msg(i18n[currentLang].nginxSiteUpdated || 'Site updated', { icon: 1 });
+              showNginxToast(i18n[currentLang].nginxSiteUpdated || '網站已更新', '網站資料已儲存至資料庫。', data.site_name, 'bx-save');
               loadNginxSites();
             });
           } else {
             $.post(nginxUrl('/sites'), data, function (res) {
               if (res.code !== 0) { layer.alert(res.msg); return; }
-              layer.msg(i18n[currentLang].nginxSiteAdded || 'Site added', { icon: 1 });
+              showNginxToast(i18n[currentLang].nginxSiteAdded || '網站已新增', '網站資料已儲存至資料庫。', data.site_name, 'bx-plus-circle');
               loadNginxSites();
               fillNginxSiteForm(res.data);
             });
           }
+        });
+      });
+      function currentNginxSiteName() {
+        return ($('#nginxEditSiteName').val() || $('#nginxSiteName').val() || '').trim();
+      }
+      function renderNginxSiteActionResult(ok, title, output) {
+        var cls = ok ? 'text-success' : 'text-danger';
+        $('#nginxSitePreviewResult').html(
+          '<pre class="' + cls + '" style="font-size:.75rem;background:var(--bs-tertiary-bg);padding:.5rem;border-radius:4px;max-height:260px;overflow:auto">' +
+          escHtml(title + '\n' + (output || 'No output')) +
+          '</pre>'
+        );
+      }
+      function testAndReloadNginxAfterSiteAction(name, actionTitle, toastTitle, toastMessage, icon, done) {
+        $('#nginxSitePreviewResult').html('<div class="text-muted">Testing nginx config...</div>');
+        $.post(nginxUrl('/test'), {}, function (testRes) {
+          var testOutput = testRes.data || testRes.msg || 'No output';
+          if (testRes.code !== 0) {
+            renderNginxSiteActionResult(false, actionTitle + '，但測試設定失敗', testOutput);
+            layer.alert(testOutput);
+            if (done) done(false);
+            return;
+          }
+          $('#nginxSitePreviewResult').html('<div class="text-muted">Reloading nginx...</div>');
+          $.post(nginxUrl('/reload'), {}, function (reloadRes) {
+            var reloadOutput = reloadRes.data || reloadRes.msg || 'No output';
+            var ok = reloadRes.code === 0;
+            renderNginxSiteActionResult(ok, ok ? actionTitle + '並 Reload 完成' : actionTitle + '完成，但 Reload 失敗', 'nginx -t:\n' + testOutput + '\n\nreload:\n' + reloadOutput);
+            if (ok) showNginxToast(toastTitle, toastMessage, name, icon || 'bx-check-double', 'is-disabled');
+            else layer.alert(reloadOutput);
+            if (done) done(ok);
+          });
+        });
+      }
+      $('#nginxWriteSiteBtn').on('click', function () {
+        var name = currentNginxSiteName();
+        if (!name) { layer.msg('Site name required', { icon: 2 }); return; }
+        logger.info('寫入 Nginx 網站設定檔', name);
+        detectNginxApi(function () {
+          $.post(nginxUrl('/sites/' + encodeURIComponent(name) + '/write'), { write_file: '1' }, function (res) {
+            if (res.code !== 0) { renderNginxSiteActionResult(false, '寫入設定檔失敗', res.msg); layer.alert(res.msg); return; }
+            renderNginxSiteActionResult(true, '寫入設定檔完成', res.data && res.data.config ? res.data.config : '');
+            showNginxToast(i18n[currentLang].nginxSiteFileWritten || '設定檔已寫入', '已寫入 sites-enabled。', name, 'bx-file-plus');
+          });
+        });
+      });
+      $('#nginxRemoveSiteFileBtn').on('click', function () {
+        var name = currentNginxSiteName();
+        if (!name) { layer.msg('Site name required', { icon: 2 }); return; }
+        if (!confirm(i18n[currentLang].nginxConfirmDeleteFile || 'Confirm delete file from sites-enabled?')) return;
+        logger.info('移除 Nginx 網站設定檔', name);
+        detectNginxApi(function () {
+          $('#nginxSitePreviewResult').html('<div class="text-muted">Removing site config...</div>');
+          $.ajax({ url: nginxUrl('/sites/' + encodeURIComponent(name) + '/file'), type: 'DELETE', dataType: 'json' })
+            .done(function (res) {
+              if (res.code !== 0) { renderNginxSiteActionResult(false, '移除設定檔失敗', res.msg); layer.alert(res.msg); return; }
+              testAndReloadNginxAfterSiteAction(name, '移除設定檔', i18n[currentLang].nginxSiteFileRemoved || '設定檔已移除', '已從 sites-enabled 移除並重新載入 Nginx。', 'bx-file-blank');
+            });
+        });
+      });
+      $('#nginxWriteTestReloadBtn').on('click', function () {
+        var name = currentNginxSiteName();
+        if (!name) { layer.msg('Site name required', { icon: 2 }); return; }
+        var enabled = $('#nginxSiteEnabled').is(':checked');
+        logger.info('Nginx 寫入後測試並 Reload', name);
+        $('#nginxSitePreviewResult').html('<div class="text-muted">' + (enabled ? 'Writing site config...' : 'Removing disabled site config...') + '</div>');
+        detectNginxApi(function () {
+          var prepare = enabled
+            ? $.post(nginxUrl('/sites/' + encodeURIComponent(name) + '/write'), { write_file: '1' })
+            : $.ajax({ url: nginxUrl('/sites/' + encodeURIComponent(name) + '/file'), type: 'DELETE', dataType: 'json' });
+          prepare.done(function (writeRes) {
+            if (writeRes.code !== 0) { renderNginxSiteActionResult(false, enabled ? '寫入設定檔失敗' : '移除設定檔失敗', writeRes.msg); layer.alert(writeRes.msg); return; }
+            $('#nginxSitePreviewResult').html('<div class="text-muted">Testing nginx config...</div>');
+            $.post(nginxUrl('/test'), {}, function (testRes) {
+              var testOutput = testRes.data || testRes.msg || 'No output';
+              if (testRes.code !== 0) { renderNginxSiteActionResult(false, '測試設定失敗', testOutput); layer.alert(testOutput); return; }
+              $('#nginxSitePreviewResult').html('<div class="text-muted">Reloading nginx...</div>');
+              $.post(nginxUrl('/reload'), {}, function (reloadRes) {
+                var reloadOutput = reloadRes.data || reloadRes.msg || 'No output';
+                var ok = reloadRes.code === 0;
+                var doneTitle = enabled ? '寫入、測試、Reload 完成' : '移除、測試、Reload 完成';
+                var failTitle = enabled ? '寫入與測試完成，但 Reload 失敗' : '移除與測試完成，但 Reload 失敗';
+                renderNginxSiteActionResult(ok, ok ? doneTitle : failTitle, (enabled ? 'write' : 'remove') + ':\n' + name + '\n\nnginx -t:\n' + testOutput + '\n\nreload:\n' + reloadOutput);
+                if (ok) showNginxToast(enabled ? (i18n[currentLang].nginxWriteTestReloadDone || doneTitle) : '移除、測試、Reload 完成', enabled ? '設定已寫入並重新載入 Nginx。' : '停用網站設定檔已移除並重新載入 Nginx。', name, enabled ? 'bx-check-double' : 'bx-file-blank', enabled ? '' : 'is-disabled');
+                else layer.alert(reloadOutput);
+              });
+            });
+          });
         });
       });
       $('#nginxPreviewSiteBtn').on('click', function () {
@@ -166,22 +299,28 @@
           $.ajax({ url: nginxUrl('/sites/' + encodeURIComponent(name)), type: 'DELETE', dataType: 'json' })
             .done(function (res) {
               if (res.code !== 0) { layer.alert(res.msg); return; }
-              layer.msg(i18n[currentLang].nginxSiteDeleted || 'Site deleted', { icon: 1 });
-              resetNginxSiteForm();
-              loadNginxSites();
+              testAndReloadNginxAfterSiteAction(name, '刪除網站', i18n[currentLang].nginxSiteDeleted || '網站已刪除', '網站資料與設定檔已移除並重新載入 Nginx。', 'bx-trash', function () {
+                resetNginxSiteForm();
+                loadNginxSites();
+              });
             });
         });
       });
       $('#nginxRefreshSites').on('click', function () { loadNginxSites(); });
-      $(document).on('click', '.nginx-edit-site', function () {
-        var name = $(this).closest('tr').data('name');
+      function loadNginxSiteIntoForm(name) {
         if (!name) return;
+        logger.info('載入 Nginx 網站設定', name);
         detectNginxApi(function () {
           $.get(nginxUrl('/sites/' + encodeURIComponent(name)), function (res) {
             if (res.code !== 0) { layer.alert(res.msg); return; }
             fillNginxSiteForm(res.data);
+            showNginxToast('已載入 Nginx 網站設定', '網站設定已載入到左側表單。', name, 'bx-edit');
           });
         });
+      }
+      $(document).on('click', '.nginx-edit-site, .nginx-site-name-link', function () {
+        var name = $(this).closest('tr').data('name');
+        loadNginxSiteIntoForm(name);
       });
       $(document).on('click', '.nginx-delete-site', function () {
         var name = $(this).closest('tr').data('name');
@@ -192,8 +331,9 @@
           $.ajax({ url: nginxUrl('/sites/' + encodeURIComponent(name)), type: 'DELETE', dataType: 'json' })
             .done(function (res) {
               if (res.code !== 0) { layer.alert(res.msg); return; }
-              layer.msg(i18n[currentLang].nginxSiteDeleted || 'Site deleted', { icon: 1 });
-              loadNginxSites();
+              testAndReloadNginxAfterSiteAction(name, '刪除網站', i18n[currentLang].nginxSiteDeleted || '網站已刪除', '網站資料與設定檔已移除並重新載入 Nginx。', 'bx-trash', function () {
+                loadNginxSites();
+              });
             });
         });
       });
@@ -204,7 +344,7 @@
         detectNginxApi(function () {
           $.post(nginxUrl('/modules'), { module_name: name }, function (res) {
             if (res.code !== 0) { layer.alert(res.msg); return; }
-            layer.msg(i18n[currentLang].nginxModuleAdded || 'Module added', { icon: 1 });
+            showNginxToast(i18n[currentLang].nginxModuleAdded || '模組已新增', '模組資料已新增。', name, 'bx-puzzle');
             $('#nginxModuleName').val('');
             loadNginxModules();
           });
@@ -218,7 +358,7 @@
         detectNginxApi(function () {
           $.post(nginxUrl('/modules/' + encodeURIComponent(name) + '/enabled'), { enabled: enabled ? '1' : '0' }, function (res) {
             if (res.code !== 0) { input.prop('checked', !enabled); layer.alert(res.msg); return; }
-            layer.msg(i18n[currentLang].nginxModuleToggled || 'Module toggled', { icon: 1 });
+            showNginxToast(i18n[currentLang].nginxModuleToggled || '模組狀態已切換', enabled ? '模組已啟用。' : '模組已停用。', name, enabled ? 'bx-check-circle' : 'bx-pause-circle', enabled ? '' : 'is-disabled');
             loadNginxModules();
           });
         });

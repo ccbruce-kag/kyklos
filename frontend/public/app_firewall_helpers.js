@@ -116,8 +116,9 @@
     function ruleEditor(opts) {
       const lang = i18n[currentLang];
       const { title, prefix, val, confirmCb } = opts;
+      const currentChainName = opts.currentChain || '';
       function parseRuleTxt(txt) {
-        const f = { target: '', protocol: '', source: '', destination: '', inIf: '', outIf: '', match: '', dport: '', sport: '', ctstate: [], icmpType: '', rChain: '', rNum: '', aChain: '' };
+        const f = { target: '', protocol: '', source: '', destination: '', inIf: '', outIf: '', match: '', dport: '', sport: '', ctstate: [], icmpType: '', toSource: '', toDestination: '', toPorts: '', setMark: '', rChain: '', rNum: '', aChain: '' };
         if (!txt) return f;
         const toks = txt.split(/\s+/);
         for (let i = 0; i < toks.length; i++) {
@@ -136,6 +137,10 @@
           if (t === '--sport') { f.sport = toks[++i] || ''; continue; }
           if (t === '--ctstate' || t === '--state') { while (i + 1 < toks.length && !toks[i + 1].startsWith('-')) f.ctstate.push(toks[++i]); continue; }
           if (t === '--icmp-type') { f.icmpType = toks[++i] || ''; continue; }
+          if (t === '--to-source') { f.toSource = toks[++i] || ''; continue; }
+          if (t === '--to-destination') { f.toDestination = toks[++i] || ''; continue; }
+          if (t === '--to-ports') { f.toPorts = toks[++i] || ''; continue; }
+          if (t === '--set-mark') { f.setMark = toks[++i] || ''; continue; }
         }
         return f;
       }
@@ -152,6 +157,10 @@
         if (f.ctstate && f.ctstate.length) p.push('--ctstate', f.ctstate.join(','));
         if (f.icmpType) p.push('--icmp-type', f.icmpType);
         if (f.target) p.push('-j', f.target);
+        if (f.target === 'SNAT' && f.toSource) p.push('--to-source', f.toSource);
+        if (f.target === 'DNAT' && f.toDestination) p.push('--to-destination', f.toDestination);
+        if ((f.target === 'REDIRECT' || f.target === 'MASQUERADE') && f.toPorts) p.push('--to-ports', f.toPorts);
+        if ((f.target === 'MARK' || f.target === 'CONNMARK') && f.setMark) p.push('--set-mark', f.setMark);
         return p.join(' ');
       }
       function isValidIpv4Cidr(value) {
@@ -195,11 +204,19 @@
         if (f.destination && !isValidIpv4Cidr(f.destination)) errors.push('目的 IP / CIDR 格式錯誤：' + f.destination);
         if (f.dport && !isValidPortList(f.dport)) errors.push('目的埠格式錯誤：' + f.dport);
         if (f.sport && !isValidPortList(f.sport)) errors.push('來源埠格式錯誤：' + f.sport);
+        if ((f.toSource || f.toDestination) && !/^[0-9A-Fa-f:.\/-]+(:[0-9:-]+)?$/.test(f.toSource || f.toDestination)) errors.push('NAT 轉換位址格式錯誤');
+        if (f.toPorts && !isValidPortList(f.toPorts)) errors.push('NAT 轉換埠格式錯誤：' + f.toPorts);
+        if (f.target === 'SNAT' && !f.toSource) errors.push('SNAT 需要填寫 --to-source');
+        if (f.target === 'DNAT' && !f.toDestination) errors.push('DNAT 需要填寫 --to-destination');
+        if ((f.target === 'MARK' || f.target === 'CONNMARK') && !f.setMark) errors.push(f.target + ' 需要填寫 --set-mark');
+        if (f.setMark && !/^(0x[0-9A-Fa-f]+|\d+)(\/(0x[0-9A-Fa-f]+|\d+))?$/.test(f.setMark)) errors.push('MARK 值格式錯誤：' + f.setMark);
+        var effectiveChain = f.rChain || f.aChain || currentChainName;
+        if (effectiveChain && f.target === effectiveChain) errors.push('目標不可設定為目前鏈本身，否則會造成鏈循環：' + effectiveChain);
         return errors;
       }
       const fields = parseRuleTxt(val || '');
       const ctStates = ['NEW','ESTABLISHED','RELATED','INVALID','SNAT','DNAT'];
-      const rChainOpts = ['INPUT','FORWARD','OUTPUT','DOCKER','DOCKER-BRIDGE','DOCKER-CT','DOCKER-FORWARD','DOCKER-INTERNAL','DOCKER-USER',
+      const rChainOpts = ['PREROUTING','INPUT','FORWARD','OUTPUT','POSTROUTING','DOCKER','DOCKER-BRIDGE','DOCKER-CT','DOCKER-FORWARD','DOCKER-INTERNAL','DOCKER-USER',
         'ufw-after-forward','ufw-after-input','ufw-after-logging-forward','ufw-after-logging-input','ufw-after-logging-output','ufw-after-output',
         'ufw-before-forward','ufw-before-input','ufw-before-logging-forward','ufw-before-logging-input','ufw-before-logging-output','ufw-before-output',
         'ufw-logging-allow','ufw-logging-deny','ufw-not-local','ufw-reject-forward','ufw-reject-input','ufw-reject-output',
@@ -207,6 +224,26 @@
         'ufw-track-forward','ufw-track-input','ufw-track-output',
         'ufw-user-forward','ufw-user-input','ufw-user-limit','ufw-user-limit-accept',
         'ufw-user-logging-forward','ufw-user-logging-input','ufw-user-logging-output','ufw-user-output'];
+      function htmlEscape(value) {
+        return $('<span>').text(value == null ? '' : String(value)).html();
+      }
+      function targetOptionsHtml() {
+        var defaults = ['ACCEPT','DROP','REJECT','RETURN','LOG','MASQUERADE','DNAT','SNAT','REDIRECT','MARK','CONNMARK','NOTRACK'];
+        var seen = {};
+        var html = '<option value="">-</option>';
+        defaults.forEach(function (target) {
+          seen[target] = true;
+          html += '<option value="' + target + '">' + target + '</option>';
+        });
+        $('.chain-block[data-type="custom"] .chain-actions').each(function () {
+          var chain = ($(this).data('chain') || '').toString().trim();
+          if (!chain || seen[chain]) return;
+          seen[chain] = true;
+          var safe = htmlEscape(chain);
+          html += '<option value="' + safe + '">' + safe + '</option>';
+        });
+        return html;
+      }
       const origVal = val || '';
       // Fetch interfaces first, then open dialog with pre-populated data
       var ifOpts = '<option value="">-</option>';
@@ -239,7 +276,7 @@
                 '<div class="col-md-3 rule-editor-field"><label>協定 <code>-p</code></label><select class="form-select field-protocol"><option value="">-</option><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option><option value="all">all</option></select></div>' +
                 '<div class="col-md-3 rule-editor-field"><label>來源 <code>-s</code></label><input type="text" class="form-control field-source" placeholder="0.0.0.0/0" value="' + fields.source.replace(/"/g,'&quot;') + '"></div>' +
                 '<div class="col-md-3 rule-editor-field"><label>目的 <code>-d</code></label><input type="text" class="form-control field-dest" placeholder="172.18.0.2/32" value="' + fields.destination.replace(/"/g,'&quot;') + '"></div>' +
-                '<div class="col-md-3 rule-editor-field"><label>目標 <code>-j</code></label><select class="form-select field-target"><option value="">-</option><option value="ACCEPT">ACCEPT</option><option value="DROP">DROP</option><option value="REJECT">REJECT</option><option value="RETURN">RETURN</option><option value="LOG">LOG</option><option value="MASQUERADE">MASQUERADE</option><option value="DNAT">DNAT</option><option value="SNAT">SNAT</option><option value="REDIRECT">REDIRECT</option></select></div>' +
+                '<div class="col-md-3 rule-editor-field"><label>目標 <code>-j</code></label><select class="form-select field-target">' + targetOptionsHtml() + '</select></div>' +
               '</div>' +
               '<div class="row g-2">' +
                 '<div class="col-md-3 rule-editor-field"><label>入介面 <code>-i</code></label><select class="form-select field-in-if">' + ifaceOpts + '</select></div>' +
@@ -253,6 +290,14 @@
                 '</div></div>' +
                 '<div class="col-md-3 rule-editor-field"><label>ICMP 類型 <code>--icmp-type</code></label><input type="text" class="form-control field-icmp-type" placeholder="echo-request" value="' + fields.icmpType.replace(/"/g,'&quot;') + '"></div>' +
                 '<div class="col-md-3 rule-editor-field"><label>來源埠 <code>--sport</code></label><input type="text" class="form-control field-sport" placeholder="1024:65535" value="' + fields.sport.replace(/"/g,'&quot;') + '"></div>' +
+              '</div>' +
+              '<div class="row g-2 rule-editor-nat-row">' +
+                '<div class="col-md-4 rule-editor-field nat-field nat-field-snat"><label>SNAT 來源轉換 <code>--to-source</code></label><input type="text" class="form-control field-to-source" placeholder="10.20.50.200" value="' + fields.toSource.replace(/"/g,'&quot;') + '"></div>' +
+                '<div class="col-md-4 rule-editor-field nat-field nat-field-dnat"><label>DNAT 目的轉換 <code>--to-destination</code></label><input type="text" class="form-control field-to-destination" placeholder="10.20.50.2:22" value="' + fields.toDestination.replace(/"/g,'&quot;') + '"></div>' +
+                '<div class="col-md-4 rule-editor-field nat-field nat-field-ports"><label>NAT 轉換埠 <code>--to-ports</code></label><input type="text" class="form-control field-to-ports" placeholder="8080 或 10000:20000" value="' + fields.toPorts.replace(/"/g,'&quot;') + '"></div>' +
+              '</div>' +
+              '<div class="row g-2 rule-editor-mangle-row">' +
+                '<div class="col-md-4 rule-editor-field mangle-field mangle-field-mark"><label>封包標記 <code>--set-mark</code></label><input type="text" class="form-control field-set-mark" placeholder="10 或 0x10" value="' + fields.setMark.replace(/"/g,'&quot;') + '"></div>' +
               '</div>' +
             '</div>' +
             '<div class="rule-editor-section">' +
@@ -283,13 +328,20 @@
             dport: readVal('.field-dport'),
             sport: readVal('.field-sport'),
             ctstate: [],
-            icmpType: readVal('.field-icmp-type')
+            icmpType: readVal('.field-icmp-type'),
+            toSource: readVal('.field-to-source'),
+            toDestination: readVal('.field-to-destination'),
+            toPorts: readVal('.field-to-ports'),
+            setMark: readVal('.field-set-mark'),
+            aChain: readVal('.field-a-chain'),
+            rChain: readVal('.field-r-chain'),
+            rNum: readVal('.field-r-num') || '1'
           };
           $root.find('.field-ctstate:checked').each(function(){ p.ctstate.push($(this).val()); });
           var parts = [];
-          var aChain = readVal('.field-a-chain');
-          var rChain = readVal('.field-r-chain');
-          var rNum = readVal('.field-r-num') || '1';
+          var aChain = p.aChain;
+          var rChain = p.rChain;
+          var rNum = p.rNum;
           if (aChain) parts.push('-A', aChain);
           if (rChain) parts.push('-R', rChain, rNum);
           var cmd = buildCmd(p);
@@ -338,6 +390,10 @@
             if (fields.match) $l.find('.field-match').val(fields.match);
             if (fields.inIf) $l.find('.field-in-if').val(fields.inIf);
             if (fields.outIf) $l.find('.field-out-if').val(fields.outIf);
+            if (fields.toSource) $l.find('.field-to-source').val(fields.toSource);
+            if (fields.toDestination) $l.find('.field-to-destination').val(fields.toDestination);
+            if (fields.toPorts) $l.find('.field-to-ports').val(fields.toPorts);
+            if (fields.setMark) $l.find('.field-set-mark').val(fields.setMark);
             // Initialize R chain/num fields from val prefix (e.g. "-R INPUT 3")
             (function() {
               var initChain = '', initNum = '1';
@@ -349,12 +405,22 @@
               $l.find('.field-r-num').val(initNum);
             })();
             function syncFld() {
+              syncTargetOptionFields($l);
               return syncRuleCommand($l);
+            }
+            function syncTargetOptionFields($ctx) {
+              var target = $ctx.find('.field-target').val() || '';
+              $ctx.find('.nat-field').addClass('d-none');
+              $ctx.find('.mangle-field').addClass('d-none');
+              if (target === 'SNAT') $ctx.find('.nat-field-snat').removeClass('d-none');
+              if (target === 'DNAT') $ctx.find('.nat-field-dnat').removeClass('d-none');
+              if (target === 'REDIRECT' || target === 'MASQUERADE') $ctx.find('.nat-field-ports').removeClass('d-none');
+              if (target === 'MARK' || target === 'CONNMARK') $ctx.find('.mangle-field-mark').removeClass('d-none');
             }
             var timer;
             $l.find('.field-a-chain,.field-r-chain,.field-r-num').on('change', syncFld);
             $l.find('.field-protocol,.field-target,.field-match,.field-in-if,.field-out-if').on('change', syncFld);
-            $l.find('.field-source,.field-dest,.field-dport,.field-sport,.field-icmp-type').on('input', syncFld);
+            $l.find('.field-source,.field-dest,.field-dport,.field-sport,.field-icmp-type,.field-to-source,.field-to-destination,.field-to-ports,.field-set-mark').on('input', syncFld);
             $l.find('.field-ctstate').on('change', syncFld);
             function doParse() {
               var txt = $l.find('.rule-preview-input').val() || '';
@@ -369,10 +435,15 @@
               $l.find('.field-dport').val(p.dport);
               $l.find('.field-sport').val(p.sport);
               $l.find('.field-icmp-type').val(p.icmpType);
+              $l.find('.field-to-source').val(p.toSource);
+              $l.find('.field-to-destination').val(p.toDestination);
+              $l.find('.field-to-ports').val(p.toPorts);
+              $l.find('.field-set-mark').val(p.setMark);
               $l.find('.field-ctstate').prop('checked', false);
               (p.ctstate||[]).forEach(function(s){ $l.find('.field-ctstate[value="'+s+'"]').prop('checked',true); });
               if (p.rChain) { $l.find('.field-r-chain').val(p.rChain); $l.find('.field-r-num').val(p.rNum || '1'); }
               if (p.aChain) { $l.find('.field-a-chain').val(p.aChain); }
+              syncFld();
             }
             console.log('設定產出按鈕事件');
             $l.find('.rule-gen-btn').on('click', function() {

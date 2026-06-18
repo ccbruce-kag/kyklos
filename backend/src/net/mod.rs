@@ -1,6 +1,7 @@
 pub mod firewall;
 pub mod haproxy;
 pub mod juniper;
+pub mod kyklos_ha;
 pub mod netplan;
 pub mod nginx;
 pub mod pcap;

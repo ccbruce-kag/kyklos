@@ -16,6 +16,7 @@ use crate::net::nginx::{NginxModule, NginxSettings, NginxSite, NginxSiteUpdate};
 use crate::security::{CvsSource, CvsSourceInput, ScanResult, ScanTask, ScanTaskInput};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -106,6 +107,55 @@ pub struct HaproxyBackendServerUpdate {
     pub ip: String,
     pub port: u16,
     pub health_check: Option<bool>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct KyklosHaBackendServerSettings {
+    pub id: i64,
+    pub name: String,
+    pub ip: String,
+    pub port: u16,
+    pub enabled: bool,
+    pub position: i64,
+}
+
+#[derive(Clone, Serialize)]
+pub struct KyklosHaServiceSettings {
+    pub id: i64,
+    pub service_type: String,
+    pub enabled: bool,
+    pub name: String,
+    pub bind_addr: String,
+    pub listen_port: u16,
+    pub mode: String,
+    pub balance_method: String,
+    pub health_check_path: Option<String>,
+    pub health_check: bool,
+    pub servers: Vec<KyklosHaBackendServerSettings>,
+    pub updated_at: String,
+}
+
+#[derive(Clone)]
+pub struct KyklosHaServiceUpdate {
+    pub id: Option<i64>,
+    pub service_type: String,
+    pub enabled: bool,
+    pub name: String,
+    pub bind_addr: String,
+    pub listen_port: u16,
+    pub mode: String,
+    pub balance_method: String,
+    pub health_check_path: Option<String>,
+    pub health_check: bool,
+    pub servers: Vec<KyklosHaBackendServerUpdate>,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct KyklosHaBackendServerUpdate {
+    pub name: String,
+    pub ip: String,
+    pub port: u16,
+    pub enabled: Option<bool>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -578,6 +628,316 @@ impl AppDb {
         Ok(true)
     }
 
+    pub fn list_kyklos_ha_services(&self) -> Result<Vec<KyklosHaServiceSettings>, String> {
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, service_type, enabled, name, bind_addr, listen_port, mode,
+                        balance_method, health_check_path, health_check, updated_at
+                 FROM kyklos_ha_services
+                 ORDER BY service_type, name",
+            )
+            .map_err(|e| format!("prepare Kyklos HA service query failed: {e}"))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)? != 0,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, i64>(9)? != 0,
+                    row.get::<_, String>(10)?,
+                ))
+            })
+            .map_err(|e| format!("query Kyklos HA services failed: {e}"))?;
+
+        let mut items = Vec::new();
+        for row in rows {
+            let (
+                id,
+                service_type,
+                enabled,
+                name,
+                bind_addr,
+                listen_port,
+                mode,
+                balance_method,
+                health_check_path,
+                health_check,
+                updated_at,
+            ) = row.map_err(|e| format!("read Kyklos HA service row failed: {e}"))?;
+            items.push(KyklosHaServiceSettings {
+                id,
+                service_type,
+                enabled,
+                name,
+                bind_addr,
+                listen_port: listen_port as u16,
+                mode,
+                balance_method,
+                health_check_path,
+                health_check,
+                servers: self.kyklos_ha_servers(id)?,
+                updated_at,
+            });
+        }
+        Ok(items)
+    }
+
+    pub fn save_kyklos_ha_service(
+        &self,
+        update: KyklosHaServiceUpdate,
+    ) -> Result<KyklosHaServiceSettings, String> {
+        validate_kyklos_ha_update(&update)?;
+        let mut conn = self.connect()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("start Kyklos HA settings transaction failed: {e}"))?;
+        let existing_id: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM kyklos_ha_services WHERE service_type = ?1 AND name = ?2",
+                params![update.service_type, update.name],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("lookup Kyklos HA service failed: {e}"))?;
+        if let Some(existing_id) = existing_id {
+            if Some(existing_id) != update.id {
+                return Err(format!(
+                    "Kyklos HA service name already exists: {}",
+                    update.name
+                ));
+            }
+        }
+        if update.enabled {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id, name, bind_addr, listen_port
+                     FROM kyklos_ha_services
+                     WHERE enabled = 1 AND listen_port = ?1 AND id != ?2",
+                )
+                .map_err(|e| format!("prepare Kyklos HA listen conflict query failed: {e}"))?;
+            let rows = stmt
+                .query_map(
+                    params![i64::from(update.listen_port), update.id.unwrap_or(0)],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, i64>(3)?,
+                        ))
+                    },
+                )
+                .map_err(|e| format!("query Kyklos HA listen conflicts failed: {e}"))?;
+            for row in rows {
+                let (_, name, bind_addr, listen_port) =
+                    row.map_err(|e| format!("read Kyklos HA listen conflict failed: {e}"))?;
+                if kyklos_ha_bind_conflicts(&update.bind_addr, &bind_addr) {
+                    return Err(format!(
+                        "Kyklos HA listen port already in use: {} uses {}:{}",
+                        name, bind_addr, listen_port
+                    ));
+                }
+            }
+        }
+
+        let id = if let Some(id) = update.id {
+            let affected = tx
+                .execute(
+                    "UPDATE kyklos_ha_services
+                     SET enabled = ?1, name = ?2, bind_addr = ?3, listen_port = ?4,
+                         mode = ?5, balance_method = ?6, health_check_path = ?7,
+                         health_check = ?8, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                     WHERE id = ?9 AND service_type = ?10",
+                    params![
+                        if update.enabled { 1 } else { 0 },
+                        update.name,
+                        update.bind_addr,
+                        i64::from(update.listen_port),
+                        update.mode,
+                        update.balance_method,
+                        update.health_check_path,
+                        if update.health_check { 1 } else { 0 },
+                        id,
+                        update.service_type,
+                    ],
+                )
+                .map_err(|e| format!("update Kyklos HA service failed: {e}"))?;
+            if affected == 0 {
+                return Err("Kyklos HA service not found".to_string());
+            }
+            id
+        } else {
+            tx.execute(
+                "INSERT INTO kyklos_ha_services
+                 (service_type, enabled, name, bind_addr, listen_port, mode, balance_method, health_check_path, health_check)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    update.service_type,
+                    if update.enabled { 1 } else { 0 },
+                    update.name,
+                    update.bind_addr,
+                    i64::from(update.listen_port),
+                    update.mode,
+                    update.balance_method,
+                    update.health_check_path,
+                    if update.health_check { 1 } else { 0 }
+                ],
+            )
+            .map_err(|e| format!("insert Kyklos HA service failed: {e}"))?;
+            tx.last_insert_rowid()
+        };
+
+        tx.execute(
+            "DELETE FROM kyklos_ha_backend_servers WHERE service_id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("clear Kyklos HA backend servers failed: {e}"))?;
+
+        for (idx, server) in update.servers.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO kyklos_ha_backend_servers
+                 (service_id, name, ip, port, enabled, position)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    id,
+                    server.name,
+                    server.ip,
+                    i64::from(server.port),
+                    if server.enabled.unwrap_or(true) { 1 } else { 0 },
+                    idx as i64
+                ],
+            )
+            .map_err(|e| format!("insert Kyklos HA backend server failed: {e}"))?;
+        }
+
+        tx.commit()
+            .map_err(|e| format!("commit Kyklos HA settings failed: {e}"))?;
+        self.kyklos_ha_service(id)
+    }
+
+    pub fn set_kyklos_ha_service_enabled(&self, id: i64, enabled: bool) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE kyklos_ha_services
+                 SET enabled = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = ?2",
+                params![if enabled { 1 } else { 0 }, id],
+            )
+            .map_err(|e| format!("update Kyklos HA service enabled state failed: {e}"))?;
+        Ok(affected > 0)
+    }
+
+    pub fn update_kyklos_ha_backend_server(
+        &self,
+        id: i64,
+        update: KyklosHaBackendServerUpdate,
+    ) -> Result<bool, String> {
+        validate_kyklos_ha_backend_update(&update)?;
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE kyklos_ha_backend_servers
+                 SET name = ?1, ip = ?2, port = ?3, enabled = ?4
+                 WHERE id = ?5",
+                params![
+                    update.name,
+                    update.ip,
+                    i64::from(update.port),
+                    if update.enabled.unwrap_or(true) { 1 } else { 0 },
+                    id
+                ],
+            )
+            .map_err(|e| format!("update Kyklos HA backend server failed: {e}"))?;
+        if affected > 0 {
+            let _ = conn.execute(
+                "UPDATE kyklos_ha_services
+                 SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = (SELECT service_id FROM kyklos_ha_backend_servers WHERE id = ?1)",
+                params![id],
+            );
+        }
+        Ok(affected > 0)
+    }
+
+    pub fn set_kyklos_ha_backend_server_enabled(
+        &self,
+        id: i64,
+        enabled: bool,
+    ) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE kyklos_ha_backend_servers SET enabled = ?1 WHERE id = ?2",
+                params![if enabled { 1 } else { 0 }, id],
+            )
+            .map_err(|e| format!("update Kyklos HA backend server state failed: {e}"))?;
+        if affected > 0 {
+            let _ = conn.execute(
+                "UPDATE kyklos_ha_services
+                 SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = (SELECT service_id FROM kyklos_ha_backend_servers WHERE id = ?1)",
+                params![id],
+            );
+        }
+        Ok(affected > 0)
+    }
+
+    pub fn delete_kyklos_ha_backend_server(&self, id: i64) -> Result<bool, String> {
+        let mut conn = self.connect()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("start Kyklos HA backend delete transaction failed: {e}"))?;
+        let service_id: Option<i64> = tx
+            .query_row(
+                "SELECT service_id FROM kyklos_ha_backend_servers WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("lookup Kyklos HA backend server failed: {e}"))?;
+        let Some(service_id) = service_id else {
+            return Ok(false);
+        };
+
+        tx.execute(
+            "DELETE FROM kyklos_ha_backend_servers WHERE id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("delete Kyklos HA backend server failed: {e}"))?;
+        tx.execute(
+            "UPDATE kyklos_ha_services
+             SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE id = ?1",
+            params![service_id],
+        )
+        .map_err(|e| format!("touch Kyklos HA service failed: {e}"))?;
+        tx.commit()
+            .map_err(|e| format!("commit Kyklos HA backend delete failed: {e}"))?;
+        Ok(true)
+    }
+
+    pub fn delete_kyklos_ha_service(&self, id: i64) -> Result<bool, String> {
+        let conn = self.connect()?;
+        conn.execute(
+            "DELETE FROM kyklos_ha_backend_servers WHERE service_id = ?1",
+            params![id],
+        )
+        .map_err(|e| format!("delete Kyklos HA backend servers failed: {e}"))?;
+        let affected = conn
+            .execute("DELETE FROM kyklos_ha_services WHERE id = ?1", params![id])
+            .map_err(|e| format!("delete Kyklos HA service failed: {e}"))?;
+        Ok(affected > 0)
+    }
+
     fn init(&self) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -622,6 +982,30 @@ impl AppDb {
                 health_check INTEGER NOT NULL DEFAULT 1,
                 position INTEGER NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS kyklos_ha_services (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_type TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                name TEXT NOT NULL,
+                bind_addr TEXT NOT NULL DEFAULT '0.0.0.0',
+                listen_port INTEGER NOT NULL,
+                mode TEXT NOT NULL,
+                balance_method TEXT NOT NULL,
+                health_check_path TEXT NULL,
+                health_check INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                UNIQUE(service_type, name)
+            );
+            CREATE TABLE IF NOT EXISTS kyklos_ha_backend_servers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                ip TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                position INTEGER NOT NULL DEFAULT 0
+            );
             CREATE TABLE IF NOT EXISTS nginx_settings (
                 id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
                 nginx_bin TEXT NOT NULL DEFAULT 'nginx',
@@ -635,6 +1019,7 @@ impl AppDb {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 site_name TEXT NOT NULL UNIQUE,
                 server_name TEXT NOT NULL DEFAULT '_',
+                listen_port INTEGER NOT NULL DEFAULT 80,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 document_root TEXT NOT NULL DEFAULT '/var/www/html',
                 config_content TEXT,
@@ -938,6 +1323,10 @@ impl AppDb {
             "ALTER TABLE apiman_requests ADD COLUMN auth_config TEXT",
             [],
         );
+        let _ = conn.execute(
+            "ALTER TABLE nginx_sites ADD COLUMN listen_port INTEGER NOT NULL DEFAULT 80",
+            [],
+        );
         self.ensure_seeded()
     }
 
@@ -996,6 +1385,69 @@ impl AppDb {
         let mut servers = Vec::new();
         for row in rows {
             servers.push(row.map_err(|e| format!("read HAProxy backend server failed: {e}"))?);
+        }
+        Ok(servers)
+    }
+
+    fn kyklos_ha_service(&self, id: i64) -> Result<KyklosHaServiceSettings, String> {
+        let conn = self.connect()?;
+        let mut item = conn
+            .query_row(
+                "SELECT id, service_type, enabled, name, bind_addr, listen_port, mode,
+                        balance_method, health_check_path, health_check, updated_at
+                 FROM kyklos_ha_services WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(KyklosHaServiceSettings {
+                        id: row.get(0)?,
+                        service_type: row.get(1)?,
+                        enabled: row.get::<_, i64>(2)? != 0,
+                        name: row.get(3)?,
+                        bind_addr: row.get(4)?,
+                        listen_port: row.get::<_, i64>(5)? as u16,
+                        mode: row.get(6)?,
+                        balance_method: row.get(7)?,
+                        health_check_path: row.get(8)?,
+                        health_check: row.get::<_, i64>(9)? != 0,
+                        servers: Vec::new(),
+                        updated_at: row.get(10)?,
+                    })
+                },
+            )
+            .map_err(|e| format!("load Kyklos HA service failed: {e}"))?;
+        item.servers = self.kyklos_ha_servers(id)?;
+        Ok(item)
+    }
+
+    fn kyklos_ha_servers(
+        &self,
+        service_id: i64,
+    ) -> Result<Vec<KyklosHaBackendServerSettings>, String> {
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, ip, port, enabled, position
+                 FROM kyklos_ha_backend_servers
+                 WHERE service_id = ?1
+                 ORDER BY position, id",
+            )
+            .map_err(|e| format!("prepare Kyklos HA backend server query failed: {e}"))?;
+        let rows = stmt
+            .query_map(params![service_id], |row| {
+                Ok(KyklosHaBackendServerSettings {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    ip: row.get(2)?,
+                    port: row.get::<_, i64>(3)? as u16,
+                    enabled: row.get::<_, i64>(4)? != 0,
+                    position: row.get(5)?,
+                })
+            })
+            .map_err(|e| format!("query Kyklos HA backend servers failed: {e}"))?;
+
+        let mut servers = Vec::new();
+        for row in rows {
+            servers.push(row.map_err(|e| format!("read Kyklos HA backend server failed: {e}"))?);
         }
         Ok(servers)
     }
@@ -1059,7 +1511,7 @@ impl AppDb {
         let conn = self.connect()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, site_name, server_name, enabled, document_root, config_content,
+                "SELECT id, site_name, server_name, listen_port, enabled, document_root, config_content,
                         site_type, reverse_proxy_pass, updated_at
                  FROM nginx_sites ORDER BY site_name",
             )
@@ -1070,12 +1522,13 @@ impl AppDb {
                     id: row.get(0)?,
                     site_name: row.get(1)?,
                     server_name: row.get(2)?,
-                    enabled: row.get::<_, i64>(3)? != 0,
-                    document_root: row.get(4)?,
-                    config_content: row.get(5)?,
-                    site_type: row.get(6)?,
-                    reverse_proxy_pass: row.get(7)?,
-                    updated_at: row.get(8)?,
+                    listen_port: row.get::<_, i64>(3)?.clamp(1, 65535) as u16,
+                    enabled: row.get::<_, i64>(4)? != 0,
+                    document_root: row.get(5)?,
+                    config_content: row.get(6)?,
+                    site_type: row.get(7)?,
+                    reverse_proxy_pass: row.get(8)?,
+                    updated_at: row.get(9)?,
                 })
             })
             .map_err(|e| format!("query nginx sites failed: {e}"))?;
@@ -1089,7 +1542,7 @@ impl AppDb {
     pub fn get_nginx_site(&self, name: &str) -> Result<Option<NginxSite>, String> {
         let conn = self.connect()?;
         conn.query_row(
-            "SELECT id, site_name, server_name, enabled, document_root, config_content,
+            "SELECT id, site_name, server_name, listen_port, enabled, document_root, config_content,
                     site_type, reverse_proxy_pass, updated_at
              FROM nginx_sites WHERE site_name = ?1",
             params![name],
@@ -1098,12 +1551,13 @@ impl AppDb {
                     id: row.get(0)?,
                     site_name: row.get(1)?,
                     server_name: row.get(2)?,
-                    enabled: row.get::<_, i64>(3)? != 0,
-                    document_root: row.get(4)?,
-                    config_content: row.get(5)?,
-                    site_type: row.get(6)?,
-                    reverse_proxy_pass: row.get(7)?,
-                    updated_at: row.get(8)?,
+                    listen_port: row.get::<_, i64>(3)?.clamp(1, 65535) as u16,
+                    enabled: row.get::<_, i64>(4)? != 0,
+                    document_root: row.get(5)?,
+                    config_content: row.get(6)?,
+                    site_type: row.get(7)?,
+                    reverse_proxy_pass: row.get(8)?,
+                    updated_at: row.get(9)?,
                 })
             },
         )
@@ -1115,13 +1569,18 @@ impl AppDb {
         if update.site_name.trim().is_empty() || update.site_name.len() > 128 {
             return Err("invalid nginx site name".to_string());
         }
+        let listen_port = update.listen_port.unwrap_or(80);
+        if listen_port == 0 {
+            return Err("invalid nginx listen port".to_string());
+        }
         let conn = self.connect()?;
         conn.execute(
-            "INSERT INTO nginx_sites (site_name, server_name, enabled, document_root, config_content, site_type, reverse_proxy_pass)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO nginx_sites (site_name, server_name, listen_port, enabled, document_root, config_content, site_type, reverse_proxy_pass)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 update.site_name,
                 update.server_name.as_deref().unwrap_or("_"),
+                listen_port,
                 if update.enabled.unwrap_or(true) { 1 } else { 0 },
                 update.document_root.as_deref().unwrap_or("/var/www/html"),
                 update.config_content,
@@ -1139,15 +1598,20 @@ impl AppDb {
         name: &str,
         update: &NginxSiteUpdate,
     ) -> Result<Option<NginxSite>, String> {
+        let listen_port = update.listen_port.unwrap_or(80);
+        if listen_port == 0 {
+            return Err("invalid nginx listen port".to_string());
+        }
         let conn = self.connect()?;
         let affected = conn
             .execute(
-                "UPDATE nginx_sites SET server_name = ?1, enabled = ?2, document_root = ?3,
-                 config_content = ?4, site_type = ?5, reverse_proxy_pass = ?6,
+                "UPDATE nginx_sites SET server_name = ?1, listen_port = ?2, enabled = ?3, document_root = ?4,
+                 config_content = ?5, site_type = ?6, reverse_proxy_pass = ?7,
                  updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                 WHERE site_name = ?7",
+                 WHERE site_name = ?8",
                 params![
                     update.server_name.as_deref().unwrap_or("_"),
+                    listen_port,
                     if update.enabled.unwrap_or(true) { 1 } else { 0 },
                     update.document_root.as_deref().unwrap_or("/var/www/html"),
                     update.config_content,
@@ -2501,6 +2965,112 @@ fn validate_haproxy_backend_update(update: &HaproxyBackendServerUpdate) -> Resul
     }
     if update.port == 0 {
         return Err("invalid HAProxy backend server port".to_string());
+    }
+    Ok(())
+}
+
+fn validate_kyklos_ha_update(update: &KyklosHaServiceUpdate) -> Result<(), String> {
+    if !matches!(update.service_type.as_str(), "web" | "tcp" | "sql") {
+        return Err("invalid Kyklos HA service type".to_string());
+    }
+    if !matches!(update.mode.as_str(), "http" | "tcp") {
+        return Err("invalid Kyklos HA mode".to_string());
+    }
+    if update.service_type == "web" && update.mode != "http" {
+        return Err("Web Kyklos HA service must use http mode".to_string());
+    }
+    if matches!(update.service_type.as_str(), "tcp" | "sql") && update.mode != "tcp" {
+        return Err("TCP/SQL Kyklos HA service must use tcp mode".to_string());
+    }
+    if update.name.trim().is_empty() || update.name.len() > 64 {
+        return Err("invalid Kyklos HA service name".to_string());
+    }
+    if !update
+        .name
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
+    {
+        return Err(
+            "Kyklos HA service name can only contain letters, numbers, _, -, .".to_string(),
+        );
+    }
+    if update.bind_addr.trim().is_empty()
+        || update.bind_addr.len() > 255
+        || update.bind_addr.contains('/')
+        || update
+            .bind_addr
+            .chars()
+            .any(|ch| ch.is_whitespace() || ch.is_control())
+    {
+        return Err("invalid Kyklos HA bind address".to_string());
+    }
+    if update.listen_port == 0 {
+        return Err("invalid Kyklos HA listen port".to_string());
+    }
+    if !matches!(
+        update.balance_method.as_str(),
+        "roundrobin" | "leastconn" | "source"
+    ) {
+        return Err("invalid Kyklos HA balance method".to_string());
+    }
+    if update.servers.is_empty() {
+        return Err("at least one Kyklos HA backend server is required".to_string());
+    }
+    let mut backend_names = HashSet::new();
+    let mut backend_endpoints = HashSet::new();
+    for server in &update.servers {
+        validate_kyklos_ha_backend_update(server)?;
+        let name_key = server.name.trim().to_ascii_lowercase();
+        if !backend_names.insert(name_key) {
+            return Err(format!(
+                "duplicate Kyklos HA backend server name: {}",
+                server.name.trim()
+            ));
+        }
+        let endpoint_key = format!("{}:{}", server.ip.trim().to_ascii_lowercase(), server.port);
+        if !backend_endpoints.insert(endpoint_key) {
+            return Err(format!(
+                "duplicate Kyklos HA backend endpoint: {}:{}",
+                server.ip.trim(),
+                server.port
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn kyklos_ha_bind_conflicts(left: &str, right: &str) -> bool {
+    let left = left.trim();
+    let right = right.trim();
+    left == right || kyklos_ha_is_wildcard_bind(left) || kyklos_ha_is_wildcard_bind(right)
+}
+
+fn kyklos_ha_is_wildcard_bind(value: &str) -> bool {
+    matches!(value.trim(), "*" | "0.0.0.0" | "::" | "[::]")
+}
+
+fn validate_kyklos_ha_backend_update(update: &KyklosHaBackendServerUpdate) -> Result<(), String> {
+    let valid_name = !update.name.trim().is_empty()
+        && update.name.len() <= 64
+        && update
+            .name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'));
+    if !valid_name {
+        return Err("invalid Kyklos HA backend server name".to_string());
+    }
+    let valid_host = !update.ip.trim().is_empty()
+        && update.ip.len() <= 255
+        && !update.ip.contains('/')
+        && update
+            .ip
+            .chars()
+            .all(|ch| !ch.is_control() && !ch.is_whitespace());
+    if !valid_host {
+        return Err("invalid Kyklos HA backend server host".to_string());
+    }
+    if update.port == 0 {
+        return Err("invalid Kyklos HA backend server port".to_string());
     }
     Ok(())
 }

@@ -10,6 +10,12 @@
     function juniperPreview(commands) {
       return (commands || []).join('\n');
     }
+    function renderJuniperInfoItem(label, value, extraClass) {
+      return '<div class="juniper-info-item ' + (extraClass || '') + '">' +
+        '<div class="juniper-info-label">' + escHtml(label || '') + '</div>' +
+        '<div class="juniper-info-value">' + escHtml(value || 'N/A') + '</div>' +
+      '</div>';
+    }
     var juniperBase = null;
     var juniperBaseCandidates = ['/juniper', '/api/juniper', 'juniper', 'api/juniper'];
     function juniperUrl(path) { return juniperBase + path; }
@@ -165,14 +171,14 @@
         var dot = d.connected ? 'juniper-status-up' : 'juniper-status-down';
         var text = d.connected ? (lang.juniperConnected || 'Connected') : (lang.juniperDisconnected || 'Disconnected');
         $('#juniperInfoBody').html(
-          '<div class="row">' +
-            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperHostname + '</div><div class="sys-card-val">' + escHtml(d.hostname || 'N/A') + '</div></div>' +
-            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperModel + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.model || 'N/A') + '</div></div>' +
-            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperVersion + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.junos_version || 'N/A') + '</div></div>' +
-            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperMgmtIp + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.management_ip || 'N/A') + '</div></div>' +
-            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperUptime + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.uptime || 'N/A') + '</div></div>' +
-            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">' + lang.juniperSerial + '</div><div class="sys-card-val" style="font-size:1rem">' + escHtml(d.serial_number || 'N/A') + '</div></div>' +
-            '<div class="col-md-3 col-6 mb-3"><div class="sys-card-label">Status</div><div class="sys-card-val" style="font-size:1rem"><span class="juniper-status-dot ' + dot + '"></span>' + escHtml(text) + '</div></div>' +
+          '<div class="juniper-info-grid">' +
+            renderJuniperInfoItem(lang.juniperHostname, d.hostname) +
+            renderJuniperInfoItem(lang.juniperModel, d.model) +
+            renderJuniperInfoItem(lang.juniperVersion, d.junos_version, 'is-wide') +
+            renderJuniperInfoItem(lang.juniperMgmtIp, d.management_ip) +
+            renderJuniperInfoItem(lang.juniperUptime, d.uptime, 'is-wide') +
+            renderJuniperInfoItem(lang.juniperSerial, d.serial_number) +
+            '<div class="juniper-info-item"><div class="juniper-info-label">Status</div><div class="juniper-info-value"><span class="juniper-status-dot ' + dot + '"></span>' + escHtml(text) + '</div></div>' +
           '</div>'
         );
         logger.debug('Juniper 設備資訊已載入', d.management_ip || '');
@@ -202,11 +208,11 @@
         juniperVlanNames = rows.map(function (v) { return v.name; });
         renderJuniperBulkVlanOptions();
         if (!rows.length) { $('#juniperVlanBody').html('<div class="text-muted p-2">' + (lang.dashNoData || 'No data') + '</div>'); return; }
-        var html = '<div class="table-responsive"><table class="table table-sm table-hover juniper-table mb-0"><thead><tr>' +
+        var html = '<div class="table-responsive juniper-table-wrap"><table class="table table-sm table-hover juniper-table mb-0"><thead><tr>' +
           '<th>' + lang.juniperVlanName + '</th><th>' + lang.juniperVlanId + '</th><th>' + lang.juniperInterfaces + '</th><th style="width:90px">' + lang.juniperAction + '</th></tr></thead><tbody>';
         rows.forEach(function (v) {
           html += '<tr><td><strong>' + escHtml(v.name) + '</strong></td><td><code>' + escHtml(v.vlan_id) + '</code></td><td>' + renderJuniperChips(v.interfaces) + '</td>' +
-            '<td><button class="btn btn-sm btn-outline-danger juniper-delete-vlan" data-name="' + escHtml(v.name) + '"><i class="bx bx-trash"></i></button></td></tr>';
+            '<td><div class="juniper-row-actions"><button class="btn btn-sm btn-outline-danger juniper-delete-vlan" data-name="' + escHtml(v.name) + '"><i class="bx bx-trash"></i></button></div></td></tr>';
         });
         html += '</tbody></table></div>';
         $('#juniperVlanBody').html(html);
@@ -233,7 +239,7 @@
         });
         renderJuniperPortMap(rows);
         if (!rows.length) { $('#juniperPortBody').html('<div class="text-muted p-2">' + (lang.dashNoData || 'No data') + '</div>'); return; }
-        var html = '<div class="table-responsive"><table class="table table-sm table-hover juniper-table mb-0"><thead><tr>' +
+        var html = '<div class="table-responsive juniper-table-wrap"><table class="table table-sm table-hover juniper-table mb-0"><thead><tr>' +
           '<th style="width:32px"></th><th>Port</th><th>' + lang.juniperAdmin + '</th><th>' + lang.juniperLink + '</th><th>' + lang.juniperMode + '</th><th>' + lang.juniperMembers + '</th><th style="width:210px">' + lang.juniperAction + '</th></tr></thead><tbody>';
         rows.forEach(function (p) {
           var linkCls = p.link_status === 'up' ? 'text-success' : 'text-muted';
@@ -247,9 +253,10 @@
             '</div></td><td class="' + linkCls + '">' + escHtml(linkLabel) + '</td>' +
             '<td><span class="badge bg-label-' + (p.mode === 'trunk' ? 'primary' : p.mode === 'access' ? 'success' : 'secondary') + '">' + escHtml(p.mode) + '</span></td>' +
             '<td>' + renderJuniperChips(p.vlan_members) + '</td><td>' +
-            '<button class="btn btn-sm btn-outline-primary me-1 juniper-set-access" data-port="' + escHtml(p.port) + '"><i class="bx bx-link me-1"></i>Access</button>' +
+            '<div class="juniper-row-actions">' +
+            '<button class="btn btn-sm btn-outline-primary juniper-set-access" data-port="' + escHtml(p.port) + '"><i class="bx bx-link me-1"></i>Access</button>' +
             '<button class="btn btn-sm btn-outline-info juniper-set-trunk" data-port="' + escHtml(p.port) + '"><i class="bx bx-git-merge me-1"></i>Trunk</button>' +
-            '</td></tr>';
+            '</div></td></tr>';
         });
         html += '</tbody></table></div>';
         $('#juniperPortBody').html(html);

@@ -11,11 +11,13 @@ use crate::apps::settings::{
 use crate::apps::workflow::{WorkflowInput, WorkflowStatusInput};
 use crate::bapi_log;
 use crate::db::{
-    AppDb, CronJobInput, HaproxyBackendServerUpdate, HaproxyLoadBalancerUpdate, JuniperDeviceUpdate,
+    AppDb, CronJobInput, HaproxyBackendServerUpdate, HaproxyLoadBalancerUpdate,
+    JuniperDeviceUpdate, KyklosHaBackendServerUpdate, KyklosHaServiceUpdate,
 };
 use crate::net::firewall::FirewallCmd;
 use crate::net::haproxy::{BackendServer, HaproxyClient};
 use crate::net::juniper::{self, JuniperClient};
+use crate::net::kyklos_ha::KyklosHaManager;
 use crate::net::netplan::{NetplanConfig, NetplanConfigInput};
 use crate::net::nginx::{NginxClient, NginxSettings, NginxSiteUpdate};
 use crate::net::pcap;
@@ -59,6 +61,7 @@ pub struct AppState {
     pub db: AppDb,
     pub juniper: Arc<JuniperClient>,
     pub haproxy: Arc<HaproxyClient>,
+    pub kyklos_ha: Arc<KyklosHaManager>,
     pub nginx: std::sync::Mutex<NginxClient>,
     pub cron: Arc<CronService>,
 }
@@ -162,6 +165,32 @@ pub struct HaproxyBackendServerForm {
 }
 
 #[derive(Deserialize)]
+pub struct KyklosHaServiceForm {
+    pub id: Option<i64>,
+    pub name: Option<String>,
+    pub bind_addr: Option<String>,
+    pub listen_port: Option<String>,
+    pub balance_method: Option<String>,
+    pub health_check_path: Option<String>,
+    pub health_check: Option<String>,
+    pub enabled: Option<String>,
+    pub servers: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct KyklosHaEnabledForm {
+    pub enabled: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct KyklosHaBackendServerForm {
+    pub name: Option<String>,
+    pub ip: Option<String>,
+    pub port: Option<String>,
+    pub enabled: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct HaproxyWebTestForm {
     pub url: Option<String>,
     pub count: Option<Value>,
@@ -226,6 +255,16 @@ fn parse_backend_servers(raw: Option<String>) -> Result<Vec<HaproxyBackendServer
     serde_json::from_str(&raw).map_err(|e| format!("invalid backend server JSON: {e}"))
 }
 
+fn parse_kyklos_ha_servers(
+    raw: Option<String>,
+) -> Result<Vec<KyklosHaBackendServerUpdate>, String> {
+    let raw = raw.unwrap_or_default();
+    if raw.trim().is_empty() {
+        return Err("backend server list is required".to_string());
+    }
+    serde_json::from_str(&raw).map_err(|e| format!("invalid backend server JSON: {e}"))
+}
+
 fn haproxy_backend_servers(servers: &[HaproxyBackendServerUpdate]) -> Vec<BackendServer> {
     servers
         .iter()
@@ -264,6 +303,18 @@ fn json_u64(value: Option<Value>, default: u64, label: &str) -> Result<u64, Stri
             .map_err(|_| format!("invalid {label}")),
         _ => Err(format!("invalid {label}")),
     }
+}
+
+fn parse_u16_text(value: Option<&str>, default: u16, label: &str) -> Result<u16, String> {
+    let raw = value.unwrap_or("").trim();
+    if raw.is_empty() {
+        return Ok(default);
+    }
+    let parsed = raw.parse::<u16>().map_err(|_| format!("invalid {label}"))?;
+    if parsed == 0 {
+        return Err(format!("invalid {label}"));
+    }
+    Ok(parsed)
 }
 
 async fn auth_middleware(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
@@ -440,6 +491,30 @@ async fn handle_get_rule_info(
         .await
     {
         Ok(data) => utils::output(None, Some(Value::String(data))),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_create_custom_chain(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<RuleForm>,
+) -> Json<Value> {
+    if let Err(e) = validate_args(form.table.as_deref(), form.chain.as_deref()) {
+        return utils::output(Some(&e), None);
+    }
+    let chain = form.chain.as_deref().unwrap_or("").trim();
+    if chain.is_empty() {
+        return utils::output(Some("custom chain name is required"), None);
+    }
+    let ipc = match pick_firewall(&state, form.protocol.as_deref()) {
+        Ok(ipc) => ipc,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    match ipc
+        .create_custom_chain(form.table.as_deref().unwrap_or("filter"), chain)
+        .await
+    {
+        Ok(_) => utils::output(None, None),
         Err(e) => utils::output(Some(&e), None),
     }
 }
@@ -984,6 +1059,265 @@ async fn apply_saved_haproxy_config(state: &AppState) -> Result<Value, String> {
     }))
 }
 
+// ---- Kyklos HA Handlers ----
+
+async fn handle_kyklos_ha_status(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let runtime = state.kyklos_ha.status().await;
+    let services = match state.db.list_kyklos_ha_services() {
+        Ok(services) => services,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    utils::output(
+        None,
+        Some(json!({
+            "runtime": runtime,
+            "services": services
+        })),
+    )
+}
+
+async fn handle_kyklos_ha_sync(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.kyklos_ha.sync_from_db().await {
+        Ok(status) => utils::output(None, Some(serde_json::to_value(status).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_kyklos_ha_services(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.list_kyklos_ha_services() {
+        Ok(items) => utils::output(None, Some(serde_json::to_value(items).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_kyklos_ha_web(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<KyklosHaServiceForm>,
+) -> Json<Value> {
+    let listen_port = match parse_u16_text(form.listen_port.as_deref(), 80, "listen port") {
+        Ok(port) => port,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let servers = match parse_kyklos_ha_servers(form.servers) {
+        Ok(servers) => servers,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let update = KyklosHaServiceUpdate {
+        id: form.id,
+        service_type: "web".to_string(),
+        enabled: form
+            .enabled
+            .as_deref()
+            .map(|value| parse_form_bool(Some(value)))
+            .unwrap_or(true),
+        name: form.name.unwrap_or_else(|| "web".to_string()),
+        bind_addr: form.bind_addr.unwrap_or_else(|| "0.0.0.0".to_string()),
+        listen_port,
+        mode: "http".to_string(),
+        balance_method: form
+            .balance_method
+            .unwrap_or_else(|| "roundrobin".to_string()),
+        health_check_path: Some(form.health_check_path.unwrap_or_else(|| "/".to_string())),
+        health_check: parse_form_bool(form.health_check.as_deref()),
+        servers,
+    };
+    save_and_sync_kyklos_ha(&state, update).await
+}
+
+async fn handle_kyklos_ha_tcp(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<KyklosHaServiceForm>,
+) -> Json<Value> {
+    let listen_port = match parse_u16_text(form.listen_port.as_deref(), 1433, "listen port") {
+        Ok(port) => port,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let servers = match parse_kyklos_ha_servers(form.servers) {
+        Ok(servers) => servers,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let update = KyklosHaServiceUpdate {
+        id: form.id,
+        service_type: "sql".to_string(),
+        enabled: form
+            .enabled
+            .as_deref()
+            .map(|value| parse_form_bool(Some(value)))
+            .unwrap_or(true),
+        name: form.name.unwrap_or_else(|| "sql".to_string()),
+        bind_addr: form.bind_addr.unwrap_or_else(|| "0.0.0.0".to_string()),
+        listen_port,
+        mode: "tcp".to_string(),
+        balance_method: form.balance_method.unwrap_or_else(|| "source".to_string()),
+        health_check_path: None,
+        health_check: parse_form_bool(form.health_check.as_deref()),
+        servers,
+    };
+    save_and_sync_kyklos_ha(&state, update).await
+}
+
+async fn handle_kyklos_ha_set_enabled(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<KyklosHaEnabledForm>,
+) -> Json<Value> {
+    let enabled = parse_form_bool(form.enabled.as_deref());
+    match state.db.set_kyklos_ha_service_enabled(id, enabled) {
+        Ok(true) => match state.kyklos_ha.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("Kyklos HA service not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_kyklos_ha_delete_service(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    state.kyklos_ha.stop_service(id).await;
+    match state.db.delete_kyklos_ha_service(id) {
+        Ok(true) => match state.kyklos_ha.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("Kyklos HA service not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_kyklos_ha_update_backend_server(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<KyklosHaBackendServerForm>,
+) -> Json<Value> {
+    if let Some(message) = kyklos_ha_running_backend_guard(&state, id).await {
+        return utils::output(Some(&message), None);
+    }
+    let port = match parse_u16_text(form.port.as_deref(), 0, "backend server port") {
+        Ok(port) => port,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let update = KyklosHaBackendServerUpdate {
+        name: form.name.unwrap_or_default(),
+        ip: form.ip.unwrap_or_default(),
+        port,
+        enabled: Some(
+            form.enabled
+                .as_deref()
+                .map(|value| parse_form_bool(Some(value)))
+                .unwrap_or(true),
+        ),
+    };
+    match state.db.update_kyklos_ha_backend_server(id, update) {
+        Ok(true) => match state.kyklos_ha.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("Kyklos HA backend server not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_kyklos_ha_set_backend_server_enabled(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<KyklosHaEnabledForm>,
+) -> Json<Value> {
+    if let Some(message) = kyklos_ha_running_backend_guard(&state, id).await {
+        return utils::output(Some(&message), None);
+    }
+    let enabled = parse_form_bool(form.enabled.as_deref());
+    match state.db.set_kyklos_ha_backend_server_enabled(id, enabled) {
+        Ok(true) => match state.kyklos_ha.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("Kyklos HA backend server not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_kyklos_ha_delete_backend_server(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    if let Some(message) = kyklos_ha_running_backend_guard(&state, id).await {
+        return utils::output(Some(&message), None);
+    }
+    match state.db.delete_kyklos_ha_backend_server(id) {
+        Ok(true) => match state.kyklos_ha.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("Kyklos HA backend server not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn kyklos_ha_running_backend_guard(state: &AppState, backend_id: i64) -> Option<String> {
+    let services = match state.db.list_kyklos_ha_services() {
+        Ok(services) => services,
+        Err(e) => return Some(e),
+    };
+    let service = services
+        .iter()
+        .find(|service| service.servers.iter().any(|server| server.id == backend_id))?;
+    if state.kyklos_ha.is_service_running(service.id).await {
+        Some(format!(
+            "Service '{}' 正在執行中。請先停用 Service，再修改 Backend 設定，避免 Listener 中斷。",
+            service.name
+        ))
+    } else {
+        None
+    }
+}
+
+async fn save_and_sync_kyklos_ha(state: &AppState, update: KyklosHaServiceUpdate) -> Json<Value> {
+    let is_new = update.id.is_none();
+    if let Some(id) = update.id {
+        if update.enabled && state.kyklos_ha.is_service_running(id).await {
+            return utils::output(
+                Some("Service 正在執行中。請先停用 Service，再修改 Kyklos HA 設定。"),
+                None,
+            );
+        }
+    }
+    let saved = match state.db.save_kyklos_ha_service(update) {
+        Ok(saved) => saved,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    match state.kyklos_ha.sync_from_db().await {
+        Ok(status) => utils::output(
+            None,
+            Some(json!({
+                "saved": saved,
+                "runtime": status
+            })),
+        ),
+        Err(e) => {
+            if is_new {
+                let _ = state.db.delete_kyklos_ha_service(saved.id);
+            } else {
+                let _ = state.db.set_kyklos_ha_service_enabled(saved.id, false);
+            }
+            state.kyklos_ha.stop_service(saved.id).await;
+            utils::output(Some(&e), None)
+        }
+    }
+}
+
 // ---- Nginx Handlers ----
 
 async fn handle_nginx_env(State(state): State<Arc<AppState>>) -> Json<Value> {
@@ -1045,11 +1379,23 @@ async fn handle_nginx_sites(State(state): State<Arc<AppState>>) -> Json<Value> {
 struct NginxSiteForm {
     pub site_name: Option<String>,
     pub server_name: Option<String>,
+    pub listen_port: Option<String>,
     pub enabled: Option<String>,
     pub document_root: Option<String>,
     pub config_content: Option<String>,
     pub site_type: Option<String>,
     pub reverse_proxy_pass: Option<String>,
+}
+
+fn parse_nginx_listen_port(value: Option<&str>) -> Result<u16, String> {
+    let raw = value.unwrap_or("80").trim();
+    let port = raw
+        .parse::<u16>()
+        .map_err(|_| "invalid nginx listen port".to_string())?;
+    if port == 0 {
+        return Err("invalid nginx listen port".to_string());
+    }
+    Ok(port)
 }
 
 async fn handle_nginx_create_site(
@@ -1060,9 +1406,14 @@ async fn handle_nginx_create_site(
         Some(ref n) if !n.trim().is_empty() => n.trim().to_string(),
         _ => return utils::output(Some("site name is required"), None),
     };
+    let listen_port = match parse_nginx_listen_port(form.listen_port.as_deref()) {
+        Ok(p) => p,
+        Err(e) => return utils::output(Some(&e), None),
+    };
     let update = NginxSiteUpdate {
         site_name: name,
         server_name: form.server_name,
+        listen_port: Some(listen_port),
         enabled: Some(parse_form_bool(form.enabled.as_deref())),
         document_root: form.document_root,
         config_content: form.config_content,
@@ -1093,9 +1444,14 @@ async fn handle_nginx_update_site(
     Path(name): Path<String>,
     Form(form): Form<NginxSiteForm>,
 ) -> Json<Value> {
+    let listen_port = match parse_nginx_listen_port(form.listen_port.as_deref()) {
+        Ok(p) => p,
+        Err(e) => return utils::output(Some(&e), None),
+    };
     let update = NginxSiteUpdate {
         site_name: name.clone(),
         server_name: form.server_name,
+        listen_port: Some(listen_port),
         enabled: Some(parse_form_bool(form.enabled.as_deref())),
         document_root: form.document_root,
         config_content: form.config_content,
@@ -1115,6 +1471,14 @@ async fn handle_nginx_delete_site(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Json<Value> {
+    let nginx = match state.nginx.lock() {
+        Ok(n) => n,
+        Err(e) => return utils::output(Some(&format!("lock nginx client failed: {e}")), None),
+    };
+    if let Err(e) = nginx.remove_site_file(&name) {
+        return utils::output(Some(&e), None);
+    }
+    drop(nginx);
     match state.db.delete_nginx_site(&name) {
         Ok(true) => utils::output(None, None),
         Ok(false) => utils::output(Some("nginx site not found"), None),
@@ -1178,6 +1542,15 @@ async fn handle_nginx_write_site(
     let write = parse_form_bool(form.write_file.as_deref());
     if !write {
         return utils::output(None, Some(json!({"config": config})));
+    }
+    if !site.enabled {
+        return match nginx.remove_site_file(&name) {
+            Ok(_) => utils::output(
+                None,
+                Some(json!({"config": config, "written": false, "removed": true})),
+            ),
+            Err(e) => utils::output(Some(&e), None),
+        };
     }
     match nginx.write_site_file(&name, &config) {
         Ok(_) => utils::output(None, Some(json!({"config": config, "written": true}))),
@@ -1303,6 +1676,42 @@ async fn handle_nginx_reload(State(state): State<Arc<AppState>>) -> Json<Value> 
     };
     let client = NginxClient::new(settings);
     match client.reload().await {
+        Ok(output) => utils::output(None, Some(Value::String(output))),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_nginx_start(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let settings = {
+        let nginx = state.nginx.lock().unwrap();
+        nginx.settings().clone()
+    };
+    let client = NginxClient::new(settings);
+    match client.start().await {
+        Ok(output) => utils::output(None, Some(Value::String(output))),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_nginx_stop(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let settings = {
+        let nginx = state.nginx.lock().unwrap();
+        nginx.settings().clone()
+    };
+    let client = NginxClient::new(settings);
+    match client.stop().await {
+        Ok(output) => utils::output(None, Some(Value::String(output))),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_nginx_restart(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let settings = {
+        let nginx = state.nginx.lock().unwrap();
+        nginx.settings().clone()
+    };
+    let client = NginxClient::new(settings);
+    match client.restart().await {
         Ok(output) => utils::output(None, Some(Value::String(output))),
         Err(e) => utils::output(Some(&e), None),
     }
@@ -4366,6 +4775,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/deleteRule", post(handle_delete_rule))
         .route("/flushMetrics", post(handle_flush_metrics))
         .route("/getRuleInfo", post(handle_get_rule_info))
+        .route("/createCustomChain", post(handle_create_custom_chain))
         .route(
             "/flushEmptyCustomChain",
             post(handle_flush_empty_custom_chain),
@@ -4400,6 +4810,31 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/haproxy/test/sql", post(handle_haproxy_test_sql))
         .route("/haproxy/web", post(handle_haproxy_web))
         .route("/haproxy/sql", post(handle_haproxy_sql))
+        .route("/kyklos-ha/status", get(handle_kyklos_ha_status))
+        .route("/kyklos-ha/sync", post(handle_kyklos_ha_sync))
+        .route("/kyklos-ha/services", get(handle_kyklos_ha_services))
+        .route("/kyklos-ha/web", post(handle_kyklos_ha_web))
+        .route("/kyklos-ha/tcp", post(handle_kyklos_ha_tcp))
+        .route(
+            "/kyklos-ha/services/:id/enabled",
+            post(handle_kyklos_ha_set_enabled),
+        )
+        .route(
+            "/kyklos-ha/services/:id/delete",
+            post(handle_kyklos_ha_delete_service),
+        )
+        .route(
+            "/kyklos-ha/backend-servers/:id",
+            post(handle_kyklos_ha_update_backend_server),
+        )
+        .route(
+            "/kyklos-ha/backend-servers/:id/enabled",
+            post(handle_kyklos_ha_set_backend_server_enabled),
+        )
+        .route(
+            "/kyklos-ha/backend-servers/:id/delete",
+            post(handle_kyklos_ha_delete_backend_server),
+        )
         .route("/api/haproxy/status", get(handle_haproxy_status))
         .route("/api/haproxy/reload", post(handle_haproxy_reload))
         .route("/api/haproxy/restart", post(handle_haproxy_restart))
@@ -4434,6 +4869,31 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/haproxy/test/sql", post(handle_haproxy_test_sql))
         .route("/api/haproxy/web", post(handle_haproxy_web))
         .route("/api/haproxy/sql", post(handle_haproxy_sql))
+        .route("/api/kyklos-ha/status", get(handle_kyklos_ha_status))
+        .route("/api/kyklos-ha/sync", post(handle_kyklos_ha_sync))
+        .route("/api/kyklos-ha/services", get(handle_kyklos_ha_services))
+        .route("/api/kyklos-ha/web", post(handle_kyklos_ha_web))
+        .route("/api/kyklos-ha/tcp", post(handle_kyklos_ha_tcp))
+        .route(
+            "/api/kyklos-ha/services/:id/enabled",
+            post(handle_kyklos_ha_set_enabled),
+        )
+        .route(
+            "/api/kyklos-ha/services/:id/delete",
+            post(handle_kyklos_ha_delete_service),
+        )
+        .route(
+            "/api/kyklos-ha/backend-servers/:id",
+            post(handle_kyklos_ha_update_backend_server),
+        )
+        .route(
+            "/api/kyklos-ha/backend-servers/:id/enabled",
+            post(handle_kyklos_ha_set_backend_server_enabled),
+        )
+        .route(
+            "/api/kyklos-ha/backend-servers/:id/delete",
+            post(handle_kyklos_ha_delete_backend_server),
+        )
         .route("/juniper/info", get(handle_juniper_info))
         .route(
             "/juniper/settings",
@@ -4523,6 +4983,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/nginx/config/preview", get(handle_nginx_config_preview))
         .route("/nginx/test", post(handle_nginx_test))
+        .route("/nginx/start", post(handle_nginx_start))
+        .route("/nginx/stop", post(handle_nginx_stop))
+        .route("/nginx/restart", post(handle_nginx_restart))
         .route("/nginx/reload", post(handle_nginx_reload))
         .route("/netplan/interfaces", get(handle_netplan_interfaces))
         .route(
@@ -4989,6 +5452,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handle_nginx_config_preview),
         )
         .route("/api/nginx/test", post(handle_nginx_test))
+        .route("/api/nginx/start", post(handle_nginx_start))
+        .route("/api/nginx/stop", post(handle_nginx_stop))
+        .route("/api/nginx/restart", post(handle_nginx_restart))
         .route("/api/nginx/reload", post(handle_nginx_reload))
         .route(
             "/api/security/cvs/sources",

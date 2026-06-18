@@ -19,6 +19,7 @@ use crate::net::firewall::PfctlCmd;
 use crate::net::firewall::WindowsCmd;
 use crate::net::haproxy::HaproxyClient;
 use crate::net::juniper::JuniperClient;
+use crate::net::kyklos_ha::KyklosHaManager;
 use crate::net::nginx::{NginxClient, NginxSettings};
 use crate::server::{build_router, AppState};
 use crate::sys::crontab::CronService;
@@ -110,6 +111,10 @@ fn main() {
             warn!("crontab scheduler initialization failed: {}", e);
         }
         services::reverse_proxy::start_background_from_env();
+        let kyklos_ha = Arc::new(KyklosHaManager::new(db.clone()));
+        if let Err(e) = kyklos_ha.sync_from_db().await {
+            warn!("Kyklos HA initialization failed: {}", e);
+        }
 
         match platform {
             Platform::Linux => {
@@ -146,6 +151,7 @@ fn main() {
                     db: db.clone(),
                     juniper: Arc::new(JuniperClient::new(db.clone())),
                     haproxy: Arc::new(HaproxyClient::from_env()),
+                    kyklos_ha: kyklos_ha.clone(),
                     nginx: std::sync::Mutex::new(NginxClient::new(nginx_settings)),
                     cron: cron.clone(),
                 });
@@ -194,6 +200,7 @@ fn main() {
                     db: db.clone(),
                     juniper: Arc::new(JuniperClient::new(db.clone())),
                     haproxy: Arc::new(HaproxyClient::from_env()),
+                    kyklos_ha: kyklos_ha.clone(),
                     nginx: std::sync::Mutex::new(NginxClient::new(nginx_settings)),
                     cron: cron.clone(),
                 });
@@ -241,6 +248,7 @@ fn main() {
                     db: db.clone(),
                     juniper: Arc::new(JuniperClient::new(db.clone())),
                     haproxy: Arc::new(HaproxyClient::from_env()),
+                    kyklos_ha: kyklos_ha.clone(),
                     nginx: std::sync::Mutex::new(NginxClient::new(nginx_settings)),
                     cron: cron.clone(),
                 });

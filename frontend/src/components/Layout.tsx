@@ -9,6 +9,7 @@ import HaproxyView from './views/Net/HaproxyView'
 import KyklosHaView from './views/Net/KyklosHaView'
 import NginxView from './views/Net/NginxView'
 import JuniperView from './views/Net/JuniperView'
+import FortigateView from './views/Net/FortigateView'
 import NetplanView from './views/Net/NetplanView'
 import PcapView from './views/Net/PcapView'
 import SambaView from './views/Net/SambaView'
@@ -60,6 +61,7 @@ export default function Layout() {
                 </div>
                 <DashboardView />
                 <FirewallView />
+                <FortigateView />
                 <JuniperView />
                 <HaproxyView />
                 <KyklosHaView />

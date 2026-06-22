@@ -85,6 +85,12 @@ export default function Sidebar() {
                 <div className="text-truncate" id="menuFirewallManLabel">防火牆管理</div>
               </a>
             </li>
+            <li className="menu-item" id="menuFortigate">
+              <a href="#" className="menu-link" id="menuFortigateLink">
+                <i className="menu-icon tf-icons bx bx-shield-alt-2"></i>
+                <div className="text-truncate" id="menuFortigateLabel">FortiGate</div>
+              </a>
+            </li>
             <li className="menu-item" id="menuHaproxy">
               <a href="#" className="menu-link" id="menuHaproxyLink">
                 <i className="menu-icon tf-icons bx bx-transfer"></i>

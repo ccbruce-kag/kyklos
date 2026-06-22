@@ -34,6 +34,7 @@
         erdDiagram: function() { logger.debug('ER-Diagram 視圖啟動'); },
         shell: function() { initTerminal(); setTimeout(function(){if(termFit){termFit.fit();sendResize();}focusTerminal();},100); },
         ai: function() { setTimeout(function(){$('#aiInput').focus();},100); },
+        fortigate: function() { logger.debug('FortiGate 視圖啟動'); },
         juniper: function() { loadJuniperAll(); },
         haproxy: function() { ensureHaproxyDefaults(); loadHaproxyStatus(); loadHaproxySaved(); },
         kyklosHa: function() { ensureKyklosHaDefaults(); loadKyklosHaAll(); },
@@ -61,7 +62,7 @@
       var viewMenuMap = {
         dashboard: 'menuDash', workflow: 'menuWorkflow', netArch: 'menuNetArch', erdDiagram: 'menuErdDiagram', wireframe: 'menuWireframe', reportEditor: 'menuReportEditor', formEditor: 'menuFormEditor',
         role: 'menuRole', unit: 'menuUnit', user: 'menuUser', dictionary: 'menuDictionary', systemSetting: 'menuSystemSetting',
-        firewallMan: 'menuFirewallMan', juniper: 'menuJuniper',
+        firewallMan: 'menuFirewallMan', fortigate: 'menuFortigate', juniper: 'menuJuniper',
         haproxy: 'menuHaproxy', kyklosHa: 'menuKyklosHa', nginx: 'menuNginx', netplan: 'menuNetplan',
         pcap: 'menuPcap', snmp: 'menuSnmp', apiman: 'menuApiManNew', dbman: 'menuDbManNew', security: 'menuSecurityCvs',
         tools: 'menuTools', system: 'menuSys', shell: 'menuShell', widgets: 'menuWidgets', logViewer: 'menuLogViewer', crontab: 'menuCrontab', ai: 'menuAI',
@@ -77,7 +78,7 @@
       });
       $('#logClear').on('click', function () { logger.clear(); });
       function inactiveAllLeaf() {
-        $('#menuDash,#menuWorkflow,#menuNetArch,#menuErdDiagram,#menuWireframe,#menuReportEditor,#menuFormEditor,#menuRole,#menuUnit,#menuUser,#menuDictionary,#menuSystemSetting,#menuFirewallMan,#menuJuniper,#menuHaproxy,#menuKyklosHa,#menuNginx,#menuNetplan,#menuPcap,#menuSnmp,#menuSys,#menuTools,#menuShell,#menuWidgets,#menuLogViewer,#menuCrontab,#menuApiManNew,#menuDbManNew,#menuSecurityCvs,#menuSecurityScan,#menuAI,#menuDoc').removeClass('active');
+        $('#menuDash,#menuWorkflow,#menuNetArch,#menuErdDiagram,#menuWireframe,#menuReportEditor,#menuFormEditor,#menuRole,#menuUnit,#menuUser,#menuDictionary,#menuSystemSetting,#menuFirewallMan,#menuFortigate,#menuJuniper,#menuHaproxy,#menuKyklosHa,#menuNginx,#menuNetplan,#menuPcap,#menuSnmp,#menuSys,#menuTools,#menuShell,#menuWidgets,#menuLogViewer,#menuCrontab,#menuApiManNew,#menuDbManNew,#menuSecurityCvs,#menuSecurityScan,#menuAI,#menuDoc').removeClass('active');
       }
       function hideAllViews() {
         hideAllWorkViews();
@@ -119,6 +120,7 @@
             menuDictionaryLink: 'dictionary',
             menuSystemSettingLink: 'systemSetting',
             menuFirewallManLink: 'firewallMan',
+            menuFortigateLink: 'fortigate',
             menuJuniperLink: 'juniper',
             menuHaproxyLink: 'haproxy',
             menuKyklosHaLink: 'kyklosHa',
@@ -151,6 +153,7 @@
       $('#menuDashLink').on('click', function (e) { console.log('[app.js] menuDashLink clicked'); e.preventDefault(); switchView('dashboard'); });
       $('#menuFirewallManLink').on('click', function (e) { console.log('[app.js] menuFirewallManLink clicked'); e.preventDefault(); switchView('firewallMan'); });
       console.log('[app.js] menu click handlers bound, menuDashLink found:', !!$('#menuDashLink').length, 'tableTabs found:', !!$('#tableTabs').length);
+      $('#menuFortigateLink').on('click', function (e) { e.preventDefault(); switchView('fortigate'); });
       $('#menuJuniperLink').on('click', function (e) { e.preventDefault(); switchView('juniper'); });
       $('#menuHaproxyLink').on('click', function (e) { e.preventDefault(); switchView('haproxy'); });
       $('#menuKyklosHaLink').on('click', function (e) { e.preventDefault(); switchView('kyklosHa'); });

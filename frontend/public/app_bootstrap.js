@@ -161,7 +161,7 @@ var _orig_ready = $;
     const WORK_VIEW_MODES = [
       'dashboard', 'workflow', 'netArch', 'erdDiagram', 'wireframe', 'reportEditor', 'formEditor',
       'role', 'unit', 'user', 'dictionary', 'systemSetting',
-      'firewallMan', 'system', 'juniper', 'haproxy', 'kyklosHa', 'nginx', 'netplan',
+      'firewallMan', 'system', 'fortigate', 'juniper', 'haproxy', 'kyklosHa', 'nginx', 'netplan',
       'pcap', 'snmp', 'sftp', 'samba', 'apiman', 'dbman', 'security', 'tools', 'ai',
       'shell', 'widgets', 'logViewer', 'crontab'
     ];
@@ -209,6 +209,7 @@ var _orig_ready = $;
         crontab: lang.crontabLabel || 'Crontab',
         ai: lang.aiLabel || 'AI Assistant',
         tools: lang.toolsLabel || 'Tools',
+        fortigate: lang.fortigateLabel || 'FortiGate',
         haproxy: lang.haproxyLabel || 'HAProxy Management',
         kyklosHa: lang.kyklosHaLabel || 'Kyklos HA',
         nginx: lang.nginxLabel || 'Nginx Management',
@@ -227,7 +228,7 @@ var _orig_ready = $;
         wireframe: 'bx-pen', reportEditor: 'bx-file', formEditor: 'bx-list-check',
         role: 'bx-id-card', unit: 'bx-buildings', user: 'bx-user',
         dictionary: 'bx-book', systemSetting: 'bx-slider',
-        shell: 'bx-terminal', widgets: 'bx-cube', logViewer: 'bx-file', crontab: 'bx-time-five', ai: 'bx-bot', tools: 'bx-wrench', haproxy: 'bx-transfer', kyklosHa: 'bx-git-branch',
+        shell: 'bx-terminal', widgets: 'bx-cube', logViewer: 'bx-file', crontab: 'bx-time-five', ai: 'bx-bot', tools: 'bx-wrench', fortigate: 'bx-shield-alt-2', haproxy: 'bx-transfer', kyklosHa: 'bx-git-branch',
         nginx: 'bx-windows', juniper: 'bx-network-chart', netplan: 'bx-wifi',
         apiman: 'bx-link', dbman: 'bx-data', security: 'bx-shield',
       };
@@ -438,7 +439,7 @@ var _orig_ready = $;
         clearConfirmPrefix: "確認清除", allRulesSuffix: "所有規則？", chainRulesSuffix: " 鏈的所有規則？",
         allMetricsSuffix: "所有統計數據？", ruleMetricsPrefix: "第 ", ruleMetricsSuffix: " 條規則的統計數據？",
         ruleNumberPrefix: "第", ruleNumberSuffix: "條規則", clearEmptyPrompt: "確認清除用戶自定義的所有空鏈？",
-        menuGroupDash: "儀表板與工作流程", dashLabel: "一般性儀表板", menuGroupNet: "網路工具", firewallManLabel: "防火牆管理",         menuGroupSys: "系統工具", toolsLabel: "工具集合", crontabLabel: "Crontab",         menuGroupApiMan: "ApiMan", menuGroupDbMan: "DbMan", menuGroupSecurity: "資安",
+        menuGroupDash: "儀表板與工作流程", dashLabel: "一般性儀表板", menuGroupNet: "網路工具", firewallManLabel: "防火牆管理", fortigateLabel: "FortiGate",         menuGroupSys: "系統工具", toolsLabel: "工具集合", crontabLabel: "Crontab",         menuGroupApiMan: "ApiMan", menuGroupDbMan: "DbMan", menuGroupSecurity: "資安",
         workflowLabel: "工作流程設計", workflowTitle: "工作流程設計", workflowNew: "新增流程", workflowRefresh: "重新整理",
         netArchLabel: "網路架構編輯", netArchTitle: "網路架構編輯", netArchNew: "新增架構", netArchRefresh: "重新整理",
         erdDiagramLabel: "ER-Diagram", menuGroupSettings: "設定",
@@ -540,7 +541,7 @@ var _orig_ready = $;
         clearConfirmPrefix: "Confirm to clear", allRulesSuffix: "all rules?", chainRulesSuffix: " chain rules?",
         allMetricsSuffix: "all counters?", ruleMetricsPrefix: "Rule #", ruleMetricsSuffix: " counters?",
         ruleNumberPrefix: "Rule #", ruleNumberSuffix: "", clearEmptyPrompt: "Clear all empty custom chains?",
-        menuGroupDash: "Dashboard & Workflow", dashLabel: "General Dashboard", menuGroupNet: "Network Tools", firewallManLabel: "FirewallMan",         menuGroupSys: "System Tools", toolsLabel: "Tools", crontabLabel: "Crontab",         menuGroupApiMan: "ApiMan", menuGroupDbMan: "DbMan", menuGroupSecurity: "Security",
+        menuGroupDash: "Dashboard & Workflow", dashLabel: "General Dashboard", menuGroupNet: "Network Tools", firewallManLabel: "FirewallMan", fortigateLabel: "FortiGate",         menuGroupSys: "System Tools", toolsLabel: "Tools", crontabLabel: "Crontab",         menuGroupApiMan: "ApiMan", menuGroupDbMan: "DbMan", menuGroupSecurity: "Security",
         workflowLabel: "Workflow Designer", workflowTitle: "Workflow Designer", workflowNew: "New Workflow", workflowRefresh: "Refresh",
         netArchLabel: "Network Architecture Designer", netArchTitle: "Network Architecture Designer", netArchNew: "New Architecture", netArchRefresh: "Refresh",
         erdDiagramLabel: "ER-Diagram", menuGroupSettings: "Settings",
@@ -641,7 +642,7 @@ var _orig_ready = $;
         clearConfirmPrefix: "確認", allRulesSuffix: "すべてのルールをクリアしますか？", chainRulesSuffix: " チェインの全ルールをクリアしますか？",
         allMetricsSuffix: "すべての統計データをクリアしますか？", ruleMetricsPrefix: "ルール #", ruleMetricsSuffix: " の統計データをクリアしますか？",
         ruleNumberPrefix: "ルール #", ruleNumberSuffix: "", clearEmptyPrompt: "空のカスタムチェインをすべて削除しますか？",
-        menuGroupDash: "ダッシュボードとワークフロー", dashLabel: "一般ダッシュボード", menuGroupNet: "ネットワークツール", firewallManLabel: "ファイアウォール管理",         menuGroupSys: "システムツール", toolsLabel: "ツール集", crontabLabel: "Crontab",         menuGroupApiMan: "ApiMan", menuGroupDbMan: "DbMan", menuGroupSecurity: "セキュリティ",
+        menuGroupDash: "ダッシュボードとワークフロー", dashLabel: "一般ダッシュボード", menuGroupNet: "ネットワークツール", firewallManLabel: "ファイアウォール管理", fortigateLabel: "FortiGate",         menuGroupSys: "システムツール", toolsLabel: "ツール集", crontabLabel: "Crontab",         menuGroupApiMan: "ApiMan", menuGroupDbMan: "DbMan", menuGroupSecurity: "セキュリティ",
         workflowLabel: "ワークフロー設計", workflowTitle: "ワークフロー設計", workflowNew: "新規ワークフロー", workflowRefresh: "更新",
         netArchLabel: "ネットワークアーキテクチャ設計", netArchTitle: "ネットワークアーキテクチャ設計", netArchNew: "新規アーキテクチャ", netArchRefresh: "更新",
         erdDiagramLabel: "ER-Diagram", menuGroupSettings: "設定",
@@ -758,6 +759,7 @@ var _orig_ready = $;
       $('#menuSysLabel').text(lng.systemLabel || 'System');
       $('#menuGroupNetLabel').text(lng.menuGroupNet || 'Network Tools');
       $('#menuFirewallManLabel').text(lng.firewallManLabel || 'FirewallMan');
+      $('#menuFortigateLabel').text(lng.fortigateLabel || 'FortiGate');
       $('#menuHaproxyLabel').text(lng.haproxyLabel || 'HaProxy 管理');
       $('#menuKyklosHaLabel').text(lng.kyklosHaLabel || 'Kyklos HA');
       $('#menuNginxLabel').text(lng.nginxLabel || 'Nginx 管理');

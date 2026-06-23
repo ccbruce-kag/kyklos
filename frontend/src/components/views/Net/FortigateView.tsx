@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 
 type FortiPage =
   | 'dashboard'
@@ -131,6 +131,16 @@ type FortiPolicy = {
   status: '啟用' | '停用'
 }
 
+type FortiRoute = {
+  id: number
+  enabled: boolean
+  destination: string
+  gateway: string
+  interfaceName: string
+  distance: string
+  priority: string
+}
+
 type FortiFabricNode = {
   id: string
   label: string
@@ -153,6 +163,23 @@ type FortiViewConfig = {
   visual: 'empty' | 'summary' | 'bubble' | 'vpn' | 'map' | 'session'
   searchPlaceholder?: string
   timeLabel?: string
+}
+
+type FabricAutomationItem = {
+  id: string
+  name: string
+  type: string
+  enabled: boolean
+  description: string
+}
+
+type FortiManagedRow = {
+  id: string
+  name: string
+  type: string
+  enabled: boolean
+  description: string
+  selected?: boolean
 }
 
 const fortiGroups: FortiMenuSection[] = [
@@ -183,7 +210,7 @@ const fortiGroups: FortiMenuSection[] = [
       { id: 'fortiviewSources', label: '來源' },
       { id: 'fortiviewDestinations', label: '目的' },
       { id: 'fortiviewApplications', label: '應用程式' },
-      { id: 'fortiviewCloudApps', label: '雲端應用程式', favorite: true },
+      { id: 'fortiviewCloudApps', label: '雲端應用程式' },
       { id: 'fortiviewWebsites', label: '網站' },
       { id: 'fortiviewThreats', label: '威脅' },
       { id: 'fortiviewWifi', label: 'WiFi 客戶端' },
@@ -207,7 +234,7 @@ const fortiGroups: FortiMenuSection[] = [
     children: [
       { id: 'interfaces', label: '介面' },
       { id: 'dns', label: 'DNS' },
-      { id: 'packet', label: '封包擷取', favorite: true },
+      { id: 'packet', label: '封包擷取' },
       { id: 'sdwan', label: 'SD-WAN' },
       { id: 'sdwanSla', label: 'SD-WAN 服務品質檢測' },
       { id: 'sdwanRules', label: 'SD-WAN 優先等級規則' },
@@ -225,7 +252,7 @@ const fortiGroups: FortiMenuSection[] = [
       { id: 'systemSettings', label: '設定' },
       { id: 'ha', label: '高可靠性' },
       { id: 'snmp', label: 'SNMP' },
-      { id: 'replacementMessages', label: '替換訊息', favorite: true },
+      { id: 'replacementMessages', label: '替換訊息' },
       { id: 'fortiguard', label: 'FortiGuard' },
       { id: 'advancedSettings', label: '進階設定' },
       { id: 'inspectionMode', label: '進階功能開關' },
@@ -248,7 +275,7 @@ const fortiGroups: FortiMenuSection[] = [
     label: '資安管理設定',
     icon: 'bx-lock-alt',
     children: [
-      { id: 'antivirus', label: '防毒', favorite: true },
+      { id: 'antivirus', label: '防毒' },
       { id: 'webFilter', label: '網頁過濾' },
       { id: 'dnsFilter', label: 'DNS 過濾器' },
       { id: 'appControl', label: '應用程式控制' },
@@ -277,7 +304,7 @@ const fortiGroups: FortiMenuSection[] = [
     label: '用戶與設備',
     icon: 'bx-user',
     children: [
-      { id: 'userDefinition', label: '用戶認證', favorite: true },
+      { id: 'userDefinition', label: '用戶認證' },
       { id: 'userGroups', label: '用戶群組' },
       { id: 'guestManagement', label: '來賓管理' },
       { id: 'deviceInventory', label: '設備清單' },
@@ -302,8 +329,8 @@ const fortiGroups: FortiMenuSection[] = [
     icon: 'bx-bar-chart-alt',
     children: [
       { id: 'logsTrafficForward', label: '轉發流量' },
-      { id: 'logsTrafficLocal', label: '本地流量', favorite: true },
-      { id: 'logsSystem', label: '系統事件', favorite: true },
+      { id: 'logsTrafficLocal', label: '本地流量' },
+      { id: 'logsSystem', label: '系統事件' },
       { id: 'logsRoute', label: '路由事件' },
       { id: 'logsVpn', label: 'VPN 事件' },
       { id: 'logsUser', label: '用戶事件' },
@@ -344,13 +371,34 @@ const initialPolicies: FortiPolicy[] = [
   { id: 3, name: 'Block_Malware', source: 'all', destination: 'all', service: 'ALL', action: 'DENY', nat: false, status: '啟用' },
 ]
 
+const initialRoutes: FortiRoute[] = [
+  { id: 1, enabled: true, destination: '0.0.0.0/0', gateway: '61.219.112.254', interfaceName: 'wan1', distance: '10', priority: '0' },
+  { id: 2, enabled: true, destination: '10.20.50.0/24', gateway: '10.20.40.254', interfaceName: 'VLAN_40', distance: '10', priority: '0' },
+  { id: 3, enabled: false, destination: '192.168.88.0/24', gateway: '10.20.40.253', interfaceName: 'VLAN_40', distance: '20', priority: '5' },
+]
+
 const fortiLogs = [
   { time: '2026/06/22 09:21:44', type: '系統事件', level: 'notice', src: 'FGT90D3Z16007115', message: 'admin 登入 HTTPS 管理介面' },
   { time: '2026/06/22 09:18:02', type: 'VPN事件', level: 'information', src: 'Taiwan_ip', message: 'SSL-VPN 使用者驗證成功' },
   { time: '2026/06/22 09:14:31', type: '防毒', level: 'warning', src: '10.20.40.113', message: '偵測到 EICAR 測試檔，已隔離' },
   { time: '2026/06/22 09:12:09', type: 'DNS查詢', level: 'information', src: '10.20.40.118', message: '查詢 update.fortinet.com' },
   { time: '2026/06/22 09:10:11', type: 'WiFi事件', level: 'notice', src: 'FortiAP', message: 'AP tunnel state changed' },
+  { time: '2026/06/22 09:08:25', type: '用戶事件', level: 'information', src: 'vpn_user', message: '用戶 vpn_user 通過本地認證' },
+  { time: '2026/06/22 09:06:44', type: '轉發流量', level: 'information', src: 'VLAN_40', message: '允許 LAN_to_WAN 連線' },
+  { time: '2026/06/22 09:05:31', type: '路由事件', level: 'notice', src: 'kernel', message: '靜態路由表已更新' },
 ]
+
+const logTypeByPage: Partial<Record<FortiPage, string>> = {
+  logsTrafficForward: '轉發流量',
+  logsTrafficLocal: '本地流量',
+  logsSystem: '系統事件',
+  logsRoute: '路由事件',
+  logsVpn: 'VPN事件',
+  logsUser: '用戶事件',
+  logsWifi: 'WiFi事件',
+  logsAntivirus: '防毒',
+  logsDns: 'DNS查詢',
+}
 
 const initialFabricNodes: FortiFabricNode[] = [
   { id: 'fgt', label: 'FortiGate 90D', detail: 'FGT90D3Z16007115', icon: 'bx-shield-quarter', x: 330, y: 170, size: 154 },
@@ -366,6 +414,65 @@ const initialFabricLinks: FortiFabricLink[] = [
   { from: 'fgt', to: 'ap' },
   { from: 'lan', to: 'clients' },
 ]
+
+const defaultFabricSettings = { telemetry: true, analyzer: true, endpoint: true }
+const defaultFabricManagementInterfaces = ['VLAN_40', 'internal']
+const defaultFabricAutomations: FabricAutomationItem[] = [
+  { id: 'auto-warning', name: 'Stitch_FortiGuard_Warning', type: 'Security Fabric', enabled: true, description: 'FortiGuard warning notification' },
+  { id: 'auto-login', name: 'Admin_Login_Notify', type: 'Local event', enabled: true, description: 'Notify on administrator login' },
+]
+
+const defaultManagedRows: Partial<Record<FortiPage, FortiManagedRow[]>> = {
+  fabricConnectors: [
+    { id: 'connector-fa', name: 'FortiAnalyzer', type: 'Fortinet Connector', enabled: true, description: '日誌分析與報表同步' },
+    { id: 'connector-fmg', name: 'FortiManager', type: 'Fortinet Connector', enabled: true, description: '集中式設備管理' },
+    { id: 'connector-ems', name: 'FortiClient EMS', type: 'Endpoint Connector', enabled: false, description: '端點遙測整合' },
+    { id: 'connector-aws', name: 'AWS SDN Connector', type: 'Cloud Connector', enabled: false, description: 'AWS VPC 物件同步' },
+  ],
+  sdwan: [
+    { id: 'sdwan-wan1', name: 'wan1_member', type: 'SD-WAN Member', enabled: true, description: 'wan1 / gateway 61.219.112.254' },
+    { id: 'sdwan-wan2', name: 'wan2_member', type: 'SD-WAN Member', enabled: false, description: 'wan2 / backup link' },
+  ],
+  sdwanSla: [
+    { id: 'sla-google-dns', name: 'Google_DNS_SLA', type: 'Performance SLA', enabled: true, description: '8.8.8.8 latency / packet loss' },
+    { id: 'sla-fortiguard', name: 'FortiGuard_SLA', type: 'Performance SLA', enabled: true, description: 'service.fortiguard.net health check' },
+  ],
+  sdwanRules: [
+    { id: 'rule-business', name: 'Business_App_Priority', type: 'SD-WAN Rule', enabled: true, description: 'HTTPS / Office365 preferred wan1' },
+    { id: 'rule-backup', name: 'Backup_Link_Rule', type: 'SD-WAN Rule', enabled: false, description: 'Use wan2 when SLA fails' },
+  ],
+  systemAdmins: [
+    { id: 'admin-admin', name: 'admin', type: 'super_admin', enabled: true, description: 'HTTPS / SSH 管理者' },
+    { id: 'admin-audit', name: 'audit', type: 'read_only', enabled: false, description: '稽核檢視帳號' },
+  ],
+  adminProfiles: [
+    { id: 'profile-super', name: 'super_admin', type: 'Admin Profile', enabled: true, description: '完整系統權限' },
+    { id: 'profile-read', name: 'read_only', type: 'Admin Profile', enabled: true, description: '唯讀檢視權限' },
+  ],
+  certificates: [
+    { id: 'cert-factory', name: 'Fortinet_Factory', type: 'Local Certificate', enabled: true, description: '內建 HTTPS 憑證' },
+    { id: 'cert-vpn', name: 'SSLVPN_Local_Cert', type: 'Local Certificate', enabled: false, description: 'SSL-VPN 自訂憑證' },
+  ],
+}
+
+function readFortiStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const raw = window.localStorage.getItem(key)
+    return raw ? JSON.parse(raw) as T : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function writeFortiStorage<T>(key: string, value: T) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // localStorage may be unavailable in restricted browsing modes.
+  }
+}
 
 const fortiViewConfigs: Partial<Record<FortiPage, FortiViewConfig>> = {
   fortiviewLanDmz: {
@@ -516,13 +623,28 @@ export default function FortigateView() {
   const [page, setPage] = useState<FortiPage>('dashboard')
   const [openMenus, setOpenMenus] = useState<string[]>(['securityFabric', 'fortiview', 'network', 'logsReports'])
   const [interfaces, setInterfaces] = useState<FortiInterface[]>(initialInterfaces)
+  const [interfaceModalMode, setInterfaceModalMode] = useState<'add' | 'edit' | null>(null)
+  const [interfaceDraft, setInterfaceDraft] = useState<FortiInterface>(initialInterfaces[0])
+  const [interfaceAddressMode, setInterfaceAddressMode] = useState('用戶定義')
   const [policies, setPolicies] = useState<FortiPolicy[]>(initialPolicies)
+  const [routes, setRoutes] = useState<FortiRoute[]>(initialRoutes)
+  const [selectedRouteId, setSelectedRouteId] = useState(initialRoutes[0].id)
+  const [routeModalMode, setRouteModalMode] = useState<'add' | 'edit' | null>(null)
+  const [routeDraft, setRouteDraft] = useState<FortiRoute>(initialRoutes[0])
   const [selectedInterface, setSelectedInterface] = useState('VLAN_40')
+  const [interfaceMemberModalOpen, setInterfaceMemberModalOpen] = useState(false)
+  const [interfaceMemberDraft, setInterfaceMemberDraft] = useState('internal5')
+  const [interfaceDnsHostMode, setInterfaceDnsHostMode] = useState('與系統DNS相同')
+  const [dnsMode, setDnsMode] = useState('指定')
+  const [dnsTls, setDnsTls] = useState(false)
   const [sslListenPort, setSslListenPort] = useState('10443')
   const [sslTunnelRange, setSslTunnelRange] = useState('10.20.40.240 - 10.20.40.250')
   const [dnsPrimary, setDnsPrimary] = useState('168.95.1.1')
   const [dnsSecondary, setDnsSecondary] = useState('8.8.8.8')
-  const [, setLastAction] = useState('FortiGate 90D 設定介面已載入')
+  const [logTypeOverride, setLogTypeOverride] = useState('')
+  const [fortiNotice, setFortiNotice] = useState('')
+  const [refreshingArea, setRefreshingArea] = useState('')
+  const [lastRefreshAt, setLastRefreshAt] = useState('09:21:43')
   const [noticeMenuOpen, setNoticeMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [fabricNodes, setFabricNodes] = useState<FortiFabricNode[]>(initialFabricNodes)
@@ -531,23 +653,197 @@ export default function FortigateView() {
   const [fabricConnectFrom, setFabricConnectFrom] = useState<string | null>(null)
   const [draggingFabricNode, setDraggingFabricNode] = useState<string | null>(null)
   const [selectedFabricNode, setSelectedFabricNode] = useState<string>('fgt')
-  const [fabricSettings, setFabricSettings] = useState({ telemetry: true, analyzer: true, endpoint: true })
-  const [fabricManagementInterfaces, setFabricManagementInterfaces] = useState(['VLAN_40', 'internal'])
+  const [fabricSettings, setFabricSettings] = useState(() => readFortiStorage('fortigate.fabric.settings', defaultFabricSettings))
+  const [fabricManagementInterfaces, setFabricManagementInterfaces] = useState(() => readFortiStorage('fortigate.fabric.managementInterfaces', defaultFabricManagementInterfaces))
   const [fabricInterfaceModalOpen, setFabricInterfaceModalOpen] = useState(false)
   const [fabricInterfaceDraft, setFabricInterfaceDraft] = useState('wan1')
+  const [fabricAutomations, setFabricAutomations] = useState(() => readFortiStorage('fortigate.fabric.automations', defaultFabricAutomations))
+  const [selectedAutomationId, setSelectedAutomationId] = useState(defaultFabricAutomations[0].id)
+  const [automationModalMode, setAutomationModalMode] = useState<'add' | 'edit' | null>(null)
+  const [automationDraft, setAutomationDraft] = useState({ name: '', type: 'Security Fabric', description: '', enabled: true })
+  const [managedRows, setManagedRows] = useState<Partial<Record<FortiPage, FortiManagedRow[]>>>(defaultManagedRows)
+  const [selectedManagedIds, setSelectedManagedIds] = useState<Partial<Record<FortiPage, string>>>({
+    fabricConnectors: defaultManagedRows.fabricConnectors?.[0]?.id,
+    sdwan: defaultManagedRows.sdwan?.[0]?.id,
+    sdwanSla: defaultManagedRows.sdwanSla?.[0]?.id,
+    sdwanRules: defaultManagedRows.sdwanRules?.[0]?.id,
+    systemAdmins: defaultManagedRows.systemAdmins?.[0]?.id,
+    adminProfiles: defaultManagedRows.adminProfiles?.[0]?.id,
+    certificates: defaultManagedRows.certificates?.[0]?.id,
+  })
+  const [managedModal, setManagedModal] = useState<{ page: FortiPage; mode: 'add' | 'edit'; title: string } | null>(null)
+  const [managedDraft, setManagedDraft] = useState<FortiManagedRow>({ id: '', name: '', type: '自訂', enabled: true, description: '' })
+  const [genericSettings, setGenericSettings] = useState<Partial<Record<FortiPage, { enabled: boolean; mode: '啟用' | '停用'; strictHttps: boolean; logAdmin: boolean }>>>({})
+  const [haMode, setHaMode] = useState('Standalone')
+  const [haOverride, setHaOverride] = useState(false)
+  const [haHeartbeatInterfaces, setHaHeartbeatInterfaces] = useState(['internal3', 'internal4'])
+  const [haHeartbeatModalOpen, setHaHeartbeatModalOpen] = useState(false)
+  const [haHeartbeatDraft, setHaHeartbeatDraft] = useState('internal5')
+  const [snmpAgent, setSnmpAgent] = useState(true)
+  const [fortiguardUpdateMode, setFortiguardUpdateMode] = useState('自動')
+  const [fortiguardProxy, setFortiguardProxy] = useState(false)
+  const [advancedCentralManagement, setAdvancedCentralManagement] = useState(true)
+  const [advancedAutoBackup, setAdvancedAutoBackup] = useState(false)
+  const [advancedChecks, setAdvancedChecks] = useState({ forceHttps: true, loginLock: true, weakPassword: false, logAdmin: true })
 
   const currentInterface = useMemo(
     () => interfaces.find((item) => item.name === selectedInterface) || interfaces[0],
     [interfaces, selectedInterface],
   )
 
+  useEffect(() => {
+    if (!fortiNotice) return undefined
+    const timer = window.setTimeout(() => setFortiNotice(''), 2200)
+    return () => window.clearTimeout(timer)
+  }, [fortiNotice])
+
+  useEffect(() => {
+    setLogTypeOverride('')
+  }, [page])
+
+  useEffect(() => {
+    writeFortiStorage('fortigate.fabric.settings', fabricSettings)
+  }, [fabricSettings])
+
+  useEffect(() => {
+    writeFortiStorage('fortigate.fabric.managementInterfaces', fabricManagementInterfaces)
+  }, [fabricManagementInterfaces])
+
+  useEffect(() => {
+    writeFortiStorage('fortigate.fabric.automations', fabricAutomations)
+    if (fabricAutomations.length && !fabricAutomations.some((item) => item.id === selectedAutomationId)) {
+      setSelectedAutomationId(fabricAutomations[0].id)
+    }
+    if (!fabricAutomations.length && selectedAutomationId) setSelectedAutomationId('')
+  }, [fabricAutomations])
+
   function updateCurrentInterface(field: keyof FortiInterface, value: string) {
     setInterfaces((items) => items.map((item) => item.name === currentInterface.name ? { ...item, [field]: value } : item))
+  }
+
+  function toggleCurrentInterfaceAccess(access: string) {
+    setInterfaces((items) => items.map((item) => {
+      if (item.name !== currentInterface.name) return item
+      const exists = item.access.includes(access)
+      return { ...item, access: exists ? item.access.filter((entry) => entry !== access) : [...item.access, access] }
+    }))
+  }
+
+  function toggleCurrentInterfaceDhcp() {
+    setInterfaces((items) => items.map((item) => item.name === currentInterface.name ? { ...item, dhcp: item.dhcp ? '' : '10.20.40.100 - 10.20.40.200' } : item))
+  }
+
+  function addInterfaceMember() {
+    const member = interfaceMemberDraft.trim()
+    if (!member) return
+    setInterfaces((items) => items.map((item) => {
+      if (item.name !== currentInterface.name) return item
+      const members = item.members || [item.name]
+      return members.includes(member) ? item : { ...item, members: [...members, member] }
+    }))
+    setInterfaceMemberModalOpen(false)
+    setLastAction(`已新增介面成員 ${member}`)
+  }
+
+  function removeInterfaceMember(member: string) {
+    setInterfaces((items) => items.map((item) => {
+      if (item.name !== currentInterface.name) return item
+      const members = (item.members || [item.name]).filter((entry) => entry !== member)
+      return { ...item, members: members.length ? members : [item.name] }
+    }))
+    setLastAction(`已移除介面成員 ${member}`)
+  }
+
+  function openInterfaceModal(mode: 'add' | 'edit') {
+    setInterfaceModalMode(mode)
+    setInterfaceDraft(mode === 'edit' ? currentInterface : {
+      name: `port${interfaces.length + 1}`,
+      alias: 'New interface',
+      type: '實體介面',
+      role: 'LAN',
+      ip: '0.0.0.0/0',
+      access: ['PING'],
+      status: 'down',
+    })
+  }
+
+  function saveInterface() {
+    const name = interfaceDraft.name.trim()
+    if (!name) return
+    if (interfaceModalMode === 'edit') {
+      setInterfaces((items) => items.map((item) => item.name === selectedInterface ? { ...interfaceDraft, name } : item))
+      setSelectedInterface(name)
+    } else {
+      const next = { ...interfaceDraft, name }
+      setInterfaces((items) => [...items.filter((item) => item.name !== name), next])
+      setSelectedInterface(name)
+    }
+    setInterfaceModalMode(null)
+    setLastAction('介面設定已儲存')
+  }
+
+  function deleteCurrentInterface() {
+    setInterfaces((items) => {
+      const next = items.filter((item) => item.name !== selectedInterface)
+      setSelectedInterface(next[0]?.name || '')
+      return next.length ? next : initialInterfaces
+    })
+    setLastAction('介面已刪除')
+  }
+
+  function setLastAction(message: string) {
+    setFortiNotice(message)
+  }
+
+  function refreshFortiArea(label: string) {
+    const now = new Date()
+    setRefreshingArea(label)
+    setLastRefreshAt(now.toLocaleTimeString('zh-TW', { hour12: false }))
+    setLastAction(`${label} 已重新整理`)
+    window.setTimeout(() => setRefreshingArea(''), 700)
   }
 
   function togglePolicy(id: number) {
     setPolicies((items) => items.map((item) => item.id === id ? { ...item, status: item.status === '啟用' ? '停用' : '啟用' } : item))
     setLastAction(`政策 ${id} 狀態已切換`)
+  }
+
+  function openRouteModal(mode: 'add' | 'edit') {
+    const selected = routes.find((route) => route.id === selectedRouteId) || routes[0]
+    setRouteDraft(mode === 'edit' && selected ? selected : {
+      id: Date.now(),
+      enabled: true,
+      destination: '10.20.0.0/24',
+      gateway: '10.20.40.254',
+      interfaceName: selectedInterface || 'wan1',
+      distance: '10',
+      priority: '0',
+    })
+    setRouteModalMode(mode)
+  }
+
+  function saveRoute() {
+    if (routeModalMode === 'edit') {
+      setRoutes((items) => items.map((item) => item.id === selectedRouteId ? routeDraft : item))
+    } else {
+      setRoutes((items) => [...items, routeDraft])
+      setSelectedRouteId(routeDraft.id)
+    }
+    setRouteModalMode(null)
+    setLastAction('靜態路由已儲存')
+  }
+
+  function deleteSelectedRoute() {
+    setRoutes((items) => {
+      const next = items.filter((item) => item.id !== selectedRouteId)
+      setSelectedRouteId(next[0]?.id || 0)
+      return next
+    })
+    setLastAction('靜態路由已刪除')
+  }
+
+  function toggleRoute(id: number) {
+    setRoutes((items) => items.map((item) => item.id === id ? { ...item, enabled: !item.enabled } : item))
   }
 
   function menuContainsPage(section: FortiMenuSection, activePage: FortiPage) {
@@ -664,6 +960,129 @@ export default function FortigateView() {
     setFabricInterfaceModalOpen(false)
   }
 
+  function removeFabricManagementInterface(name: string) {
+    setFabricManagementInterfaces((items) => items.filter((item) => item !== name))
+  }
+
+  function openAutomationModal(mode: 'add' | 'edit') {
+    if (mode === 'edit') {
+      const item = fabricAutomations.find((automation) => automation.id === selectedAutomationId)
+      if (!item) return
+      setAutomationDraft({ name: item.name, type: item.type, description: item.description, enabled: item.enabled })
+    } else {
+      setAutomationDraft({ name: `Automation_${fabricAutomations.length + 1}`, type: 'Security Fabric', description: 'Custom automation stitch', enabled: true })
+    }
+    setAutomationModalMode(mode)
+  }
+
+  function saveAutomation() {
+    const name = automationDraft.name.trim()
+    if (!name) return
+    if (automationModalMode === 'edit') {
+      setFabricAutomations((items) => items.map((item) => item.id === selectedAutomationId ? { ...item, ...automationDraft, name } : item))
+    } else {
+      const id = `auto-${Date.now()}`
+      setFabricAutomations((items) => [...items, { id, ...automationDraft, name }])
+      setSelectedAutomationId(id)
+    }
+    setAutomationModalMode(null)
+  }
+
+  function deleteSelectedAutomation() {
+    setFabricAutomations((items) => {
+      const next = items.filter((item) => item.id !== selectedAutomationId)
+      setSelectedAutomationId(next[0]?.id || '')
+      return next
+    })
+  }
+
+  function getManagedRows(activePage: FortiPage, title: string) {
+    return managedRows[activePage] || [
+      { id: `${activePage}-default`, name: `${title}_default`, type: '系統預設', enabled: true, description: '參照 1' },
+      { id: `${activePage}-custom`, name: `${title}_custom`, type: '自訂', enabled: false, description: '參照 0' },
+    ]
+  }
+
+  function setManagedRowsForPage(activePage: FortiPage, updater: (rows: FortiManagedRow[]) => FortiManagedRow[]) {
+    const title = getPageLabel(activePage)
+    setManagedRows((items) => ({ ...items, [activePage]: updater(getManagedRows(activePage, title)) }))
+  }
+
+  function setSelectedManagedId(activePage: FortiPage, id: string) {
+    setSelectedManagedIds((items) => ({ ...items, [activePage]: id }))
+  }
+
+  function openManagedModal(activePage: FortiPage, title: string, mode: 'add' | 'edit') {
+    const rows = getManagedRows(activePage, title)
+    const selectedId = selectedManagedIds[activePage] || rows[0]?.id || ''
+    const selected = rows.find((row) => row.id === selectedId) || rows[0]
+    if (mode === 'edit' && !selected) return
+    setManagedDraft(mode === 'edit' && selected ? selected : {
+      id: `${activePage}-${Date.now()}`,
+      name: `${title}_new`,
+      type: '自訂',
+      enabled: true,
+      description: `${title} 自訂項目`,
+      selected: false,
+    })
+    setManagedModal({ page: activePage, mode, title })
+  }
+
+  function saveManagedRow() {
+    if (!managedModal) return
+    const name = managedDraft.name.trim()
+    if (!name) return
+    const nextDraft = { ...managedDraft, name }
+    if (managedModal.mode === 'edit') {
+      setManagedRowsForPage(managedModal.page, (rows) => rows.map((row) => row.id === managedDraft.id ? nextDraft : row))
+    } else {
+      setManagedRowsForPage(managedModal.page, (rows) => [...rows, nextDraft])
+      setSelectedManagedId(managedModal.page, nextDraft.id)
+    }
+    setManagedModal(null)
+    setLastAction(`${managedModal.title} 已儲存`)
+  }
+
+  function deleteManagedRow(activePage: FortiPage, title: string) {
+    const rows = getManagedRows(activePage, title)
+    const selectedId = selectedManagedIds[activePage] || rows[0]?.id || ''
+    setManagedRowsForPage(activePage, (items) => {
+      const next = items.filter((item) => item.id !== selectedId)
+      setSelectedManagedId(activePage, next[0]?.id || '')
+      return next
+    })
+    setLastAction(`${title} 已刪除選取項目`)
+  }
+
+  function toggleManagedRow(activePage: FortiPage, title: string, id: string) {
+    setManagedRowsForPage(activePage, (rows) => rows.map((row) => row.id === id ? { ...row, enabled: !row.enabled } : row))
+    setLastAction(`${title} 狀態已切換`)
+  }
+
+  function getGenericSetting(activePage: FortiPage) {
+    return genericSettings[activePage] || { enabled: true, mode: '啟用', strictHttps: true, logAdmin: true }
+  }
+
+  function updateGenericSetting(activePage: FortiPage, patch: Partial<{ enabled: boolean; mode: '啟用' | '停用'; strictHttps: boolean; logAdmin: boolean }>) {
+    setGenericSettings((items) => ({ ...items, [activePage]: { ...getGenericSetting(activePage), ...patch } }))
+  }
+
+  function addHaHeartbeatInterface() {
+    const nextInterface = haHeartbeatDraft.trim()
+    if (!nextInterface || haHeartbeatInterfaces.includes(nextInterface)) {
+      setHaHeartbeatModalOpen(false)
+      return
+    }
+    setHaHeartbeatInterfaces((items) => [...items, nextInterface])
+    setHaHeartbeatModalOpen(false)
+    setLastAction(`已新增心跳介面 ${nextInterface}`)
+  }
+
+  function removeHaHeartbeatInterface(name: string) {
+    setHaHeartbeatInterfaces((items) => items.filter((item) => item !== name))
+    setLastAction(`已移除心跳介面 ${name}`)
+  }
+
   function renderDashboard() {
     return (
       <div className="forti-workspace-grid">
@@ -718,7 +1137,10 @@ export default function FortigateView() {
           <select className="form-select form-select-sm forti-select" value={selectedInterface} onChange={(e) => setSelectedInterface(e.target.value)}>
             {interfaces.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
           </select>
-          <button className="btn btn-sm forti-btn" onClick={() => setLastAction('介面設定已套用')}>套用</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openInterfaceModal('add')}>新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openInterfaceModal('edit')}>編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteCurrentInterface}>刪除</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '網路介面' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('網路介面')}><i className="bx bx-refresh"></i></button>
         </div>
         <div className="forti-form-section">
           <label>介面名稱</label><input className="form-control form-control-sm" value={currentInterface.name} readOnly />
@@ -730,28 +1152,71 @@ export default function FortigateView() {
           </select>
           <label>介面成員</label>
           <div className="forti-chip-box">
-            {(currentInterface.members || [currentInterface.name]).map((member) => <span className="forti-chip" key={member}>{member}<i className="bx bx-x"></i></span>)}
-            <button className="forti-chip-add">+</button>
+            {(currentInterface.members || [currentInterface.name]).map((member) => (
+              <span className="forti-chip" key={member}>
+                {member}
+                <button type="button" className="forti-chip-remove" onClick={() => removeInterfaceMember(member)} aria-label={`移除 ${member}`}>×</button>
+              </span>
+            ))}
+            <button className="forti-chip-add" onClick={() => setInterfaceMemberModalOpen(true)}>+</button>
           </div>
         </div>
         <div className="forti-band">位址物件</div>
         <div className="forti-form-section">
-          <label>位址模式</label><div className="forti-segments"><button className="active">用戶定義</button><button>DHCP</button><button>PPPoE</button><button>專屬於 FortiSwitch</button></div>
+          <label>位址模式</label><div className="forti-segments">{['用戶定義', 'DHCP', 'PPPoE', '專屬於 FortiSwitch'].map((mode) => <button key={mode} className={interfaceAddressMode === mode ? 'active' : ''} onClick={() => setInterfaceAddressMode(mode)}>{mode}</button>)}</div>
           <label>IP/網路遮罩</label><input className="form-control form-control-sm" value={currentInterface.ip} onChange={(e) => updateCurrentInterface('ip', e.target.value)} />
         </div>
         <div className="forti-band">管理存取</div>
         <div className="forti-access-grid">
           {['HTTPS', 'HTTP', 'PING', 'FMG-Access', 'CAPWAP', 'SSH', 'SNMP', 'FTM', 'RADIUS Accounting', 'FortiTelemetry'].map((access) => (
-            <label key={access}><input type="checkbox" checked={currentInterface.access.includes(access)} readOnly /> {access}</label>
+            <label key={access}><input type="checkbox" checked={currentInterface.access.includes(access)} onChange={() => toggleCurrentInterfaceAccess(access)} /> {access}</label>
           ))}
         </div>
         <div className="forti-band">DHCP 主機</div>
         <div className="forti-form-section">
-          <label>DHCP</label><FortiSwitch checked={!!currentInterface.dhcp} />
+          <label>DHCP</label><FortiSwitch checked={!!currentInterface.dhcp} onChange={toggleCurrentInterfaceDhcp} label={currentInterface.dhcp ? '啟用' : '停用'} />
           <label>位址範圍</label><input className="form-control form-control-sm" value={currentInterface.dhcp || ''} onChange={(e) => updateCurrentInterface('dhcp', e.target.value)} />
           <label>網路遮罩</label><input className="form-control form-control-sm" defaultValue="255.255.255.0" />
-          <label>DNS主機位址</label><div className="forti-segments"><button className="active">與系統DNS相同</button><button>與介面IP相同</button><button>指定</button></div>
+          <label>DNS主機位址</label><div className="forti-segments">{['與系統DNS相同', '與介面IP相同', '指定'].map((mode) => <button key={mode} className={interfaceDnsHostMode === mode ? 'active' : ''} onClick={() => setInterfaceDnsHostMode(mode)}>{mode}</button>)}</div>
         </div>
+        {interfaceMemberModalOpen && (
+          <div className="forti-modal-backdrop" role="presentation">
+            <div className="forti-modal" role="dialog" aria-modal="true" aria-label="新增介面成員">
+              <div className="forti-modal-title">新增介面成員</div>
+              <label>成員介面</label>
+              <select className="form-select form-select-sm" value={interfaceMemberDraft} onChange={(event) => setInterfaceMemberDraft(event.target.value)}>
+                {['internal1', 'internal2', 'internal3', 'internal4', 'internal5', 'wan1', 'wan2', 'dmz'].map((item) => <option key={item}>{item}</option>)}
+              </select>
+              <div className="forti-modal-actions">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setInterfaceMemberModalOpen(false)}>取消</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={addInterfaceMember}>新增</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {interfaceModalMode && (
+          <div className="forti-modal-backdrop" role="presentation">
+            <div className="forti-modal" role="dialog" aria-modal="true" aria-label={interfaceModalMode === 'add' ? '新增介面' : '編輯介面'}>
+              <div className="forti-modal-title">{interfaceModalMode === 'add' ? '新增介面' : '編輯介面'}</div>
+              <label>介面名稱</label>
+              <input className="form-control form-control-sm" value={interfaceDraft.name} onChange={(event) => setInterfaceDraft((draft) => ({ ...draft, name: event.target.value }))} />
+              <label className="mt-2">別名</label>
+              <input className="form-control form-control-sm" value={interfaceDraft.alias} onChange={(event) => setInterfaceDraft((draft) => ({ ...draft, alias: event.target.value }))} />
+              <label className="mt-2">角色</label>
+              <select className="form-select form-select-sm" value={interfaceDraft.role} onChange={(event) => setInterfaceDraft((draft) => ({ ...draft, role: event.target.value }))}>
+                <option>LAN</option><option>WAN</option><option>DMZ</option><option>Undefined</option>
+              </select>
+              <label className="mt-2">IP/網路遮罩</label>
+              <input className="form-control form-control-sm" value={interfaceDraft.ip} onChange={(event) => setInterfaceDraft((draft) => ({ ...draft, ip: event.target.value }))} />
+              <label className="mt-2">狀態</label>
+              <FortiSwitch checked={interfaceDraft.status === 'up'} onChange={() => setInterfaceDraft((draft) => ({ ...draft, status: draft.status === 'up' ? 'down' : 'up' }))} label={interfaceDraft.status === 'up' ? '啟用' : '停用'} />
+              <div className="forti-modal-actions">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setInterfaceModalMode(null)}>取消</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={saveInterface}>儲存</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -761,13 +1226,15 @@ export default function FortigateView() {
       <div className="forti-form-page">
         <div className="forti-section-title">DNS 設定</div>
         <div className="forti-form-section">
-          <label>DNS 伺服器</label><div className="forti-segments"><button className="active">指定</button><button>從 ISP 取得</button></div>
+          <label>DNS 伺服器</label><div className="forti-segments">{['指定', '從 ISP 取得'].map((mode) => <button key={mode} className={dnsMode === mode ? 'active' : ''} onClick={() => setDnsMode(mode)}>{mode}</button>)}</div>
           <label>主要 DNS</label><input className="form-control form-control-sm" value={dnsPrimary} onChange={(e) => setDnsPrimary(e.target.value)} />
           <label>次要 DNS</label><input className="form-control form-control-sm" value={dnsSecondary} onChange={(e) => setDnsSecondary(e.target.value)} />
-          <label>DNS over TLS</label><FortiSwitch checked={false} />
+          <label>DNS over TLS</label><FortiSwitch checked={dnsTls} onChange={() => setDnsTls((enabled) => !enabled)} label={dnsTls ? '啟用' : '停用'} />
           <label>本機網域名稱</label><input className="form-control form-control-sm" defaultValue="fortigate.local" />
         </div>
-        <button className="btn forti-apply" onClick={() => setLastAction('DNS 設定已套用')}>套用</button>
+        <div className="forti-centered-actions">
+          <button className="btn forti-apply" onClick={() => setLastAction('DNS 設定已套用')}>套用</button>
+        </div>
       </div>
     )
   }
@@ -776,15 +1243,49 @@ export default function FortigateView() {
     return (
       <div className="forti-table-page">
         <div className="forti-section-title">靜態路由</div>
-        <div className="forti-toolbar"><button className="btn btn-sm forti-btn" onClick={() => setLastAction('已建立靜態路由草稿')}>新增</button><button className="btn btn-sm btn-outline-secondary">編輯</button><button className="btn btn-sm btn-outline-secondary">刪除</button></div>
-        <table className="forti-table">
+        <div className="forti-toolbar">
+          <button className="btn btn-sm forti-btn" onClick={() => openRouteModal('add')}>新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openRouteModal('edit')} disabled={!selectedRouteId}>編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedRoute} disabled={!selectedRouteId}>刪除</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '靜態路由' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('靜態路由')}><i className="bx bx-refresh"></i></button>
+        </div>
+        <table className="forti-table forti-selectable-table">
           <thead><tr><th>狀態</th><th>目的地</th><th>閘道</th><th>介面</th><th>距離</th><th>優先權</th></tr></thead>
           <tbody>
-            <tr><td><FortiSwitch checked /></td><td>0.0.0.0/0</td><td>61.219.112.254</td><td>wan1</td><td>10</td><td>0</td></tr>
-            <tr><td><FortiSwitch checked /></td><td>10.20.50.0/24</td><td>10.20.40.254</td><td>VLAN_40</td><td>10</td><td>0</td></tr>
-            <tr><td><FortiSwitch checked={false} /></td><td>192.168.88.0/24</td><td>10.20.40.253</td><td>VLAN_40</td><td>20</td><td>5</td></tr>
+            {routes.map((route) => (
+              <tr key={route.id} className={route.id === selectedRouteId ? 'is-selected' : ''} onClick={() => setSelectedRouteId(route.id)}>
+                <td><FortiSwitch checked={route.enabled} onChange={() => toggleRoute(route.id)} /></td>
+                <td>{route.destination}</td><td>{route.gateway}</td><td>{route.interfaceName}</td><td>{route.distance}</td><td>{route.priority}</td>
+              </tr>
+            ))}
+            {!routes.length && <tr><td colSpan={6} className="forti-table-empty">無靜態路由</td></tr>}
           </tbody>
         </table>
+        {routeModalMode && (
+          <div className="forti-modal-backdrop" role="presentation">
+            <div className="forti-modal" role="dialog" aria-modal="true" aria-label={routeModalMode === 'add' ? '新增靜態路由' : '編輯靜態路由'}>
+              <div className="forti-modal-title">{routeModalMode === 'add' ? '新增靜態路由' : '編輯靜態路由'}</div>
+              <label>目的地</label>
+              <input className="form-control form-control-sm" value={routeDraft.destination} onChange={(event) => setRouteDraft((draft) => ({ ...draft, destination: event.target.value }))} />
+              <label className="mt-2">閘道</label>
+              <input className="form-control form-control-sm" value={routeDraft.gateway} onChange={(event) => setRouteDraft((draft) => ({ ...draft, gateway: event.target.value }))} />
+              <label className="mt-2">介面</label>
+              <select className="form-select form-select-sm" value={routeDraft.interfaceName} onChange={(event) => setRouteDraft((draft) => ({ ...draft, interfaceName: event.target.value }))}>
+                {interfaces.map((item) => <option key={item.name}>{item.name}</option>)}
+              </select>
+              <label className="mt-2">距離</label>
+              <input className="form-control form-control-sm" value={routeDraft.distance} onChange={(event) => setRouteDraft((draft) => ({ ...draft, distance: event.target.value }))} />
+              <label className="mt-2">優先權</label>
+              <input className="form-control form-control-sm" value={routeDraft.priority} onChange={(event) => setRouteDraft((draft) => ({ ...draft, priority: event.target.value }))} />
+              <label className="mt-2">狀態</label>
+              <FortiSwitch checked={routeDraft.enabled} onChange={() => setRouteDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={routeDraft.enabled ? '啟用' : '停用'} />
+              <div className="forti-modal-actions">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setRouteModalMode(null)}>取消</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={saveRoute}>儲存</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -793,7 +1294,14 @@ export default function FortigateView() {
     return (
       <div className="forti-table-page">
         <div className="forti-section-title">IPv4 政策</div>
-        <div className="forti-toolbar"><button className="btn btn-sm forti-btn" onClick={() => setLastAction('已建立防火牆政策草稿')}>新增</button><button className="btn btn-sm btn-outline-secondary">複製</button><button className="btn btn-sm btn-outline-secondary">移至</button></div>
+        <div className="forti-toolbar">
+          <button className="btn btn-sm forti-btn" onClick={() => setLastAction('IPv4 政策新增視窗已開啟')}>新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('IPv4 政策編輯視窗已開啟')}>編輯</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('IPv4 政策已複製')}>複製</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('IPv4 政策移動視窗已開啟')}>移至</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => setLastAction('IPv4 政策已刪除選取項目')}>刪除</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === 'IPv4 政策' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('IPv4 政策')}><i className="bx bx-refresh"></i></button>
+        </div>
         <table className="forti-table">
           <thead><tr><th>ID</th><th>名稱</th><th>來源</th><th>目的地</th><th>服務</th><th>動作</th><th>NAT</th><th>狀態</th></tr></thead>
           <tbody>
@@ -843,7 +1351,7 @@ export default function FortigateView() {
     return (
       <div className="forti-table-page">
         <div className="forti-section-title">用戶認證</div>
-        <div className="forti-toolbar"><button className="btn btn-sm forti-btn">新增</button><button className="btn btn-sm btn-outline-secondary">編輯用戶</button><button className="btn btn-sm btn-outline-secondary">複製</button><button className="btn btn-sm btn-outline-secondary">刪除</button><input className="form-control form-control-sm" placeholder="搜尋" /></div>
+        <div className="forti-toolbar"><button className="btn btn-sm forti-btn" onClick={() => setLastAction('用戶認證新增視窗已開啟')}>新增</button><button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('用戶認證編輯視窗已開啟')}>編輯用戶</button><button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('用戶認證已複製')}>複製</button><button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('用戶認證已刪除選取項目')}>刪除</button><button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '用戶認證' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('用戶認證')}><i className="bx bx-refresh"></i></button><input className="form-control form-control-sm" placeholder="搜尋" /></div>
         <table className="forti-table"><thead><tr><th>用戶名稱</th><th>類型</th><th>雙因素認證</th><th>參照</th></tr></thead><tbody>
           <tr><td>phgate</td><td><i className="bx bx-user"></i> 本地</td><td><span className="forti-pill danger">停用</span></td><td>1</td></tr>
           <tr><td>admin</td><td><i className="bx bx-user"></i> 本地</td><td><span className="forti-pill muted">不適用</span></td><td>3</td></tr>
@@ -857,7 +1365,7 @@ export default function FortigateView() {
     return (
       <div className="forti-table-page">
         <div className="forti-section-title">用戶群組</div>
-        <div className="forti-toolbar"><button className="btn btn-sm forti-btn">新增</button><button className="btn btn-sm btn-outline-secondary">編輯</button><button className="btn btn-sm btn-outline-secondary">刪除</button><input className="form-control form-control-sm" placeholder="搜尋群組" /></div>
+        <div className="forti-toolbar"><button className="btn btn-sm forti-btn" onClick={() => setLastAction('用戶群組新增視窗已開啟')}>新增</button><button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('用戶群組編輯視窗已開啟')}>編輯</button><button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('用戶群組已刪除選取項目')}>刪除</button><button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '用戶群組' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('用戶群組')}><i className="bx bx-refresh"></i></button><input className="form-control form-control-sm" placeholder="搜尋群組" /></div>
         <table className="forti-table"><thead><tr><th>群組名稱</th><th>類型</th><th>成員</th><th>參照</th></tr></thead><tbody>
           <tr><td>SSLVPN_Users</td><td>防火牆</td><td>vpn_user, Taiwan_ip</td><td>2</td></tr>
           <tr><td>Firewall_Admins</td><td>防火牆</td><td>admin</td><td>1</td></tr>
@@ -932,10 +1440,10 @@ export default function FortigateView() {
       <div className="forti-table-page forti-fortiview">
         <div className="forti-section-title">{config.title}</div>
         <div className="forti-toolbar forti-viewbar">
-          <button className="btn btn-sm btn-outline-secondary"><i className="bx bx-refresh"></i></button>
-          <button className="btn btn-sm forti-btn">新增過濾條件</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === config.title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(config.title)}><i className="bx bx-refresh"></i></button>
+          <button className="btn btn-sm forti-btn" onClick={() => setLastAction(`${config.title} 過濾條件視窗已開啟`)}>新增過濾條件</button>
           <input className="form-control form-control-sm" placeholder={config.searchPlaceholder || '搜尋來源、目的、應用程式'} />
-          <button className="btn btn-sm btn-outline-secondary"><i className="bx bx-table"></i></button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction(`${config.title} 已切換表格檢視`)}><i className="bx bx-table"></i></button>
           <select className="form-select form-select-sm" defaultValue={config.timeLabel || '5 分鐘'}><option>現在</option><option>5 分鐘</option><option>1 小時</option><option>24 小時</option></select>
         </div>
         {renderFortiViewVisual(config)}
@@ -949,19 +1457,31 @@ export default function FortigateView() {
             )}
           </tbody>
         </table>
-        <div className="forti-view-updated">0 | Updated: 09:21:43 <button className="btn btn-sm btn-outline-secondary"><i className="bx bx-refresh"></i></button></div>
+        <div className="forti-view-updated">0 | Updated: {lastRefreshAt}</div>
       </div>
     )
   }
 
-  function renderLogs(title = '日誌與報表') {
+  function renderLogs(activePage: FortiPage) {
+    const title = getPageLabel(activePage)
+    const selectedType = logTypeOverride || logTypeByPage[activePage] || title
+    const rows = fortiLogs.filter((log) => log.type === selectedType)
     return (
       <div className="forti-table-page">
         <div className="forti-section-title">{title}</div>
-        <div className="forti-toolbar"><select className="form-select form-select-sm forti-select"><option>系統事件</option><option>VPN事件</option><option>防毒</option><option>DNS查詢</option><option>WiFi事件</option></select><button className="btn btn-sm btn-outline-secondary">匯出</button><button className="btn btn-sm btn-outline-secondary">重新整理</button></div>
+        <div className="forti-toolbar">
+          <select className="form-select form-select-sm forti-select" value={selectedType} onChange={(event) => { setLogTypeOverride(event.target.value); setLastAction(`目前正在檢視 ${event.target.value}`) }}>
+            {['系統事件', 'VPN事件', '防毒', 'DNS查詢', 'WiFi事件', '用戶事件', '轉發流量', '路由事件'].map((type) => <option key={type}>{type}</option>)}
+          </select>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction(`${title} 已匯出`)}>匯出</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(title)}>重新整理</button>
+        </div>
         <table className="forti-table">
           <thead><tr><th>時間</th><th>類型</th><th>等級</th><th>來源</th><th>訊息</th></tr></thead>
-          <tbody>{fortiLogs.map((log) => <tr key={`${log.time}-${log.message}`}><td>{log.time}</td><td>{log.type}</td><td>{log.level}</td><td>{log.src}</td><td>{log.message}</td></tr>)}</tbody>
+          <tbody>
+            {rows.map((log) => <tr key={`${log.time}-${log.message}`}><td>{log.time}</td><td>{log.type}</td><td>{log.level}</td><td>{log.src}</td><td>{log.message}</td></tr>)}
+            {!rows.length && <tr><td colSpan={5} className="forti-table-empty">{title} 目前無資料</td></tr>}
+          </tbody>
         </table>
       </div>
     )
@@ -971,15 +1491,31 @@ export default function FortigateView() {
     return (
       <div className="forti-form-page">
         <div className="forti-section-title">封包擷取</div>
-        <div className="forti-form-section">
-          <label>介面</label><select className="form-select form-select-sm" defaultValue="wan1"><option>wan1</option><option>VLAN_40</option><option>ssl.root</option></select>
-          <label>主機</label><input className="form-control form-control-sm" defaultValue="10.20.40.113" />
-          <label>埠號</label><input className="form-control form-control-sm" defaultValue="443" />
-          <label>協定</label><select className="form-select form-select-sm"><option>Any</option><option>TCP</option><option>UDP</option><option>ICMP</option></select>
-          <label>擷取數量</label><input className="form-control form-control-sm" defaultValue="1000" />
+        <div className="forti-packet-grid">
+          <section className="forti-group-card">
+            <strong>擷取條件</strong>
+            <div className="forti-form-section forti-compact-form">
+              <label>介面</label><select className="form-select form-select-sm" defaultValue="wan1"><option>wan1</option><option>VLAN_40</option><option>ssl.root</option></select>
+              <label>協定</label><select className="form-select form-select-sm"><option>Any</option><option>TCP</option><option>UDP</option><option>ICMP</option></select>
+              <label>擷取數量</label><input className="form-control form-control-sm" defaultValue="1000" />
+            </div>
+          </section>
+          <section className="forti-group-card">
+            <strong>封包過濾</strong>
+            <div className="forti-form-section forti-compact-form">
+              <label>主機</label><input className="form-control form-control-sm" defaultValue="10.20.40.113" />
+              <label>埠號</label><input className="form-control form-control-sm" defaultValue="443" />
+              <label>方向</label><select className="form-select form-select-sm" defaultValue="both"><option value="both">雙向</option><option value="src">來源</option><option value="dst">目的</option></select>
+            </div>
+          </section>
         </div>
-        <div className="forti-capture-box">尚未開始擷取。按下開始後會顯示封包摘要、來源、目的與協定。</div>
-        <button className="btn forti-apply" onClick={() => setLastAction('封包擷取已建立，等待後端串接')}>開始擷取</button>
+        <div className="forti-capture-box">
+          <strong>擷取輸出</strong>
+          <span>尚未開始擷取。按下開始後會顯示封包摘要、來源、目的與協定。</span>
+        </div>
+        <div className="forti-centered-actions">
+          <button className="btn forti-apply" onClick={() => setLastAction('封包擷取已建立，等待後端串接')}>開始擷取</button>
+        </div>
       </div>
     )
   }
@@ -1073,15 +1609,108 @@ export default function FortigateView() {
     )
   }
 
-  function renderFabricList(title: string, rows: string[]) {
+  function renderManagedTable(activePage: FortiPage, title: string) {
+    const rows = getManagedRows(activePage, title)
+    const selectedId = selectedManagedIds[activePage] || rows[0]?.id || ''
     return (
       <div className="forti-table-page">
         <div className="forti-section-title">{title}</div>
-        <div className="forti-toolbar"><button className="btn btn-sm forti-btn">新增</button><button className="btn btn-sm btn-outline-secondary">編輯</button><button className="btn btn-sm btn-outline-secondary">刪除</button><input className="form-control form-control-sm" placeholder="搜尋" /></div>
-        <table className="forti-table">
+        <div className="forti-toolbar">
+          <button className="btn btn-sm forti-btn" onClick={() => openManagedModal(activePage, title, 'add')}>新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openManagedModal(activePage, title, 'edit')} disabled={!selectedId}>編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => deleteManagedRow(activePage, title)} disabled={!selectedId}>刪除</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(title)}><i className="bx bx-refresh"></i></button>
+          <input className="form-control form-control-sm" placeholder="搜尋" />
+        </div>
+        <table className="forti-table forti-selectable-table">
           <thead><tr><th>名稱</th><th>類型</th><th>狀態</th><th>說明</th></tr></thead>
-          <tbody>{rows.map((row, index) => <tr key={row}><td>{row}</td><td>{index % 2 ? '本機設定' : 'FortiGate'}</td><td><span className={index % 2 ? 'forti-pill muted' : 'forti-pill success'}>{index % 2 ? '未啟用' : '啟用'}</span></td><td>{title} 項目</td></tr>)}</tbody>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}>
+                <td>{row.name}</td>
+                <td>{row.type}</td>
+                <td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td>
+                <td>{row.description}</td>
+              </tr>
+            ))}
+            {!rows.length && <tr><td colSpan={4} className="forti-table-empty">無資料</td></tr>}
+          </tbody>
         </table>
+        {managedModal?.page === activePage && (
+          <div className="forti-modal-backdrop" role="presentation">
+            <div className="forti-modal" role="dialog" aria-modal="true" aria-label={managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}>
+              <div className="forti-modal-title">{managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}</div>
+              <label>名稱</label>
+              <input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+              <label className="mt-2">類型</label>
+              <input className="form-control form-control-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))} />
+              <label className="mt-2">狀態</label>
+              <FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={managedDraft.enabled ? '啟用' : '停用'} />
+              <label className="mt-2">說明</label>
+              <input className="form-control form-control-sm" value={managedDraft.description} onChange={(event) => setManagedDraft((draft) => ({ ...draft, description: event.target.value }))} />
+              <div className="forti-modal-actions">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setManagedModal(null)}>取消</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={saveManagedRow}>儲存</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderFabricAutomation() {
+    return (
+      <div className="forti-table-page">
+        <div className="forti-section-title">安全織網 - 自動化</div>
+        <div className="forti-toolbar">
+          <button className="btn btn-sm forti-btn" onClick={() => openAutomationModal('add')}>新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openAutomationModal('edit')} disabled={!selectedAutomationId}>編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedAutomation} disabled={!selectedAutomationId}>刪除</button>
+          <input className="form-control form-control-sm" placeholder="搜尋" />
+        </div>
+        <table className="forti-table forti-selectable-table">
+          <thead><tr><th>名稱</th><th>觸發類型</th><th>狀態</th><th>說明</th></tr></thead>
+          <tbody>
+            {fabricAutomations.map((item) => (
+              <tr
+                key={item.id}
+                className={item.id === selectedAutomationId ? 'is-selected' : ''}
+                onClick={() => setSelectedAutomationId(item.id)}
+              >
+                <td>{item.name}</td>
+                <td>{item.type}</td>
+                <td><span className={item.enabled ? 'forti-pill success' : 'forti-pill muted'}>{item.enabled ? '啟用' : '停用'}</span></td>
+                <td>{item.description}</td>
+              </tr>
+            ))}
+            {!fabricAutomations.length && <tr><td colSpan={4} className="forti-table-empty">無自動化項目</td></tr>}
+          </tbody>
+        </table>
+        {automationModalMode && (
+          <div className="forti-modal-backdrop" role="presentation">
+            <div className="forti-modal" role="dialog" aria-modal="true" aria-label={automationModalMode === 'add' ? '新增自動化' : '編輯自動化'}>
+              <div className="forti-modal-title">{automationModalMode === 'add' ? '新增自動化' : '編輯自動化'}</div>
+              <label>名稱</label>
+              <input className="form-control form-control-sm" value={automationDraft.name} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, name: event.target.value }))} />
+              <label className="mt-2">觸發類型</label>
+              <select className="form-select form-select-sm" value={automationDraft.type} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, type: event.target.value }))}>
+                <option>Security Fabric</option>
+                <option>Local event</option>
+                <option>Webhook</option>
+                <option>Schedule</option>
+              </select>
+              <label className="mt-2">狀態</label>
+              <FortiSwitch checked={automationDraft.enabled} onChange={() => setAutomationDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={automationDraft.enabled ? '啟用' : '停用'} />
+              <label className="mt-2">說明</label>
+              <input className="form-control form-control-sm" value={automationDraft.description} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, description: event.target.value }))} />
+              <div className="forti-modal-actions">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setAutomationModalMode(null)}>取消</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={saveAutomation}>儲存</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -1101,11 +1730,29 @@ export default function FortigateView() {
           <label>設備角色</label><select className="form-select form-select-sm" defaultValue="Root FortiGate"><option>Root FortiGate</option><option>Downstream FortiGate</option></select>
           <label>FortiAnalyzer Logging</label><FortiSwitch checked={fabricSettings.analyzer} onChange={() => toggleFabricSetting('analyzer')} label={fabricSettings.analyzer ? '啟用' : '停用'} />
           <label>Endpoint Telemetry</label><FortiSwitch checked={fabricSettings.endpoint} onChange={() => toggleFabricSetting('endpoint')} label={fabricSettings.endpoint ? '啟用' : '停用'} />
-          <label>管理介面</label><div className="forti-chip-box">{fabricManagementInterfaces.map((item) => <span className="forti-chip" key={item}>{item}</span>)}<button type="button" className="forti-chip-add" onClick={() => setFabricInterfaceModalOpen(true)}>+</button></div>
+          <label>管理介面</label>
+          <div className="forti-chip-box">
+            {fabricManagementInterfaces.map((item) => (
+              <span className="forti-chip" key={item}>
+                {item}
+                <button type="button" className="forti-chip-remove" onClick={() => removeFabricManagementInterface(item)} aria-label={`刪除 ${item}`}>×</button>
+              </span>
+            ))}
+            <button type="button" className="forti-chip-add" onClick={() => setFabricInterfaceModalOpen(true)}>+</button>
+          </div>
         </div>
         <div className="forti-info-note">停用後，實體拓樸圖與下游裝置同步狀態會停止更新；已建立的拓樸物件仍會保留在畫面中。</div>
         <div className="forti-centered-actions">
-          <button className="btn forti-apply" onClick={() => setLastAction('安全織網設定已套用')}>套用</button>
+          <button
+            className="btn forti-apply"
+            onClick={() => {
+              writeFortiStorage('fortigate.fabric.settings', fabricSettings)
+              writeFortiStorage('fortigate.fabric.managementInterfaces', fabricManagementInterfaces)
+              setLastAction('安全織網設定已套用')
+            }}
+          >
+            套用
+          </button>
         </div>
         {fabricInterfaceModalOpen && (
           <div className="forti-modal-backdrop" role="presentation">
@@ -1132,18 +1779,42 @@ export default function FortigateView() {
         <div className="forti-section-title">高可靠性</div>
         <div className="forti-band">HA 設定</div>
         <div className="forti-form-section">
-          <label>模式</label><div className="forti-segments"><button className="active">Standalone</button><button>Active-Passive</button><button>Active-Active</button></div>
+          <label>模式</label><div className="forti-segments">{['Standalone', 'Active-Passive', 'Active-Active'].map((mode) => <button key={mode} className={haMode === mode ? 'active' : ''} onClick={() => setHaMode(mode)}>{mode}</button>)}</div>
           <label>群組名稱</label><input className="form-control form-control-sm" defaultValue="FGT-HA-GROUP" />
           <label>群組 ID</label><input className="form-control form-control-sm" defaultValue="0" />
-          <label>心跳介面</label><div className="forti-chip-box"><span className="forti-chip">internal3</span><span className="forti-chip">internal4</span><button className="forti-chip-add">+</button></div>
+          <label>心跳介面</label>
+          <div className="forti-chip-box">
+            {haHeartbeatInterfaces.map((item) => (
+              <span className="forti-chip" key={item}>
+                {item}
+                <button type="button" className="forti-chip-remove" onClick={() => removeHaHeartbeatInterface(item)} aria-label={`移除 ${item}`}>×</button>
+              </span>
+            ))}
+            <button type="button" className="forti-chip-add" onClick={() => setHaHeartbeatModalOpen(true)}>+</button>
+          </div>
           <label>Device Priority</label><input className="form-control form-control-sm" defaultValue="128" />
-          <label>Override</label><FortiSwitch checked={false} />
+          <label>Override</label><FortiSwitch checked={haOverride} onChange={() => setHaOverride((enabled) => !enabled)} label={haOverride ? '啟用' : '停用'} />
         </div>
         <div className="forti-band">叢集成員</div>
         <table className="forti-table"><thead><tr><th>設備</th><th>序號</th><th>角色</th><th>狀態</th></tr></thead><tbody>
           <tr><td>FortiGate 90D</td><td>FGT90D3Z16007115</td><td>Primary</td><td><span className="forti-pill success">同步</span></td></tr>
         </tbody></table>
         <button className="btn forti-apply" onClick={() => setLastAction('HA 設定已套用')}>套用</button>
+        {haHeartbeatModalOpen && (
+          <div className="forti-modal-backdrop" role="presentation">
+            <div className="forti-modal" role="dialog" aria-modal="true" aria-label="新增心跳介面">
+              <div className="forti-modal-title">新增心跳介面</div>
+              <label>介面名稱</label>
+              <select className="form-select form-select-sm" value={haHeartbeatDraft} onChange={(event) => setHaHeartbeatDraft(event.target.value)}>
+                {['internal1', 'internal2', 'internal3', 'internal4', 'internal5', 'wan1', 'wan2', 'dmz'].map((item) => <option key={item}>{item}</option>)}
+              </select>
+              <div className="forti-modal-actions">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setHaHeartbeatModalOpen(false)}>取消</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={addHaHeartbeatInterface}>新增</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -1153,7 +1824,7 @@ export default function FortigateView() {
       <div className="forti-form-page">
         <div className="forti-section-title">SNMP</div>
         <div className="forti-form-section">
-          <label>SNMP Agent</label><FortiSwitch checked />
+          <label>SNMP Agent</label><FortiSwitch checked={snmpAgent} onChange={() => setSnmpAgent((enabled) => !enabled)} label={snmpAgent ? '啟用' : '停用'} />
           <label>說明</label><input className="form-control form-control-sm" defaultValue="FortiGate 90D firewall" />
           <label>位置</label><input className="form-control form-control-sm" defaultValue="KAG Network Room" />
           <label>聯絡人</label><input className="form-control form-control-sm" defaultValue="admin@example.local" />
@@ -1171,7 +1842,7 @@ export default function FortigateView() {
     return (
       <div className="forti-table-page">
         <div className="forti-section-title">替換訊息</div>
-        <div className="forti-toolbar"><button className="btn btn-sm btn-outline-secondary"><i className="bx bx-refresh"></i></button><button className="btn btn-sm forti-btn">自訂訊息</button><select className="form-select form-select-sm forti-select"><option>所有訊息群組</option><option>Authentication</option><option>SSL-VPN</option><option>Web Filter</option></select></div>
+        <div className="forti-toolbar"><button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '替換訊息' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('替換訊息')}><i className="bx bx-refresh"></i></button><button className="btn btn-sm forti-btn" onClick={() => setLastAction('替換訊息自訂視窗已開啟')}>自訂訊息</button><select className="form-select form-select-sm forti-select"><option>所有訊息群組</option><option>Authentication</option><option>SSL-VPN</option><option>Web Filter</option></select></div>
         <table className="forti-table"><thead><tr><th>訊息群組</th><th>訊息名稱</th><th>格式</th><th>自訂</th></tr></thead><tbody>
           <tr><td>Authentication</td><td>Login failed</td><td>HTML</td><td><span className="forti-pill muted">否</span></td></tr>
           <tr><td>SSL-VPN</td><td>SSL-VPN login page</td><td>HTML</td><td><span className="forti-pill success">是</span></td></tr>
@@ -1192,9 +1863,9 @@ export default function FortigateView() {
         </div>
         <div className="forti-band">更新設定</div>
         <div className="forti-form-section">
-          <label>更新伺服器位置</label><div className="forti-segments"><button className="active">自動</button><button>指定</button></div>
+          <label>更新伺服器位置</label><div className="forti-segments">{['自動', '指定'].map((mode) => <button key={mode} className={fortiguardUpdateMode === mode ? 'active' : ''} onClick={() => setFortiguardUpdateMode(mode)}>{mode}</button>)}</div>
           <label>通訊協定</label><select className="form-select form-select-sm" defaultValue="HTTPS"><option>HTTPS</option><option>UDP/8888</option></select>
-          <label>Proxy</label><FortiSwitch checked={false} />
+          <label>Proxy</label><FortiSwitch checked={fortiguardProxy} onChange={() => setFortiguardProxy((enabled) => !enabled)} label={fortiguardProxy ? '啟用' : '停用'} />
         </div>
         <button className="btn forti-apply" onClick={() => setLastAction('FortiGuard 更新檢查已送出')}>立即檢查更新</button>
       </div>
@@ -1211,15 +1882,15 @@ export default function FortigateView() {
           <label>HTTPS 管理連接埠</label><input className="form-control form-control-sm" defaultValue="443" />
           <label>SSH 管理連接埠</label><input className="form-control form-control-sm" defaultValue="22" />
           <label>管理閒置逾時</label><input className="form-control form-control-sm" defaultValue="480 分鐘" />
-          <label>中央管理</label><FortiSwitch checked />
-          <label>自動備份設定</label><FortiSwitch checked={false} />
+          <label>中央管理</label><FortiSwitch checked={advancedCentralManagement} onChange={() => setAdvancedCentralManagement((enabled) => !enabled)} label={advancedCentralManagement ? '啟用' : '停用'} />
+          <label>自動備份設定</label><FortiSwitch checked={advancedAutoBackup} onChange={() => setAdvancedAutoBackup((enabled) => !enabled)} label={advancedAutoBackup ? '啟用' : '停用'} />
         </div>
         <div className="forti-band">管理介面安全性</div>
         <div className="forti-access-grid">
-          <label><input type="checkbox" checked readOnly /> 強制 HTTPS</label>
-          <label><input type="checkbox" checked readOnly /> 登入失敗鎖定</label>
-          <label><input type="checkbox" readOnly /> 允許弱密碼</label>
-          <label><input type="checkbox" checked readOnly /> 記錄管理操作</label>
+          <label><input type="checkbox" checked={advancedChecks.forceHttps} onChange={() => setAdvancedChecks((checks) => ({ ...checks, forceHttps: !checks.forceHttps }))} /> 強制 HTTPS</label>
+          <label><input type="checkbox" checked={advancedChecks.loginLock} onChange={() => setAdvancedChecks((checks) => ({ ...checks, loginLock: !checks.loginLock }))} /> 登入失敗鎖定</label>
+          <label><input type="checkbox" checked={advancedChecks.weakPassword} onChange={() => setAdvancedChecks((checks) => ({ ...checks, weakPassword: !checks.weakPassword }))} /> 允許弱密碼</label>
+          <label><input type="checkbox" checked={advancedChecks.logAdmin} onChange={() => setAdvancedChecks((checks) => ({ ...checks, logAdmin: !checks.logAdmin }))} /> 記錄管理操作</label>
         </div>
         <button className="btn forti-apply" onClick={() => setLastAction('進階設定已套用')}>套用</button>
       </div>
@@ -1236,30 +1907,24 @@ export default function FortigateView() {
     )
   }
 
-  function renderGenericTable(title: string) {
-    return (
-      <div className="forti-table-page">
-        <div className="forti-section-title">{title}</div>
-        <div className="forti-toolbar"><button className="btn btn-sm forti-btn">新增</button><button className="btn btn-sm btn-outline-secondary">編輯</button><button className="btn btn-sm btn-outline-secondary">刪除</button><input className="form-control form-control-sm" placeholder="搜尋" /></div>
-        <table className="forti-table">
-          <thead><tr><th>名稱</th><th>類型</th><th>狀態</th><th>參照</th></tr></thead>
-          <tbody>
-            <tr><td>{title}_default</td><td>系統預設</td><td><span className="forti-pill success">啟用</span></td><td>1</td></tr>
-            <tr><td>{title}_custom</td><td>自訂</td><td><span className="forti-pill muted">停用</span></td><td>0</td></tr>
-          </tbody>
-        </table>
-      </div>
-    )
+  function renderGenericTable(activePage: FortiPage, title: string) {
+    return renderManagedTable(activePage, title)
   }
 
-  function renderGenericSettings(title: string) {
+  function renderGenericSettings(activePage: FortiPage, title: string) {
+    const setting = getGenericSetting(activePage)
     return (
       <div className="forti-form-page">
         <div className="forti-section-title">{title}</div>
         <div className="forti-form-section">
-          <label>狀態</label><FortiSwitch checked />
+          <label>狀態</label><FortiSwitch checked={setting.enabled} onChange={() => updateGenericSetting(activePage, { enabled: !setting.enabled })} label={setting.enabled ? '啟用' : '停用'} />
           <label>名稱</label><input className="form-control form-control-sm" defaultValue={title} />
-          <label>模式</label><div className="forti-segments"><button className="active">啟用</button><button>停用</button></div>
+          <label>模式</label><div className="forti-segments">{(['啟用', '停用'] as const).map((mode) => <button key={mode} className={setting.mode === mode ? 'active' : ''} onClick={() => updateGenericSetting(activePage, { mode, enabled: mode === '啟用' })}>{mode}</button>)}</div>
+          <label>安全選項</label>
+          <div className="forti-check-row">
+            <label><input type="checkbox" checked={setting.strictHttps} onChange={() => updateGenericSetting(activePage, { strictHttps: !setting.strictHttps })} /> 強制 HTTPS</label>
+            <label><input type="checkbox" checked={setting.logAdmin} onChange={() => updateGenericSetting(activePage, { logAdmin: !setting.logAdmin })} /> 記錄管理操作</label>
+          </div>
           <label>備註</label><input className="form-control form-control-sm" defaultValue="FortiGate 90D 風格設定項目" />
         </div>
         <button className="btn forti-apply" onClick={() => setLastAction(`${title} 設定已套用`)}>套用</button>
@@ -1271,9 +1936,9 @@ export default function FortigateView() {
     if (page === 'dashboard') return renderDashboard()
     if (page === 'fabricPhysical') return renderFabric()
     if (page === 'fabricLogical') return renderLogicalFabric()
-    if (page === 'fabricAutomation') return renderFabricList('安全織網 - 自動化', ['Stitch_FortiGuard_Warning', 'Admin_Login_Notify'])
+    if (page === 'fabricAutomation') return renderFabricAutomation()
     if (page === 'fabricSettings') return renderFabricSettings()
-    if (page === 'fabricConnectors') return renderFabricList('Fabric Connectors', ['FortiAnalyzer', 'FortiManager', 'FortiClient EMS', 'AWS SDN Connector'])
+    if (page === 'fabricConnectors') return renderManagedTable(page, 'Fabric Connectors')
     if (page.startsWith('fortiview')) return renderFortiView(page)
     if (page === 'interfaces') return renderInterfaces()
     if (page === 'dns') return renderDns()
@@ -1282,7 +1947,7 @@ export default function FortigateView() {
     if (page === 'policyIpv4') return renderPolicy()
     if (page === 'antivirus') return renderAntivirus()
     if (page === 'sslVpnSettings') return renderSslVpn()
-    if (page === 'sslVpnPortal') return renderGenericSettings('SSL-VPN 入口頁面')
+    if (page === 'sslVpnPortal') return renderGenericSettings(page, 'SSL-VPN 入口頁面')
     if (page === 'userDefinition') return renderUserDefinition()
     if (page === 'userGroups') return renderUserGroups()
     if (page === 'ha') return renderHa()
@@ -1290,10 +1955,10 @@ export default function FortigateView() {
     if (page === 'replacementMessages') return renderReplacementMessages()
     if (page === 'fortiguard') return renderFortiGuard()
     if (page === 'advancedSettings') return renderAdvancedSettings()
-    if (page.startsWith('logs')) return renderLogs(getPageLabel(page))
+    if (page.startsWith('logs')) return renderLogs(page)
     if (page.startsWith('monitor')) return renderMonitor()
-    if (['sdwan', 'sdwanSla', 'sdwanRules', 'systemAdmins', 'adminProfiles', 'certificates', 'addresses', 'services', 'schedules', 'webFilter', 'dnsFilter', 'appControl', 'ips', 'forticlientCompliance', 'sslInspection', 'ratingOverrides', 'customSignatures', 'vpnOverlay', 'ipsecTunnels', 'ipsecWizard', 'ipsecTemplates', 'guestManagement', 'deviceInventory', 'deviceGroups', 'ldap', 'radius', 'authSettings', 'fortitoken', 'wifiController'].includes(page)) return renderGenericTable(getPageLabel(page))
-    return renderGenericSettings(getPageLabel(page))
+    if (['sdwan', 'sdwanSla', 'sdwanRules', 'systemAdmins', 'adminProfiles', 'certificates', 'addresses', 'services', 'schedules', 'webFilter', 'dnsFilter', 'appControl', 'ips', 'forticlientCompliance', 'sslInspection', 'ratingOverrides', 'customSignatures', 'vpnOverlay', 'ipsecTunnels', 'ipsecWizard', 'ipsecTemplates', 'guestManagement', 'deviceInventory', 'deviceGroups', 'ldap', 'radius', 'authSettings', 'fortitoken', 'wifiController'].includes(page)) return renderGenericTable(page, getPageLabel(page))
+    return renderGenericSettings(page, getPageLabel(page))
   }
 
   const activePageLabel = getPageLabel(page)
@@ -1383,7 +2048,6 @@ export default function FortigateView() {
                         onClick={() => setPage(item.id)}
                       >
                         <span>{item.label}</span>
-                        {item.favorite && <i className="bx bx-star"></i>}
                       </button>
                     ))}
                   </div>
@@ -1398,6 +2062,12 @@ export default function FortigateView() {
             {renderActivePage()}
           </main>
         </div>
+        {fortiNotice && (
+          <div className="forti-toast">
+            <i className="bx bx-check-circle"></i>
+            <span>{fortiNotice}</span>
+          </div>
+        )}
       </div>
     </div>
   )

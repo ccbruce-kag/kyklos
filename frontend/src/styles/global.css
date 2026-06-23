@@ -731,11 +731,6 @@
   color:#fff;
   font-weight:800;
 }
-.forti-sub-item .bx-star {
-  color:#9a9a9a;
-  justify-self:end;
-}
-.forti-sub-item.active .bx-star { color:#fff; }
 .forti-search {
   height:38px;
   display:flex;
@@ -773,6 +768,33 @@
   color:#205d27;
   border-radius:3px;
   font-weight:700;
+}
+.forti-toast {
+  position:fixed;
+  right:1.25rem;
+  bottom:1.25rem;
+  z-index:21000;
+  display:flex;
+  align-items:center;
+  gap:.55rem;
+  max-width:min(380px, calc(100vw - 2rem));
+  padding:.75rem .9rem;
+  border:1px solid #b7ddbf;
+  border-left:5px solid #10961f;
+  background:#fff;
+  color:#205d27;
+  box-shadow:0 12px 28px rgba(0,0,0,.18);
+  font-weight:800;
+}
+.forti-toast i { color:#10961f; font-size:1.25rem; }
+.forti-toast span { min-width:0; overflow-wrap:anywhere; }
+.btn.is-refreshing i,
+.forti-top-icon.is-refreshing i {
+  animation:forti-spin .7s linear infinite;
+}
+@keyframes forti-spin {
+  from { transform:rotate(0deg); }
+  to { transform:rotate(360deg); }
 }
 .forti-workspace-grid {
   display:grid;
@@ -889,13 +911,7 @@
 .forti-table-page,
 .forti-fabric-page { margin:.85rem; padding:.85rem; }
 .forti-section-title {
-  margin:-.85rem -.85rem .85rem;
-  padding:.55rem .75rem;
-  background:#f8f8f8;
-  border-bottom:1px solid #dcdcdc;
-  color:#333;
-  font-size:.95rem;
-  font-weight:800;
+  display:none;
 }
 .forti-toolbar {
   display:flex;
@@ -990,6 +1006,22 @@
   font-weight:900;
   cursor:pointer;
 }
+.forti-chip-remove {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:18px;
+  height:18px;
+  margin-left:.15rem;
+  border:0;
+  border-radius:50%;
+  background:rgba(31,107,39,.12);
+  color:#1f6b27;
+  font-weight:900;
+  line-height:1;
+  cursor:pointer;
+}
+.forti-chip-remove:hover { background:#d3483c; color:#fff; }
 .forti-access-grid {
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(135px, 1fr));
@@ -1000,6 +1032,13 @@
 }
 .forti-access-grid label,
 .forti-check-row label { margin:0; }
+.forti-check-inline {
+  display:flex;
+  align-items:center;
+  gap:.45rem;
+  color:#333;
+  font-weight:700;
+}
 .forti-switch {
   display:inline-block;
   position:relative;
@@ -1103,6 +1142,11 @@
   font-weight:800;
 }
 .forti-table tr:nth-child(even) td { background:#fafafa; }
+.forti-selectable-table tbody tr { cursor:pointer; }
+.forti-selectable-table tbody tr.is-selected td {
+  background:#e8f6eb;
+  box-shadow:inset 3px 0 0 #10961f;
+}
 .forti-pill {
   display:inline-flex;
   align-items:center;
@@ -1284,13 +1328,34 @@
   border:1px solid #d7d7d7;
   background:#fafafa;
 }
+.forti-group-card strong {
+  color:#333;
+  font-weight:800;
+}
+.forti-packet-grid {
+  display:grid;
+  grid-template-columns:repeat(2, minmax(260px, 1fr));
+  gap:.85rem;
+  align-items:start;
+}
+.forti-compact-form {
+  grid-template-columns:110px minmax(0, 1fr);
+  gap:.55rem .75rem;
+  margin-top:.35rem;
+}
 .forti-capture-box {
+  display:flex;
+  flex-direction:column;
+  gap:.35rem;
   min-height:150px;
   margin:.75rem 0;
   padding:.85rem;
   border:1px dashed #bcbcbc;
   background:#fafafa;
   color:#777;
+}
+.forti-capture-box strong {
+  color:#333;
 }
 .forti-topology {
   display:flex;
@@ -1473,6 +1538,8 @@
   .forti-fabric-page { margin:.65rem; padding:.65rem; }
   .forti-section-title { margin:-.65rem -.65rem .65rem; }
   .forti-form-section { grid-template-columns:1fr; }
+  .forti-packet-grid { grid-template-columns:1fr; }
+  .forti-compact-form { grid-template-columns:1fr; }
   .forti-form-section > label { text-align:left; }
   .forti-apply { margin-left:0; width:100%; }
   .forti-split { grid-template-columns:1fr; }

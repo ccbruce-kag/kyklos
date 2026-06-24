@@ -1622,6 +1622,8 @@
   .forti-form-section { grid-template-columns:1fr; }
   .forti-packet-grid { grid-template-columns:1fr; }
   .forti-feature-grid { grid-template-columns:1fr; }
+  .forti-profile-summary { grid-template-columns:1fr; }
+  .forti-two-inputs { grid-template-columns:1fr; }
   .forti-compact-form { grid-template-columns:1fr; }
   .forti-form-section > label { text-align:left; }
   .forti-apply { margin-left:0; width:100%; }

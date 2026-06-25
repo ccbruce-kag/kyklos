@@ -732,12 +732,46 @@
   font-weight:800;
 }
 .forti-search {
-  height:38px;
+  min-height:38px;
   display:flex;
   align-items:center;
   justify-content:center;
+  gap:.35rem;
+  padding:.35rem;
   color:#777;
   border-top:1px solid #d8d8d8;
+}
+.forti-search > button {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  min-height:28px;
+  border:0;
+  background:transparent;
+  color:#777;
+}
+.forti-search.is-open {
+  justify-content:stretch;
+  background:#fff;
+}
+.forti-search.is-open input {
+  min-width:0;
+  width:100%;
+  height:28px;
+  padding:.2rem .35rem;
+  border:1px solid #cfcfcf;
+  font-size:.72rem;
+}
+.forti-search.is-open button {
+  width:28px;
+  flex:0 0 28px;
+}
+.forti-menu-empty {
+  padding:.65rem .75rem;
+  color:#777;
+  font-size:.72rem;
+  text-align:center;
 }
 .forti-main {
   min-width:0;
@@ -1597,6 +1631,16 @@
   border:1px solid #d8d8d8;
   background:#fff;
 }
+.forti-logical-button {
+  width:100%;
+  text-align:left;
+  cursor:pointer;
+}
+.forti-logical-button.is-selected {
+  outline:2px solid #10961f;
+  outline-offset:-2px;
+  background:#f6fff7;
+}
 .forti-logical-card {
   position:relative;
   min-height:78px;
@@ -1810,6 +1854,7 @@
 .forti-guest-vouchers section,
 .forti-token-strip section,
 .forti-route-health section,
+.forti-route-health button,
 .forti-session-dashboard section {
   min-width:0;
   padding:.75rem;
@@ -1864,7 +1909,7 @@
 .forti-device-card,
 .forti-ssid-layout section,
 .forti-ap-radio section,
-.forti-vlan-lanes section,
+.forti-vlan-lanes button,
 .forti-log-status-grid section,
 .forti-log-device-strip section,
 .forti-log-security-board section,
@@ -1928,20 +1973,82 @@
   background:#f9f9f9;
 }
 .forti-port-tile {
+  display:grid;
+  grid-template-columns:1fr;
+  align-items:center;
+  justify-items:center;
+  gap:.05rem;
   min-height:34px;
   border:1px solid #c9c9c9;
   background:#fff;
   color:#555;
   font-weight:900;
 }
+.forti-port-tile small {
+  min-width:16px;
+  padding:0 .2rem;
+  border-radius:2px;
+  background:#ececec;
+  color:#666;
+  font-size:.58rem;
+  line-height:1.2;
+}
+.forti-port-tile.is-configured {
+  border-color:#9eb6c8;
+  background:#f4f9fc;
+}
 .forti-port-tile.is-active {
   border-color:#10961f;
   background:#e8f8eb;
   color:#11711d;
 }
-.forti-vlan-lanes section {
+.forti-port-tile.is-selected {
+  outline:2px solid #f0b400;
+  outline-offset:-2px;
+  box-shadow:0 0 0 2px rgba(240,180,0,.12);
+}
+.forti-switch-port-modal {
+  width:min(720px, calc(100vw - 32px));
+}
+.forti-form-grid {
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:.75rem .9rem;
+}
+.forti-form-grid label {
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:.35rem;
+  color:#555;
+  font-weight:700;
+}
+.forti-form-grid label > span {
+  font-size:.78rem;
+}
+.forti-form-grid-wide {
+  grid-column:1 / -1;
+}
+.forti-vlan-lanes button {
   position:relative;
   overflow:hidden;
+  cursor:pointer;
+  text-align:left;
+}
+.forti-vlan-lanes button.is-disabled .forti-vlan-bar {
+  background:linear-gradient(90deg, #a8a8a8, #d2d2d2);
+}
+.forti-vlan-lanes button.is-selected {
+  outline:2px solid #10961f;
+  outline-offset:-2px;
+  background:#f6fff7;
+}
+.forti-vlan-lanes small {
+  display:block;
+  margin-top:.28rem;
+  color:#1f6b27;
+  font-size:.7rem;
+  font-weight:800;
 }
 .forti-vlan-bar {
   height:8px;
@@ -1965,6 +2072,7 @@
 }
 .forti-log-flow-line {
   position:relative;
+  overflow:hidden;
   text-align:center;
   color:#1f6b27;
   font-weight:900;
@@ -1974,12 +2082,19 @@
   content:"";
   position:absolute;
   top:50%;
-  width:28px;
+  width:calc(50% - 3.5rem);
   height:2px;
   background:#10961f;
 }
-.forti-log-flow-line::before { left:-28px; }
-.forti-log-flow-line::after { right:-28px; }
+.forti-log-flow-line::before { left:.7rem; }
+.forti-log-flow-line::after { right:.7rem; }
+.forti-log-flow-line b {
+  position:relative;
+  z-index:1;
+  display:inline-flex;
+  padding:.1rem .4rem;
+  background:#fff;
+}
 .forti-log-timeline {
   display:grid;
   gap:.45rem;
@@ -2012,14 +2127,53 @@
   gap:.25rem;
 }
 .forti-log-security-board .forti-mini-chart { height:74px; }
-.forti-vpn-monitor-map section {
+.forti-route-health button {
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:.55rem .9rem;
+  align-items:center;
+  text-align:left;
+  cursor:pointer;
+}
+.forti-route-health button small {
+  grid-column:1 / -1;
+  margin-top:.15rem;
+  display:flex;
+  flex-wrap:wrap;
+  gap:.3rem .7rem;
+  align-items:center;
+}
+.forti-route-health button small b,
+.forti-route-health button small em {
+  font-style:normal;
+  font-weight:700;
+}
+.forti-route-health button small b { color:#333; }
+.forti-route-health button small em { color:#777; }
+.forti-route-health button.is-selected {
+  outline:2px solid #10961f;
+  outline-offset:-2px;
+  background:#f6fff7;
+}
+.forti-vpn-monitor-map button {
   display:grid;
   grid-template-columns:auto minmax(0, 1fr) auto;
   gap:.45rem .65rem;
   align-items:center;
+  min-width:0;
+  padding:.75rem;
+  border:1px solid #d7d7d7;
+  background:#fff;
+  text-align:left;
+  cursor:pointer;
 }
 .forti-vpn-monitor-map span {
   grid-column:2 / 3;
+}
+.forti-vpn-monitor-map button.is-selected {
+  outline:2px solid #10961f;
+  outline-offset:-2px;
+  background:#f6fff7;
 }
 .forti-vpn-monitor-map b {
   grid-row:1 / span 2;

@@ -294,6 +294,38 @@ type FortiManagedRow = {
   selected?: boolean
 }
 
+type FortiSwitchPortFields = {
+  port: string
+  mode: 'Access' | 'Trunk'
+  nativeVlan: string
+  allowedVlans: string
+  role: 'Access' | 'AP/PoE' | 'Uplink'
+  poe: boolean
+  purpose: string
+}
+
+function parseFortiSwitchPort(row: FortiManagedRow): FortiSwitchPortFields {
+  const mode = row.type.includes('Trunk') ? 'Trunk' : 'Access'
+  const nativeVlan = row.description.match(/Native VLAN\s*([0-9]+)/i)?.[1] || row.description.match(/VLAN[_\s-]*([0-9]+)/i)?.[1] || '40'
+  const allowedVlans = row.description.match(/Allowed VLANs\s*([^/]+)/i)?.[1]?.trim() || nativeVlan
+  const role = row.type.includes('Trunk') || row.description.includes('Uplink') ? 'Uplink' : row.type.includes('AP') || /PoE enabled/i.test(row.description) ? 'AP/PoE' : 'Access'
+  const poe = /PoE enabled/i.test(row.description)
+  const purpose = row.description.split('/').map((part) => part.trim()).filter(Boolean).pop() || 'Client'
+  return { port: row.name, mode, nativeVlan, allowedVlans, role, poe, purpose }
+}
+
+function buildFortiSwitchPortRow(row: FortiManagedRow, fields: FortiSwitchPortFields): FortiManagedRow {
+  const type = fields.mode === 'Trunk' ? 'Trunk Port' : fields.role === 'AP/PoE' ? 'AP Port' : 'Access Port'
+  const vlanText = fields.mode === 'Trunk' ? `Allowed VLANs ${fields.allowedVlans || fields.nativeVlan}` : `Native VLAN ${fields.nativeVlan || '1'}`
+  const poeText = `PoE ${fields.poe ? 'enabled' : 'disabled'}`
+  return {
+    ...row,
+    name: fields.port,
+    type,
+    description: `${vlanText} / ${poeText} / ${fields.purpose || fields.role}`,
+  }
+}
+
 const fortiGroups: FortiMenuSection[] = [
   {
     id: 'dashboard',
@@ -1071,6 +1103,8 @@ export default function FortigateView() {
   const [lastRefreshAt, setLastRefreshAt] = useState('09:21:43')
   const [noticeMenuOpen, setNoticeMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [sideSearchOpen, setSideSearchOpen] = useState(false)
+  const [sideSearch, setSideSearch] = useState('')
   const [fabricNodes, setFabricNodes] = useState<FortiFabricNode[]>(() => readFortiStorage('fortigate.fabric.nodes', initialFabricNodes))
   const [fabricLinks, setFabricLinks] = useState<FortiFabricLink[]>(() => readFortiStorage('fortigate.fabric.links', initialFabricLinks))
   const [fabricConnectMode, setFabricConnectMode] = useState(false)
@@ -1170,6 +1204,7 @@ export default function FortigateView() {
   const [ipsecWizardGateway, setIpsecWizardGateway] = useState('203.0.113.10')
   const [ipsecWizardError, setIpsecWizardError] = useState('')
   const [ipsecWizardMode, setIpsecWizardMode] = useState<'list' | 'create'>(() => readFortiStorage('fortigate.ipsec.wizardMode', 'list'))
+  const [ipsecWizardEnabled, setIpsecWizardEnabled] = useState(true)
   const [sslBookmarkModalOpen, setSslBookmarkModalOpen] = useState(false)
   const [sslBookmarkDraft, setSslBookmarkDraft] = useState('Intranet-Web')
 
@@ -1177,6 +1212,20 @@ export default function FortigateView() {
     () => interfaces.find((item) => item.name === selectedInterface) || interfaces[0],
     [interfaces, selectedInterface],
   )
+
+  const visibleFortiGroups = useMemo(() => {
+    const query = sideSearch.trim().toLowerCase()
+    if (!query) return fortiGroups
+    return fortiGroups
+      .map((section) => {
+        const sectionMatches = section.label.toLowerCase().includes(query)
+        const children = section.children?.filter((child) => `${section.label} ${child.label}`.toLowerCase().includes(query))
+        if (sectionMatches) return section
+        if (children?.length) return { ...section, children }
+        return null
+      })
+      .filter((section): section is FortiMenuSection => Boolean(section))
+  }, [sideSearch])
 
   useEffect(() => {
     if (!fortiNotice) return undefined
@@ -1753,13 +1802,32 @@ export default function FortigateView() {
     const selectedId = selectedManagedIds[activePage] || rows[0]?.id || ''
     const selected = rows.find((row) => row.id === selectedId) || rows[0]
     if (mode === 'edit' && !selected) return
-    setManagedDraft(mode === 'edit' && selected ? selected : {
+    const usedPorts = new Set(rows.map((row) => Number(row.name.match(/^port(\d+)$/i)?.[1])).filter((port) => Number.isFinite(port)))
+    const nextPort = Array.from({ length: 24 }, (_, index) => index + 1).find((port) => !usedPorts.has(port)) || rows.length + 1
+    const addDraft = activePage === 'wifiSwitchPorts' ? {
+      id: `${activePage}-${Date.now()}`,
+      name: `port${nextPort}`,
+      type: 'Access Port',
+      enabled: true,
+      description: 'Native VLAN 40 / PoE disabled / New device',
+      selected: false,
+    } : activePage === 'wifiSwitchVlans' ? {
+      id: `${activePage}-${Date.now()}`,
+      name: `VLAN_${100 + rows.length}`,
+      type: 'Switch VLAN',
+      enabled: true,
+      description: `Custom VLAN / 10.20.${100 + rows.length}.0/24`,
+      selected: false,
+    } : {
       id: `${activePage}-${Date.now()}`,
       name: `${title}_new`,
       type: '自訂',
       enabled: true,
       description: `${title} 自訂項目`,
       selected: false,
+    }
+    setManagedDraft(mode === 'edit' && selected ? selected : {
+      ...addDraft,
     })
     setManagedModal({ page: activePage, mode, title })
   }
@@ -1769,6 +1837,13 @@ export default function FortigateView() {
     const name = managedDraft.name.trim()
     if (!name) return
     const nextDraft = { ...managedDraft, name }
+    if (managedModal.page === 'wifiSwitchPorts') {
+      const duplicatedPort = getManagedRows(managedModal.page, managedModal.title).some((row) => row.id !== managedDraft.id && row.name.toLowerCase() === name.toLowerCase())
+      if (duplicatedPort) {
+        setLastAction(`Switch Ports 已存在 ${name}，請選擇其他 Port`)
+        return
+      }
+    }
     if (managedModal.mode === 'edit') {
       setManagedRowsForPage(managedModal.page, (rows) => rows.map((row) => row.id === managedDraft.id ? nextDraft : row))
     } else {
@@ -2054,7 +2129,7 @@ export default function FortigateView() {
         localSubnet: ipsecWizardLocalSubnet,
         remoteSubnet: ipsecWizardRemoteSubnet,
         phase: `${ipsecWizardType} / IKEv2 / ${ipsecWizardNatTraversal ? 'NAT-T' : 'No NAT-T'}`,
-        status: 'Down',
+        status: ipsecWizardEnabled ? 'Up' : 'Down',
       }
       setIpsecTunnels((items) => [...items, nextTunnel])
       setSelectedIpsecTunnelId(nextTunnel.id)
@@ -2919,6 +2994,69 @@ export default function FortigateView() {
 
   function renderManagedModalForPage(activePage: FortiPage, title: string) {
     if (managedModal?.page !== activePage) return null
+    if (activePage === 'wifiSwitchPorts') {
+      const fields = parseFortiSwitchPort(managedDraft)
+      const updatePortFields = (nextFields: Partial<FortiSwitchPortFields>) => {
+        setManagedDraft((draft) => buildFortiSwitchPortRow(draft, { ...parseFortiSwitchPort(draft), ...nextFields }))
+      }
+      return (
+        <div className="forti-modal-backdrop" role="presentation">
+          <div className="forti-modal forti-switch-port-modal" role="dialog" aria-modal="true" aria-label={managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}>
+            <div className="forti-modal-title">{managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}</div>
+            <div className="forti-form-grid">
+              <label>
+                <span>Port</span>
+                <select className="form-select form-select-sm" value={fields.port} onChange={(event) => updatePortFields({ port: event.target.value })}>
+                  {Array.from({ length: 24 }, (_, index) => <option key={index + 1} value={`port${index + 1}`}>{`port${index + 1}`}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Mode</span>
+                <select className="form-select form-select-sm" value={fields.mode} onChange={(event) => updatePortFields({ mode: event.target.value as FortiSwitchPortFields['mode'] })}>
+                  <option value="Access">Access</option>
+                  <option value="Trunk">Trunk</option>
+                </select>
+              </label>
+              {fields.mode === 'Trunk' ? (
+                <label>
+                  <span>Allowed VLANs</span>
+                  <input className="form-control form-control-sm" value={fields.allowedVlans} placeholder="40,60,90" onChange={(event) => updatePortFields({ allowedVlans: event.target.value })} />
+                </label>
+              ) : (
+                <label>
+                  <span>Native VLAN</span>
+                  <input className="form-control form-control-sm" value={fields.nativeVlan} placeholder="40" onChange={(event) => updatePortFields({ nativeVlan: event.target.value })} />
+                </label>
+              )}
+              <label>
+                <span>Role</span>
+                <select className="form-select form-select-sm" value={fields.role} onChange={(event) => updatePortFields({ role: event.target.value as FortiSwitchPortFields['role'] })}>
+                  <option value="Access">Access</option>
+                  <option value="AP/PoE">AP/PoE</option>
+                  <option value="Uplink">Uplink</option>
+                </select>
+              </label>
+              <label>
+                <span>PoE</span>
+                <FortiSwitch checked={fields.poe} onChange={() => updatePortFields({ poe: !fields.poe })} label={fields.poe ? '啟用' : '停用'} />
+              </label>
+              <label>
+                <span>狀態</span>
+                <FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={managedDraft.enabled ? '啟用' : '停用'} />
+              </label>
+              <label className="forti-form-grid-wide">
+                <span>用途</span>
+                <input className="form-control form-control-sm" value={fields.purpose} placeholder="PC / FAP221E-01 / Uplink" onChange={(event) => updatePortFields({ purpose: event.target.value })} />
+              </label>
+            </div>
+            <div className="forti-modal-actions">
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setManagedModal(null)}>取消</button>
+              <button type="button" className="btn btn-sm forti-btn" onClick={saveManagedRow}>儲存</button>
+            </div>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="forti-modal-backdrop" role="presentation">
         <div className="forti-modal" role="dialog" aria-modal="true" aria-label={managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}>
@@ -3085,17 +3223,48 @@ export default function FortigateView() {
     const title = getPageLabel(activePage)
     const rows = getFilteredManagedRows(activePage, title)
     const selectedId = selectedManagedIds[activePage] || rows[0]?.id || ''
+    const getVlanSummary = (row: FortiManagedRow) => {
+      const fields = parseFortiSwitchPort(row)
+      return fields.mode === 'Trunk' ? fields.allowedVlans : fields.nativeVlan
+    }
+    const getPortRole = (row: FortiManagedRow) => parseFortiSwitchPort(row).role
+    const topologyRows = getManagedRows('wifiSwitchTopology', 'WiFi / Switch 拓樸')
+    const portRows = getManagedRows('wifiSwitchPorts', 'Switch Ports')
+    const vlanRows = getManagedRows('wifiSwitchVlans', 'Switch VLANs')
 
     if (activePage === 'wifiSwitchTopology') {
       return (
         <div className="forti-fabric-page forti-wifi-topology-page">
           <div className="forti-section-title">{title}</div>
-          <div className="forti-topology">
-            <div className="forti-node root"><i className="bx bx-shield-quarter"></i><strong>FortiGate 90D</strong><span>FortiLink</span></div>
-            <div className="forti-link"></div>
-            <div className="forti-node"><i className="bx bx-transfer"></i><strong>FSW124E-01</strong><span>24 ports</span></div>
-            <div className="forti-link"></div>
-            <div className="forti-node"><i className="bx bx-wifi"></i><strong>FAP221E-01</strong><span>Staff-WiFi</span></div>
+          <div className="forti-logical-layout forti-wifi-logical">
+            <section className="forti-logical-column">
+              <div className="forti-logical-heading">FortiGate / FortiLink</div>
+              {topologyRows.slice(0, 1).map((row) => (
+                <button key={row.id} type="button" className={`forti-logical-card forti-logical-button ${row.id === selectedId ? 'is-selected' : ''}`} onClick={() => setSelectedManagedId(activePage, row.id)}>
+                  <i className="bx bx-shield-quarter"></i><strong>{row.name}</strong><span>{row.description}</span>
+                </button>
+              ))}
+              <div className="forti-logical-card"><i className="bx bx-network-chart"></i><strong>Switch VLANs</strong><span>{vlanRows.filter((row) => row.enabled).map((row) => row.name).join(' / ') || 'No active VLAN'}</span></div>
+            </section>
+            <section className="forti-logical-core">
+              <div className="forti-logical-device">
+                <i className="bx bx-transfer"></i>
+                <strong>{portRows.find((row) => row.description.includes('Uplink'))?.description.split('/').pop()?.trim() || 'Managed FortiSwitch'}</strong>
+                <span>{portRows.filter((row) => row.enabled).length} active switch ports / {vlanRows.filter((row) => row.enabled).length} active VLANs</span>
+              </div>
+              <div className="forti-logical-policy">
+                <span>Port Mapping</span>
+                {portRows.slice(0, 3).map((row) => <b key={row.id}>{row.name} {'>'} VLAN {getVlanSummary(row)} / {getPortRole(row)}</b>)}
+              </div>
+            </section>
+            <section className="forti-logical-column">
+              <div className="forti-logical-heading">Wireless Edge</div>
+              {topologyRows.slice(1).map((row) => (
+                <button key={row.id} type="button" className={`forti-logical-card forti-logical-button ${row.id === selectedId ? 'is-selected' : ''}`} onClick={() => setSelectedManagedId(activePage, row.id)}>
+                  <i className={row.type.includes('AP') ? 'bx bx-wifi' : 'bx bx-transfer'}></i><strong>{row.name}</strong><span>{row.description}</span>
+                </button>
+              ))}
+            </section>
           </div>
           {renderManagedActionBar(activePage, title, '搜尋拓樸節點')}
           <table className="forti-table forti-selectable-table"><thead><tr><th>鏈路</th><th>類型</th><th>狀態</th><th>說明</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{row.type}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? 'Online' : 'Offline'} /></td><td>{row.description}</td></tr>)}</tbody></table>
@@ -3111,12 +3280,35 @@ export default function FortigateView() {
           <div className="forti-port-grid">
             {Array.from({ length: 24 }, (_, index) => {
               const port = index + 1
-              const active = [1, 8, 12, 24].includes(port)
-              return <button key={port} type="button" className={`forti-port-tile ${active ? 'is-active' : ''}`} onClick={() => setLastAction(`Switch port${port} 已選取`)}>{port}</button>
+              const row = rows.find((item) => item.name.toLowerCase() === `port${port}`)
+              const fields = row ? parseFortiSwitchPort(row) : null
+              const selected = row?.id === selectedId
+              return (
+                <button
+                  key={port}
+                  type="button"
+                  className={`forti-port-tile ${row ? 'is-configured' : ''} ${row?.enabled ? 'is-active' : ''} ${selected ? 'is-selected' : ''}`}
+                  title={row ? `${row.name}: ${row.description}` : `port${port}: 尚未設定`}
+                  onClick={() => {
+                    if (row) {
+                      setSelectedManagedId(activePage, row.id)
+                      setLastAction(`已選取 ${row.name}`)
+                    } else {
+                      setLastAction(`port${port} 尚未建立設定`)
+                    }
+                  }}
+                >
+                  <span>{port}</span>
+                  {fields && <small>{fields.mode === 'Trunk' ? 'T' : fields.poe ? 'P' : 'A'}</small>}
+                </button>
+              )
             })}
           </div>
           {renderManagedActionBar(activePage, title, '搜尋 port / VLAN')}
-          <table className="forti-table forti-selectable-table"><thead><tr><th>Port</th><th>模式</th><th>狀態</th><th>VLAN / PoE / 用途</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{row.type}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td><td>{row.description}</td></tr>)}</tbody></table>
+          <table className="forti-table forti-selectable-table"><thead><tr><th>Port</th><th>Mode</th><th>VLAN</th><th>Role</th><th>PoE</th><th>狀態</th><th>用途</th></tr></thead><tbody>{rows.map((row) => {
+            const fields = parseFortiSwitchPort(row)
+            return <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{fields.mode}</td><td>{fields.mode === 'Trunk' ? fields.allowedVlans : fields.nativeVlan}</td><td>{fields.role}</td><td>{fields.poe ? '啟用' : '停用'}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td><td>{fields.purpose}</td></tr>
+          })}</tbody></table>
           {renderManagedModalForPage(activePage, title)}
         </div>
       )
@@ -3154,7 +3346,16 @@ export default function FortigateView() {
       return (
         <div className="forti-table-page forti-switch-vlan-page">
           <div className="forti-section-title">{title}</div>
-          <div className="forti-vlan-lanes">{rows.map((row) => <section key={row.id}><strong>{row.name}</strong><span>{row.description}</span><div className="forti-vlan-bar"></div></section>)}</div>
+          <div className="forti-vlan-lanes">
+            {rows.map((row) => (
+              <button key={row.id} type="button" className={`${row.id === selectedId ? 'is-selected' : ''} ${row.enabled ? 'is-active' : 'is-disabled'}`} onClick={() => setSelectedManagedId(activePage, row.id)}>
+                <strong>{row.name}</strong>
+                <span>{row.description}</span>
+                <small>{row.name === 'VLAN_40' ? 'port1, port24' : row.name === 'VLAN_60' ? 'port8, port24' : 'port24'}</small>
+                <div className="forti-vlan-bar"></div>
+              </button>
+            ))}
+          </div>
           {renderManagedActionBar(activePage, title, '搜尋 VLAN')}
           <table className="forti-table forti-selectable-table"><thead><tr><th>VLAN</th><th>類型</th><th>狀態</th><th>網段 / 用途</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{row.type}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td><td>{row.description}</td></tr>)}</tbody></table>
           {renderManagedModalForPage(activePage, title)}
@@ -3811,6 +4012,7 @@ export default function FortigateView() {
             <label>本地 / 遠端子網</label><div className="forti-two-inputs"><input className={`form-control form-control-sm ${ipsecWizardLocalSubnet && !isValidCidr(ipsecWizardLocalSubnet) ? 'is-invalid' : ''}`} value={ipsecWizardLocalSubnet} onChange={(event) => setIpsecWizardLocalSubnet(event.target.value)} /><input className={`form-control form-control-sm ${ipsecWizardRemoteSubnet && !isValidCidr(ipsecWizardRemoteSubnet) ? 'is-invalid' : ''}`} value={ipsecWizardRemoteSubnet} onChange={(event) => setIpsecWizardRemoteSubnet(event.target.value)} /></div>
             <label>Phase 2 Proposal</label><select className="form-select form-select-sm" defaultValue="AES256-SHA256"><option>AES256-SHA256</option><option>AES128-SHA256</option><option>AES256-SHA1</option></select>
             <label>Dead Peer Detection</label><select className="form-select form-select-sm" defaultValue="On idle"><option>On idle</option><option>On demand</option><option>停用</option></select>
+            <label>通道狀態</label><FortiSwitch checked={ipsecWizardEnabled} onChange={() => setIpsecWizardEnabled((enabled) => !enabled)} label={ipsecWizardEnabled ? '啟用' : '停用'} />
             <label></label>{ipsecWizardError && <div className="forti-alert-note">{ipsecWizardError}</div>}
           </div>
         )}
@@ -3957,20 +4159,30 @@ export default function FortigateView() {
 
   function renderMonitor(activePage: FortiPage) {
     if (activePage === 'monitorRouting') {
+      const selectedRoute = routes.find((route) => route.id === selectedRouteId) || routes[0]
       return (
         <div className="forti-table-page forti-monitor-routing">
           <div className="forti-section-title">路由監測</div>
           <div className="forti-route-health">
-            <section><strong>wan1</strong><span className="forti-pill success">Gateway Up</span><small>61.219.112.254 / 3 ms</small></section>
-            <section><strong>VLAN_40</strong><span className="forti-pill success">Connected</span><small>10.20.40.0/24</small></section>
-            <section><strong>SD-WAN SLA</strong><span className="forti-pill muted">1 Warning</span><small>Backup link degraded</small></section>
+            {routes.map((route) => (
+              <button
+                key={route.id}
+                type="button"
+                className={selectedRoute?.id === route.id ? 'is-selected' : ''}
+                onClick={() => setSelectedRouteId(route.id)}
+              >
+                <strong>{route.interfaceName}</strong>
+                <span className={route.enabled ? 'forti-pill success' : 'forti-pill muted'}>{route.enabled ? 'Active' : 'Inactive'}</span>
+                <small><b>{route.destination}</b><em>GW {route.gateway}</em><em>Distance {route.distance} / Priority {route.priority}</em></small>
+              </button>
+            ))}
           </div>
           <div className="forti-toolbar">
             <input className="form-control form-control-sm" placeholder="查詢目的 IP，例如 10.20.50.2" />
             <button className="btn btn-sm forti-btn" onClick={() => setLastAction('路由查詢已送出')}>查詢路由</button>
           </div>
-          <table className="forti-table"><thead><tr><th>Destination</th><th>Gateway</th><th>Interface</th><th>Distance</th><th>Priority</th><th>狀態</th></tr></thead><tbody>
-            {routes.map((route) => <tr key={route.id}><td>{route.destination}</td><td>{route.gateway}</td><td>{route.interfaceName}</td><td>{route.distance}</td><td>{route.priority}</td><td><span className={route.enabled ? 'forti-pill success' : 'forti-pill muted'}>{route.enabled ? 'Active' : 'Inactive'}</span></td></tr>)}
+          <table className="forti-table forti-selectable-table"><thead><tr><th>Destination</th><th>Gateway</th><th>Interface</th><th>Distance</th><th>Priority</th><th>狀態</th></tr></thead><tbody>
+            {routes.map((route) => <tr key={route.id} className={route.id === selectedRouteId ? 'is-selected' : ''} onClick={() => setSelectedRouteId(route.id)}><td>{route.destination}</td><td>{route.gateway}</td><td>{route.interfaceName}</td><td>{route.distance}</td><td>{route.priority}</td><td><span className={route.enabled ? 'forti-pill success' : 'forti-pill muted'}>{route.enabled ? 'Active' : 'Inactive'}</span></td></tr>)}
           </tbody></table>
         </div>
       )
@@ -3980,7 +4192,11 @@ export default function FortigateView() {
         <div className="forti-table-page forti-monitor-vpn">
           <div className="forti-section-title">VPN 監測</div>
           <div className="forti-vpn-monitor-map">
-            {ipsecTunnels.map((tunnel) => <section key={tunnel.id}><i className="bx bx-lock-open-alt"></i><strong>{tunnel.name}</strong><span>{tunnel.remoteGateway}</span><b className={tunnel.status === 'Up' ? 'is-up' : ''}>{tunnel.status}</b></section>)}
+            {ipsecTunnels.map((tunnel) => (
+              <button key={tunnel.id} type="button" className={tunnel.id === selectedIpsecTunnelId ? 'is-selected' : ''} onClick={() => setSelectedIpsecTunnelId(tunnel.id)}>
+                <i className="bx bx-lock-open-alt"></i><strong>{tunnel.name}</strong><span>{tunnel.remoteGateway}</span><b className={tunnel.status === 'Up' ? 'is-up' : ''}>{tunnel.status}</b>
+              </button>
+            ))}
           </div>
           <table className="forti-table forti-selectable-table"><thead><tr><th>VPN</th><th>Remote Gateway</th><th>Local Subnet</th><th>Remote Subnet</th><th>Phase</th><th>狀態</th></tr></thead><tbody>
             {ipsecTunnels.map((tunnel) => <tr key={tunnel.id} className={tunnel.id === selectedIpsecTunnelId ? 'is-selected' : ''} onClick={() => setSelectedIpsecTunnelId(tunnel.id)}><td>{tunnel.name}</td><td>{tunnel.remoteGateway}</td><td>{tunnel.localSubnet}</td><td>{tunnel.remoteSubnet}</td><td>{tunnel.phase}</td><td><span className={tunnel.status === 'Up' ? 'forti-pill success' : 'forti-pill muted'}>{tunnel.status}</span></td></tr>)}
@@ -4177,8 +4393,8 @@ export default function FortigateView() {
         </div>
         <div className="forti-body">
           <aside className="forti-side">
-            {fortiGroups.map((section) => {
-              const expanded = !!section.children?.length && openMenus.includes(section.id)
+            {visibleFortiGroups.map((section) => {
+              const expanded = !!section.children?.length && (openMenus.includes(section.id) || !!sideSearch.trim())
               const active = menuContainsPage(section, page)
               return (
               <div className="forti-menu-group" key={section.id}>
@@ -4210,7 +4426,29 @@ export default function FortigateView() {
               </div>
               )
             })}
-            <div className="forti-search"><i className="bx bx-search"></i></div>
+            {!visibleFortiGroups.length && <div className="forti-menu-empty">沒有符合的選單</div>}
+            <div className={`forti-search ${sideSearchOpen ? 'is-open' : ''}`}>
+              {sideSearchOpen ? (
+                <>
+                  <i className="bx bx-search"></i>
+                  <input
+                    autoFocus
+                    value={sideSearch}
+                    placeholder="搜尋選單"
+                    onChange={(event) => setSideSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        setSideSearch('')
+                        setSideSearchOpen(false)
+                      }
+                    }}
+                  />
+                  <button type="button" onClick={() => { setSideSearch(''); setSideSearchOpen(false) }} aria-label="關閉搜尋"><i className="bx bx-x"></i></button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setSideSearchOpen(true)} aria-label="搜尋 FortiGate 選單"><i className="bx bx-search"></i></button>
+              )}
+            </div>
           </aside>
           <main className="forti-main">
             <div className="forti-breadcrumb">{activePageLabel}</div>

@@ -1605,6 +1605,9 @@
   gap:1rem;
   align-items:stretch;
 }
+.forti-wifi-logical {
+  margin-bottom:1.45rem;
+}
 .forti-logical-column,
 .forti-logical-core {
   display:flex;
@@ -1685,14 +1688,50 @@
   text-align:center;
 }
 .forti-logical-device i { font-size:2.3rem; }
-.forti-logical-policy b {
-  display:block;
-  margin-top:.2rem;
-  padding:.28rem .45rem;
+.forti-linked-list {
+  display:grid;
+  gap:.28rem;
+  margin-top:.35rem;
+}
+.forti-linked-list button,
+.forti-logical-policy button {
+  width:100%;
   border:1px solid #cfd8cf;
   background:#f6fff7;
   color:#1d6f25;
+  text-align:left;
+  cursor:pointer;
+}
+.forti-linked-list button {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.45rem;
+  padding:.28rem .45rem;
+  font-size:.73rem;
+  font-weight:900;
+}
+.forti-linked-list button small {
+  color:#666;
+  font-size:.66rem;
+  font-weight:800;
+}
+.forti-linked-list button.is-disabled {
+  border-color:#d7d7d7;
+  background:#f7f7f7;
+  color:#777;
+}
+.forti-logical-policy button {
+  display:block;
+  margin-top:.2rem;
+  padding:.28rem .45rem;
   font-size:.76rem;
+  font-weight:800;
+}
+.forti-linked-list button:hover,
+.forti-logical-policy button:hover {
+  border-color:#10961f;
+  box-shadow:0 0 0 2px rgba(16,150,31,.08);
 }
 .forti-logical-flows {
   display:grid;

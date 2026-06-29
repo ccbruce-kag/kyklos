@@ -277,6 +277,15 @@ type FortiLogViewConfig = {
   rows: string[][]
 }
 
+type FortiNotification = {
+  id: string
+  title: string
+  source: string
+  detail: string
+  targetPage: FortiPage
+  icon: string
+}
+
 type FabricAutomationItem = {
   id: string
   name: string
@@ -641,6 +650,25 @@ const logTypeByPage: Partial<Record<FortiPage, string>> = {
   logsAntivirus: '防毒',
   logsDns: 'DNS查詢',
 }
+
+const fortiNotifications: FortiNotification[] = [
+  {
+    id: 'fortiguard-not-configured',
+    title: 'FortiGuard 連線尚未設定',
+    source: '系統 / FortiGuard',
+    detail: 'FortiGuard 更新與授權查詢尚未完成連線設定，請前往 FortiGuard 頁面確認更新模式、Proxy 與連線狀態。',
+    targetPage: 'fortiguard',
+    icon: 'bx bx-error-circle',
+  },
+  {
+    id: 'ssl-vpn-login',
+    title: '有 1 筆 VPN 使用者登入紀錄',
+    source: 'SSL-VPN / VPN事件',
+    detail: '偵測到 vpn_user 通過 SSL-VPN 驗證登入。可前往 VPN 事件記錄檢視登入時間、來源與驗證結果。',
+    targetPage: 'logsVpn',
+    icon: 'bx bx-info-circle',
+  },
+]
 
 const fortiLogViews: Partial<Record<FortiPage, FortiLogViewConfig>> = {
   logsTrafficForward: {
@@ -1651,6 +1679,16 @@ export default function FortigateView() {
       return isOpen ? items.filter((item) => item !== section.id) : [...items, section.id]
     })
     if (!menuContainsPage(section, page)) setPage(section.children[0].id)
+  }
+
+  function openFortiNotification(notification: FortiNotification) {
+    const targetSection = fortiGroups.find((section) => menuContainsPage(section, notification.targetPage))
+    if (targetSection?.children?.length) {
+      setOpenMenus((items) => items.includes(targetSection.id) ? items : [...items, targetSection.id])
+    }
+    setPage(notification.targetPage)
+    setNoticeMenuOpen(false)
+    setLastAction(`${notification.title}｜${notification.detail} 已前往「${getPageLabel(notification.targetPage)}」。`)
   }
 
   function getPageLabel(activePage: FortiPage) {
@@ -4394,14 +4432,20 @@ export default function FortigateView() {
               >
                 <i className="bx bx-bell"></i>
                 <span>資訊通知</span>
-                <strong className="forti-badge">2</strong>
+                <strong className="forti-badge">{fortiNotifications.length}</strong>
               </button>
               {noticeMenuOpen && (
                 <div className="forti-top-dropdown forti-notice-dropdown">
                   <div className="forti-dropdown-title">資訊通知</div>
-                  <button type="button"><i className="bx bx-error-circle"></i><span>FortiGuard 連線尚未設定</span><small>系統</small></button>
-                  <button type="button"><i className="bx bx-info-circle"></i><span>有 1 筆 VPN 使用者登入紀錄</span><small>SSL-VPN</small></button>
-                  <button type="button" className="forti-dropdown-footer" onClick={() => setLastAction('已開啟 FortiGate 通知中心')}>檢視所有通知</button>
+                  {fortiNotifications.map((notification) => (
+                    <button key={notification.id} type="button" className="forti-notice-item" onClick={() => openFortiNotification(notification)}>
+                      <i className={notification.icon}></i>
+                      <span>{notification.title}</span>
+                      <small>{notification.source} · 前往 {getPageLabel(notification.targetPage)}</small>
+                      <em>{notification.detail}</em>
+                    </button>
+                  ))}
+                  <button type="button" className="forti-dropdown-footer" onClick={() => openFortiNotification({ id: 'all-notices', title: '檢視所有通知', source: '系統事件', detail: '開啟系統事件頁面，集中檢視管理登入、設定異動與系統層級通知。', targetPage: 'logsSystem', icon: 'bx bx-list-ul' })}>檢視所有通知</button>
                 </div>
               )}
             </div>

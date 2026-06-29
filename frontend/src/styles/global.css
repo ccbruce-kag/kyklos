@@ -623,6 +623,21 @@
   font-size:.64rem;
   margin-top:-.2rem;
 }
+.forti-notice-dropdown {
+  width:340px;
+}
+.forti-top-dropdown button.forti-notice-item {
+  align-items:start;
+}
+.forti-top-dropdown button.forti-notice-item em {
+  grid-column:2;
+  display:block;
+  color:#555;
+  font-size:.68rem;
+  font-style:normal;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+}
 .forti-dropdown-footer {
   border-top:1px solid #e5e5e5 !important;
   justify-content:center;

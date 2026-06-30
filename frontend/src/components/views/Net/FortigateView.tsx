@@ -286,6 +286,53 @@ type FortiNotification = {
   icon: string
 }
 
+type FortiComplianceProfile = {
+  name: string
+  enabled: boolean
+  emsServer: string
+  telemetryPort: string
+  certificate: string
+  defaultAction: 'Warn' | 'Quarantine' | 'Block'
+  quarantineVlan: string
+  graceMinutes: string
+}
+
+type FortiComplianceCheck = {
+  id: string
+  name: string
+  category: string
+  condition: string
+  enabled: boolean
+  failureAction: 'Warn' | 'Quarantine' | 'Block'
+}
+
+type FortiComplianceEndpoint = {
+  id: string
+  device: string
+  user: string
+  os: string
+  ems: string
+  posture: 'Compliant' | 'Warning' | 'At Risk'
+  tags: string
+  lastSeen: string
+}
+
+type FortiThreatMapEvent = {
+  id: string
+  time: string
+  country: string
+  countryCode: string
+  sourceIp: string
+  destination: string
+  threat: string
+  severity: 'Critical' | 'High' | 'Medium' | 'Low'
+  action: 'Blocked' | 'Quarantined' | 'Allowed'
+  count: number
+  ageMinutes: number
+  x: number
+  y: number
+}
+
 type FabricAutomationItem = {
   id: string
   name: string
@@ -626,6 +673,31 @@ const initialRoutes: FortiRoute[] = [
   { id: 1, enabled: true, destination: '0.0.0.0/0', gateway: '61.219.112.254', interfaceName: 'wan1', distance: '10', priority: '0' },
   { id: 2, enabled: true, destination: '10.20.50.0/24', gateway: '10.20.40.254', interfaceName: 'VLAN_40', distance: '10', priority: '0' },
   { id: 3, enabled: false, destination: '192.168.88.0/24', gateway: '10.20.40.253', interfaceName: 'VLAN_40', distance: '20', priority: '5' },
+]
+
+const initialComplianceProfile: FortiComplianceProfile = {
+  name: 'EMS_Compliance',
+  enabled: true,
+  emsServer: 'ems.kag.local',
+  telemetryPort: '8013',
+  certificate: 'Fortinet_Factory',
+  defaultAction: 'Quarantine',
+  quarantineVlan: 'VLAN_QUARANTINE',
+  graceMinutes: '15',
+}
+
+const initialComplianceChecks: FortiComplianceCheck[] = [
+  { id: 'ems-registration', name: 'EMS 註冊狀態', category: 'Registration', condition: '端點必須註冊至指定 EMS', enabled: true, failureAction: 'Block' },
+  { id: 'realtime-protection', name: '即時防護', category: 'Security Posture', condition: 'FortiClient AV 與即時防護必須啟用', enabled: true, failureAction: 'Quarantine' },
+  { id: 'vulnerability', name: '弱點風險', category: 'Vulnerability', condition: 'Critical = 0 且 High <= 2', enabled: true, failureAction: 'Quarantine' },
+  { id: 'os-patch', name: '作業系統更新', category: 'Patch', condition: '安全性更新不得超過 30 天', enabled: true, failureAction: 'Warn' },
+  { id: 'telemetry', name: 'Telemetry 狀態', category: 'Telemetry', condition: '最後回報時間不得超過 10 分鐘', enabled: true, failureAction: 'Warn' },
+]
+
+const initialComplianceEndpoints: FortiComplianceEndpoint[] = [
+  { id: 'endpoint-01', device: 'KAG-NB-021', user: 'lin.tingwei', os: 'Windows 11', ems: 'Registered', posture: 'Compliant', tags: 'EMS-Registered, AV-On', lastSeen: '1 分鐘前' },
+  { id: 'endpoint-02', device: 'KAG-PC-118', user: 'finance01', os: 'Windows 10', ems: 'Registered', posture: 'Warning', tags: 'Patch-Required', lastSeen: '4 分鐘前' },
+  { id: 'endpoint-03', device: 'BYOD-MAC-07', user: 'guest.user', os: 'macOS 15', ems: 'Unregistered', posture: 'At Risk', tags: 'Unregistered, Quarantine', lastSeen: '12 分鐘前' },
 ]
 
 const fortiLogs = [
@@ -1061,6 +1133,15 @@ const fortiViewConfigs: Partial<Record<FortiPage, FortiViewConfig>> = {
   },
 }
 
+const fortiThreatMapEvents: FortiThreatMapEvent[] = [
+  { id: 'threat-1', time: '09:21:38', country: 'United States', countryCode: 'US', sourceIp: '198.51.100.42', destination: 'wan1:443', threat: 'Apache.Log4j.RCE', severity: 'Critical', action: 'Blocked', count: 18, ageMinutes: 0, x: 18, y: 38 },
+  { id: 'threat-2', time: '09:20:51', country: 'Netherlands', countryCode: 'NL', sourceIp: '203.0.113.77', destination: 'wan1:22', threat: 'SSH.Brute.Force', severity: 'High', action: 'Blocked', count: 32, ageMinutes: 1, x: 48, y: 31 },
+  { id: 'threat-3', time: '09:19:26', country: 'Russian Federation', countryCode: 'RU', sourceIp: '192.0.2.146', destination: 'mail:25', threat: 'Botnet.C2.Callback', severity: 'Critical', action: 'Quarantined', count: 7, ageMinutes: 2, x: 63, y: 27 },
+  { id: 'threat-4', time: '09:18:44', country: 'Brazil', countryCode: 'BR', sourceIp: '198.51.100.118', destination: 'wan1:3389', threat: 'RDP.Login.Attempt', severity: 'Medium', action: 'Blocked', count: 11, ageMinutes: 3, x: 34, y: 68 },
+  { id: 'threat-5', time: '09:17:12', country: 'Singapore', countryCode: 'SG', sourceIp: '203.0.113.208', destination: 'dns:53', threat: 'Suspicious.DNS.Query', severity: 'Medium', action: 'Allowed', count: 5, ageMinutes: 4, x: 76, y: 61 },
+  { id: 'threat-6', time: '09:15:03', country: 'Australia', countryCode: 'AU', sourceIp: '192.0.2.94', destination: 'ssl-vpn:10443', threat: 'SSLVPN.Probe', severity: 'Low', action: 'Blocked', count: 3, ageMinutes: 6, x: 84, y: 75 },
+]
+
 function MiniChart({ tone = 'blue', spike = false }: { tone?: 'blue' | 'orange' | 'gray'; spike?: boolean }) {
   return (
     <div className={`forti-mini-chart is-${tone}`}>
@@ -1215,6 +1296,14 @@ export default function FortigateView() {
   const [dnsFilterModalMode, setDnsFilterModalMode] = useState<'add' | 'edit' | null>(null)
   const [dnsFilterDraft, setDnsFilterDraft] = useState<FortiDnsFilterRule>(initialDnsFilters[0])
   const [sslInspectionMode, setSslInspectionMode] = useState(() => readFortiStorage('fortigate.sslInspection.mode', 'Certificate Inspection'))
+  const [complianceProfile, setComplianceProfile] = useState<FortiComplianceProfile>(() => readFortiStorage('fortigate.compliance.profile', initialComplianceProfile))
+  const [complianceChecks, setComplianceChecks] = useState<FortiComplianceCheck[]>(() => readFortiStorage('fortigate.compliance.checks', initialComplianceChecks))
+  const [complianceEndpoints] = useState<FortiComplianceEndpoint[]>(initialComplianceEndpoints)
+  const [selectedComplianceEndpointId, setSelectedComplianceEndpointId] = useState(initialComplianceEndpoints[0].id)
+  const [threatMapSearch, setThreatMapSearch] = useState('')
+  const [threatMapSeverity, setThreatMapSeverity] = useState<'All' | FortiThreatMapEvent['severity']>('All')
+  const [threatMapTimeRange, setThreatMapTimeRange] = useState('5 分鐘')
+  const [selectedThreatMapEventId, setSelectedThreatMapEventId] = useState(fortiThreatMapEvents[0].id)
   const [customSignatureText, setCustomSignatureText] = useState(() => readFortiStorage('fortigate.customSignature.text', 'F-SBID( --name "KAG_TEST_SIG"; --protocol tcp; --service HTTP; --pattern "test-malware"; --context packet; )'))
   const [customSignatureRows, setCustomSignatureRows] = useState<FortiSecurityProfileRule[]>(() => readFortiStorage('fortigate.customSignature.rows', securityProfileRows.customSignatures))
   const [selectedCustomSignatureId, setSelectedCustomSignatureId] = useState(() => readFortiStorage('fortigate.customSignature.selectedId', securityProfileRows.customSignatures[0]?.id || 0))
@@ -1245,6 +1334,16 @@ export default function FortigateView() {
     () => interfaces.find((item) => item.name === selectedInterface) || interfaces[0],
     [interfaces, selectedInterface],
   )
+
+  const filteredThreatMapEvents = useMemo(() => {
+    const query = threatMapSearch.trim().toLowerCase()
+    const maxAge = threatMapTimeRange === '現在' ? 1 : threatMapTimeRange === '5 分鐘' ? 5 : threatMapTimeRange === '1 小時' ? 60 : 1440
+    return fortiThreatMapEvents
+      .filter((event) => event.ageMinutes <= maxAge)
+      .filter((event) => threatMapSeverity === 'All' || event.severity === threatMapSeverity)
+      .filter((event) => !query || [event.country, event.countryCode, event.sourceIp, event.destination, event.threat, event.action]
+        .some((value) => value.toLowerCase().includes(query)))
+  }, [threatMapSearch, threatMapSeverity, threatMapTimeRange])
 
   const visibleFortiGroups = useMemo(() => {
     const query = sideSearch.trim().toLowerCase()
@@ -1300,6 +1399,8 @@ export default function FortigateView() {
   useEffect(() => { writeFortiStorage('fortigate.dnsFilter.enabled', dnsFilterProfileEnabled) }, [dnsFilterProfileEnabled])
   useEffect(() => { writeFortiStorage('fortigate.dnsFilter.rules', dnsFilters) }, [dnsFilters])
   useEffect(() => { writeFortiStorage('fortigate.sslInspection.mode', sslInspectionMode) }, [sslInspectionMode])
+  useEffect(() => { writeFortiStorage('fortigate.compliance.profile', complianceProfile) }, [complianceProfile])
+  useEffect(() => { writeFortiStorage('fortigate.compliance.checks', complianceChecks) }, [complianceChecks])
   useEffect(() => { writeFortiStorage('fortigate.customSignature.text', customSignatureText) }, [customSignatureText])
   useEffect(() => { writeFortiStorage('fortigate.customSignature.rows', customSignatureRows) }, [customSignatureRows])
   useEffect(() => { writeFortiStorage('fortigate.customSignature.selectedId', selectedCustomSignatureId) }, [selectedCustomSignatureId])
@@ -2676,7 +2777,110 @@ export default function FortigateView() {
     return <div className="forti-empty-chart">無結果</div>
   }
 
+  function exportThreatMapEvents() {
+    const columns = ['Time', 'Country', 'Source IP', 'Threat', 'Severity', 'Destination', 'Action', 'Count']
+    const escapeCsv = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`
+    const rows = filteredThreatMapEvents.map((event) => [event.time, event.country, event.sourceIp, event.threat, event.severity, event.destination, event.action, event.count])
+    const content = [columns, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n')
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'fortigate-threat-events.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+    setLastAction(`已匯出 ${filteredThreatMapEvents.length} 筆資安威脅事件`)
+  }
+
+  function renderSecurityThreatMap() {
+    const selectedEvent = filteredThreatMapEvents.find((event) => event.id === selectedThreatMapEventId) || filteredThreatMapEvents[0]
+    const totalEvents = filteredThreatMapEvents.reduce((sum, event) => sum + event.count, 0)
+    const blockedEvents = filteredThreatMapEvents.filter((event) => event.action !== 'Allowed').reduce((sum, event) => sum + event.count, 0)
+    const criticalEvents = filteredThreatMapEvents.filter((event) => event.severity === 'Critical').reduce((sum, event) => sum + event.count, 0)
+    const countries = [...filteredThreatMapEvents]
+      .sort((left, right) => right.count - left.count)
+      .slice(0, 5)
+    const maxCountryCount = Math.max(...countries.map((event) => event.count), 1)
+    const destination = { x: 72, y: 47 }
+
+    return (
+      <div className="forti-threat-page">
+        <div className="forti-threat-toolbar">
+          <div className="forti-threat-heading">
+            <span className="forti-threat-heading-icon"><i className="bx bx-shield-quarter"></i></span>
+            <div><strong>資安威脅地圖</strong><span>全球來源威脅與阻擋事件</span></div>
+          </div>
+          <div className="forti-threat-filters">
+            <label className="forti-threat-search"><i className="bx bx-search"></i><input value={threatMapSearch} onChange={(event) => setThreatMapSearch(event.target.value)} placeholder="搜尋國家、IP 或威脅" /></label>
+            <select value={threatMapSeverity} onChange={(event) => setThreatMapSeverity(event.target.value as typeof threatMapSeverity)} aria-label="嚴重性">
+              <option value="All">全部嚴重性</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
+            </select>
+            <select value={threatMapTimeRange} onChange={(event) => setThreatMapTimeRange(event.target.value)} aria-label="時間範圍">
+              <option>現在</option><option>5 分鐘</option><option>1 小時</option><option>24 小時</option>
+            </select>
+            <button type="button" className={`forti-threat-icon-button ${refreshingArea === '資安威脅地圖' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('資安威脅地圖')} title="重新整理"><i className="bx bx-refresh"></i></button>
+          </div>
+        </div>
+
+        <div className="forti-threat-metrics">
+          <article><span>偵測事件</span><strong>{totalEvents}</strong><small>所選時間範圍</small></article>
+          <article className="is-danger"><span>Critical</span><strong>{criticalEvents}</strong><small>需優先處理</small></article>
+          <article className="is-success"><span>已阻擋 / 隔離</span><strong>{blockedEvents}</strong><small>{totalEvents ? Math.round((blockedEvents / totalEvents) * 100) : 0}% 防護率</small></article>
+          <article className="is-neutral"><span>來源國家</span><strong>{new Set(filteredThreatMapEvents.map((event) => event.countryCode)).size}</strong><small>外部威脅來源</small></article>
+        </div>
+
+        <div className="forti-threat-layout">
+          <section className="forti-threat-map-panel">
+            <header><div><strong>即時攻擊來源</strong><span>選取標記可查看事件詳細資料</span></div><div className="forti-threat-legend"><span className="critical">Critical</span><span className="high">High</span><span className="medium">Medium</span><span className="low">Low</span></div></header>
+            <div className="forti-world-map">
+              <div className="forti-map-grid"></div>
+              <div className="forti-continent north-america"></div><div className="forti-continent south-america"></div><div className="forti-continent europe"></div><div className="forti-continent africa"></div><div className="forti-continent asia"></div><div className="forti-continent australia"></div>
+              {filteredThreatMapEvents.map((event) => {
+                const dx = destination.x - event.x
+                const dy = destination.y - event.y
+                const distance = Math.sqrt((dx * dx) + (dy * dy))
+                const angle = Math.atan2(dy, dx) * (180 / Math.PI)
+                return <span key={`line-${event.id}`} className={`forti-threat-route is-${event.severity.toLowerCase()}`} style={{ left: `${event.x}%`, top: `${event.y}%`, width: `${distance}%`, transform: `rotate(${angle}deg)` }}></span>
+              })}
+              <div className="forti-threat-destination" style={{ left: `${destination.x}%`, top: `${destination.y}%` }}><i className="bx bx-shield-quarter"></i><span>FortiGate 90D</span></div>
+              {filteredThreatMapEvents.map((event) => (
+                <button type="button" key={event.id} className={`forti-threat-marker is-${event.severity.toLowerCase()} ${selectedEvent?.id === event.id ? 'is-selected' : ''}`} style={{ left: `${event.x}%`, top: `${event.y}%` }} onClick={() => setSelectedThreatMapEventId(event.id)} title={`${event.country}: ${event.threat}`}>
+                  <span>{event.count}</span><b>{event.countryCode}</b>
+                </button>
+              ))}
+              {!filteredThreatMapEvents.length && <div className="forti-threat-map-empty">目前篩選條件沒有事件</div>}
+            </div>
+          </section>
+
+          <aside className="forti-threat-side-panel">
+            <section className="forti-threat-detail">
+              <header><strong>事件詳細資料</strong>{selectedEvent && <span className={`forti-threat-severity is-${selectedEvent.severity.toLowerCase()}`}>{selectedEvent.severity}</span>}</header>
+              {selectedEvent ? <>
+                <h4>{selectedEvent.threat}</h4>
+                <dl><div><dt>來源</dt><dd>{selectedEvent.sourceIp}</dd></div><div><dt>國家/地區</dt><dd>{selectedEvent.country}</dd></div><div><dt>目的</dt><dd>{selectedEvent.destination}</dd></div><div><dt>動作</dt><dd>{selectedEvent.action}</dd></div><div><dt>最近發生</dt><dd>{selectedEvent.time}</dd></div></dl>
+                <button type="button" onClick={() => { setPage('logsIntrusion'); setLastAction(`已前往查看 ${selectedEvent.threat} 的入侵防護記錄`) }}>查看相關日誌 <i className="bx bx-right-arrow-alt"></i></button>
+              </> : <div className="forti-threat-no-selection">請選擇一筆威脅事件</div>}
+            </section>
+            <section className="forti-threat-countries">
+              <header><strong>主要來源國家</strong><span>事件次數</span></header>
+              {countries.map((event) => <button type="button" key={event.id} onClick={() => setSelectedThreatMapEventId(event.id)} className={selectedEvent?.id === event.id ? 'is-selected' : ''}><b>{event.countryCode}</b><span><strong>{event.country}</strong><i><em style={{ width: `${(event.count / maxCountryCount) * 100}%` }}></em></i></span><small>{event.count}</small></button>)}
+            </section>
+          </aside>
+        </div>
+
+        <section className="forti-threat-events">
+          <header><div><strong>最近威脅事件</strong><span>{filteredThreatMapEvents.length} 筆來源記錄</span></div><button type="button" onClick={exportThreatMapEvents}>匯出 <i className="bx bx-download"></i></button></header>
+          <div className="forti-threat-table-wrap"><table className="forti-table forti-selectable-table"><thead><tr><th>時間</th><th>來源國家</th><th>來源 IP</th><th>威脅</th><th>嚴重性</th><th>目的</th><th>動作</th><th>次數</th></tr></thead><tbody>
+            {filteredThreatMapEvents.map((event) => <tr key={event.id} className={selectedEvent?.id === event.id ? 'is-selected' : ''} onClick={() => setSelectedThreatMapEventId(event.id)}><td>{event.time}</td><td><b className="forti-country-code">{event.countryCode}</b> {event.country}</td><td>{event.sourceIp}</td><td>{event.threat}</td><td><span className={`forti-threat-severity is-${event.severity.toLowerCase()}`}>{event.severity}</span></td><td>{event.destination}</td><td><span className={`forti-threat-action is-${event.action.toLowerCase()}`}>{event.action}</span></td><td>{event.count}</td></tr>)}
+            {!filteredThreatMapEvents.length && <tr><td colSpan={8} className="forti-table-empty">目前篩選條件沒有威脅事件</td></tr>}
+          </tbody></table></div>
+          <footer>Updated: {lastRefreshAt}</footer>
+        </section>
+      </div>
+    )
+  }
+
   function renderFortiView(activePage: FortiPage) {
+    if (activePage === 'fortiviewSecurityMap') return renderSecurityThreatMap()
     const config = fortiViewConfigs[activePage] || {
       title: `FortiView - ${getPageLabel(activePage)}`,
       columns: ['名稱', '類別', '位元組', '連線數'],
@@ -3805,36 +4009,90 @@ export default function FortigateView() {
       )
     }
     if (activePage === 'forticlientCompliance') {
+      const endpointSearch = search.trim().toLowerCase()
+      const filteredEndpoints = complianceEndpoints.filter((endpoint) => !endpointSearch || `${endpoint.device} ${endpoint.user} ${endpoint.os} ${endpoint.ems} ${endpoint.posture} ${endpoint.tags}`.toLowerCase().includes(endpointSearch))
+      const selectedEndpoint = complianceEndpoints.find((endpoint) => endpoint.id === selectedComplianceEndpointId) || complianceEndpoints[0]
+      const compliantCount = complianceEndpoints.filter((endpoint) => endpoint.posture === 'Compliant').length
+      const warningCount = complianceEndpoints.filter((endpoint) => endpoint.posture === 'Warning').length
+      const atRiskCount = complianceEndpoints.filter((endpoint) => endpoint.posture === 'At Risk').length
       return (
-        <div className="forti-form-page">
+        <div className="forti-form-page forti-compliance-page">
           <div className="forti-section-title">{title}</div>
+
+          <section className="forti-compliance-profile">
+            <div>
+              <span className="forti-panel-kicker">Endpoint compliance profile</span>
+              <input className="form-control form-control-sm" value={complianceProfile.name} onChange={(event) => setComplianceProfile((profile) => ({ ...profile, name: event.target.value }))} />
+              <p>依 FortiClient EMS 回報的端點註冊、弱點、即時防護與更新狀態決定網路存取權限。</p>
+            </div>
+            <div className="forti-compliance-profile-status">
+              <span>設定檔狀態</span>
+              <FortiSwitch checked={complianceProfile.enabled} onChange={() => setComplianceProfile((profile) => ({ ...profile, enabled: !profile.enabled }))} label={complianceProfile.enabled ? '啟用' : '停用'} />
+              <span className="forti-pill success">EMS Connected</span>
+            </div>
+          </section>
+
+          <div className="forti-compliance-metrics">
+            <section><i className="bx bx-devices"></i><span>受管理端點</span><strong>{complianceEndpoints.length}</strong><small>Telemetry endpoints</small></section>
+            <section><i className="bx bx-check-shield"></i><span>合規</span><strong>{compliantCount}</strong><small>允許正常存取</small></section>
+            <section><i className="bx bx-error"></i><span>需要處理</span><strong>{warningCount}</strong><small>警告或寬限中</small></section>
+            <section><i className="bx bx-lock-alt"></i><span>高風險</span><strong>{atRiskCount}</strong><small>隔離或阻擋</small></section>
+          </div>
+
           <div className="forti-compliance-layout">
-            <section className="forti-group-card">
-              <strong>FortiClient EMS 連線</strong>
-              <div className="forti-form-section forti-compact-form">
-                <label>EMS Server</label><input className="form-control form-control-sm" defaultValue="ems.kag.local" />
-                <label>Telemetry Port</label><input className="form-control form-control-sm" defaultValue="8013" />
-                <label>同步狀態</label><span className="forti-pill success">Connected</span>
+            <section className="forti-compliance-panel">
+              <div className="forti-compliance-panel-title"><div><i className="bx bx-server"></i><strong>FortiClient EMS 連線</strong></div><span className="forti-pill success">Connected</span></div>
+              <div className="forti-compliance-fields">
+                <label><span>EMS Server</span><input className="form-control form-control-sm" value={complianceProfile.emsServer} onChange={(event) => setComplianceProfile((profile) => ({ ...profile, emsServer: event.target.value }))} /></label>
+                <label><span>Telemetry Port</span><input className="form-control form-control-sm" value={complianceProfile.telemetryPort} onChange={(event) => setComplianceProfile((profile) => ({ ...profile, telemetryPort: event.target.value }))} /></label>
+                <label><span>Server Certificate</span><select className="form-select form-select-sm" value={complianceProfile.certificate} onChange={(event) => setComplianceProfile((profile) => ({ ...profile, certificate: event.target.value }))}><option>Fortinet_Factory</option><option>EMS_CA</option><option>Local_CA</option></select></label>
               </div>
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction(`EMS 連線測試成功：${complianceProfile.emsServer}:${complianceProfile.telemetryPort}`)}><i className="bx bx-plug"></i> 測試連線</button>
             </section>
-            <section className="forti-group-card">
-              <strong>不合規處置</strong>
-              <div className="forti-form-section forti-compact-form">
-                <label>預設動作</label><select className="form-select form-select-sm" defaultValue="Warn"><option>Warn</option><option>Quarantine</option><option>Block</option></select>
-                <label>隔離 VLAN</label><input className="form-control form-control-sm" defaultValue="VLAN_QUARANTINE" />
+
+            <section className="forti-compliance-panel">
+              <div className="forti-compliance-panel-title"><div><i className="bx bx-shield-quarter"></i><strong>不合規處置</strong></div><span>Policy enforcement</span></div>
+              <div className="forti-compliance-fields">
+                <label><span>預設動作</span><select className="form-select form-select-sm" value={complianceProfile.defaultAction} onChange={(event) => setComplianceProfile((profile) => ({ ...profile, defaultAction: event.target.value as FortiComplianceProfile['defaultAction'] }))}><option>Warn</option><option>Quarantine</option><option>Block</option></select></label>
+                <label><span>隔離 VLAN</span><input className="form-control form-control-sm" value={complianceProfile.quarantineVlan} onChange={(event) => setComplianceProfile((profile) => ({ ...profile, quarantineVlan: event.target.value }))} /></label>
+                <label><span>寬限時間（分鐘）</span><input className="form-control form-control-sm" type="number" min="0" value={complianceProfile.graceMinutes} onChange={(event) => setComplianceProfile((profile) => ({ ...profile, graceMinutes: event.target.value }))} /></label>
               </div>
+              <div className="forti-compliance-action-flow"><span className="is-good">Compliant</span><i className="bx bx-right-arrow-alt"></i><span className="is-warn">Warning</span><i className="bx bx-right-arrow-alt"></i><span className="is-risk">{complianceProfile.defaultAction}</span></div>
             </section>
           </div>
-          <div className="forti-band">合規條件</div>
-          <table className="forti-table"><thead><tr><th>規則</th><th>來源</th><th>檢查項目</th><th>不合規動作</th><th>狀態</th></tr></thead><tbody>
-            {rows.map((row) => <tr key={row.id}><td>{row.name}</td><td>{row.category}</td><td>{row.protocol}</td><td>{row.action}</td><td><span className={row.status === '啟用' ? 'forti-pill success' : 'forti-pill muted'}>{row.status}</span></td></tr>)}
-          </tbody></table>
-          <div className="forti-band">端點標籤</div>
-          <div className="forti-app-control-board">
-            <section><strong>Compliant</strong><span className="forti-pill success">允許</span><p>EMS registered, AV enabled, vulnerability low</p></section>
-            <section><strong>Needs Patch</strong><span className="forti-pill muted">警告</span><p>Medium vulnerability or missing patch</p></section>
-            <section><strong>At Risk</strong><span className="forti-pill danger">隔離</span><p>Unregistered endpoint or critical vulnerability</p></section>
-          </div>
+
+          <section className="forti-compliance-section">
+            <div className="forti-compliance-section-heading"><div><strong>合規檢查條件</strong><span>啟用需要由 EMS 回報並參與存取判斷的端點條件。</span></div><b>{complianceChecks.filter((check) => check.enabled).length}/{complianceChecks.length} enabled</b></div>
+            <div className="forti-compliance-checks">
+              {complianceChecks.map((check) => (
+                <article key={check.id} className={check.enabled ? 'is-enabled' : ''}>
+                  <div><span>{check.category}</span><strong>{check.name}</strong><p>{check.condition}</p></div>
+                  <select className="form-select form-select-sm" value={check.failureAction} onChange={(event) => setComplianceChecks((checks) => checks.map((item) => item.id === check.id ? { ...item, failureAction: event.target.value as FortiComplianceCheck['failureAction'] } : item))}><option>Warn</option><option>Quarantine</option><option>Block</option></select>
+                  <FortiSwitch checked={check.enabled} onChange={() => setComplianceChecks((checks) => checks.map((item) => item.id === check.id ? { ...item, enabled: !item.enabled } : item))} label={check.enabled ? '啟用' : '停用'} />
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="forti-compliance-section">
+            <div className="forti-compliance-section-heading"><div><strong>端點合規狀態</strong><span>從 EMS Telemetry 彙整的端點健康狀態與動態標籤。</span></div><span className="forti-pill success">Last sync 1 min ago</span></div>
+            <div className="forti-toolbar forti-compliance-toolbar">
+              <input className="form-control form-control-sm" placeholder="搜尋端點、使用者、OS 或標籤" value={search} onChange={(event) => updateTableSearch(activePage, event.target.value)} />
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => refreshFortiArea('FortiClient Compliance')}><i className="bx bx-refresh"></i> 同步 EMS</button>
+            </div>
+            <table className="forti-table forti-selectable-table"><thead><tr><th>端點</th><th>使用者</th><th>作業系統</th><th>EMS</th><th>合規狀態</th><th>動態標籤</th><th>最後回報</th></tr></thead><tbody>
+              {filteredEndpoints.map((endpoint) => <tr key={endpoint.id} className={endpoint.id === selectedComplianceEndpointId ? 'is-selected' : ''} onClick={() => setSelectedComplianceEndpointId(endpoint.id)}><td><strong>{endpoint.device}</strong></td><td>{endpoint.user}</td><td>{endpoint.os}</td><td>{endpoint.ems}</td><td><span className={endpoint.posture === 'Compliant' ? 'forti-pill success' : endpoint.posture === 'Warning' ? 'forti-pill muted' : 'forti-pill danger'}>{endpoint.posture}</span></td><td>{endpoint.tags}</td><td>{endpoint.lastSeen}</td></tr>)}
+              {!filteredEndpoints.length && <tr><td colSpan={7} className="forti-table-empty">沒有符合條件的端點</td></tr>}
+            </tbody></table>
+            {selectedEndpoint && (
+              <div className="forti-compliance-endpoint-detail">
+                <div><i className="bx bx-laptop"></i><span>目前選取</span><strong>{selectedEndpoint.device}</strong></div>
+                <div><span>使用者</span><strong>{selectedEndpoint.user}</strong></div>
+                <div><span>端點標籤</span><strong>{selectedEndpoint.tags}</strong></div>
+                <div><span>處置</span><strong>{selectedEndpoint.posture === 'Compliant' ? '允許存取' : selectedEndpoint.posture === 'Warning' ? `寬限 ${complianceProfile.graceMinutes} 分鐘` : complianceProfile.defaultAction}</strong></div>
+              </div>
+            )}
+          </section>
         </div>
       )
     }
@@ -4419,9 +4677,6 @@ export default function FortigateView() {
         <div className="forti-topbar">
           <div className="forti-brand"><span className="forti-logo">▦</span><strong>FortiGate 90D</strong><span>FGT90D3Z16007115</span></div>
           <div className="forti-top-actions" aria-label="FortiGate 工具列">
-            <button type="button" className="forti-top-icon" title="CLI Console"><i className="bx bx-terminal"></i></button>
-            <button type="button" className="forti-top-icon" title="全螢幕"><i className="bx bx-fullscreen"></i></button>
-            <button type="button" className="forti-top-icon" title="說明"><i className="bx bx-help-circle"></i></button>
             <div className="forti-top-menu-wrap">
               <button
                 type="button"

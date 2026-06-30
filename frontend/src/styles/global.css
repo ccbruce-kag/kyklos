@@ -1220,6 +1220,231 @@
   gap:.75rem;
   margin-bottom:.85rem;
 }
+.forti-compliance-page {
+  display:flex;
+  flex-direction:column;
+  gap:.9rem;
+}
+.forti-compliance-profile {
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:1rem;
+  align-items:center;
+  padding:.9rem 1rem;
+  border:1px solid #cfd8cf;
+  border-left:4px solid #10961f;
+  background:#fbfdfb;
+}
+.forti-compliance-profile > div:first-child {
+  display:grid;
+  grid-template-columns:minmax(180px, 320px);
+  gap:.35rem;
+}
+.forti-compliance-profile p {
+  max-width:760px;
+  margin:0;
+  color:#666;
+  font-size:.74rem;
+  line-height:1.45;
+}
+.forti-panel-kicker {
+  color:#25712d;
+  font-size:.67rem;
+  font-weight:900;
+  text-transform:uppercase;
+}
+.forti-compliance-profile-status {
+  display:grid;
+  gap:.45rem;
+  justify-items:end;
+}
+.forti-compliance-profile-status > span:first-child {
+  color:#666;
+  font-size:.7rem;
+  font-weight:800;
+}
+.forti-compliance-metrics {
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:.65rem;
+}
+.forti-compliance-metrics section {
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr);
+  gap:.18rem .55rem;
+  align-items:center;
+  min-width:0;
+  padding:.72rem .8rem;
+  border:1px solid #d8d8d8;
+  background:#fff;
+}
+.forti-compliance-metrics i {
+  grid-row:1 / 4;
+  color:#168326;
+  font-size:1.45rem;
+}
+.forti-compliance-metrics span,
+.forti-compliance-metrics small {
+  color:#666;
+  font-size:.68rem;
+}
+.forti-compliance-metrics strong {
+  color:#2f2f2f;
+  font-size:1.25rem;
+  line-height:1;
+}
+.forti-compliance-panel,
+.forti-compliance-section {
+  min-width:0;
+  padding:.85rem;
+  border:1px solid #d8d8d8;
+  background:#fff;
+}
+.forti-compliance-panel {
+  display:flex;
+  flex-direction:column;
+  gap:.75rem;
+}
+.forti-compliance-panel > button {
+  align-self:flex-start;
+}
+.forti-compliance-panel-title,
+.forti-compliance-section-heading {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+}
+.forti-compliance-panel-title > div {
+  display:flex;
+  align-items:center;
+  gap:.45rem;
+}
+.forti-compliance-panel-title i {
+  color:#168326;
+  font-size:1.15rem;
+}
+.forti-compliance-panel-title > span,
+.forti-compliance-section-heading span {
+  color:#6b6b6b;
+  font-size:.7rem;
+}
+.forti-compliance-fields {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:.65rem;
+}
+.forti-compliance-fields label {
+  display:flex;
+  flex-direction:column;
+  gap:.3rem;
+  min-width:0;
+}
+.forti-compliance-fields label > span {
+  color:#555;
+  font-size:.7rem;
+  font-weight:800;
+}
+.forti-compliance-action-flow {
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  gap:.35rem;
+  align-items:center;
+}
+.forti-compliance-action-flow span {
+  padding:.4rem;
+  border:1px solid #d4d4d4;
+  text-align:center;
+  font-size:.7rem;
+  font-weight:900;
+}
+.forti-compliance-action-flow .is-good { border-color:#9dcc9f; color:#167324; background:#f2fbf3; }
+.forti-compliance-action-flow .is-warn { border-color:#d6c98d; color:#776400; background:#fffdf2; }
+.forti-compliance-action-flow .is-risk { border-color:#e0aaa4; color:#9d2d24; background:#fff5f4; }
+.forti-compliance-section {
+  display:flex;
+  flex-direction:column;
+  gap:.75rem;
+}
+.forti-compliance-section-heading > div {
+  display:flex;
+  flex-direction:column;
+  gap:.15rem;
+}
+.forti-compliance-section-heading b {
+  color:#25712d;
+  font-size:.72rem;
+}
+.forti-compliance-checks {
+  display:grid;
+  gap:.45rem;
+}
+.forti-compliance-checks article {
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(120px, 155px) auto;
+  gap:.75rem;
+  align-items:center;
+  padding:.65rem .7rem;
+  border:1px solid #dedede;
+  border-left:3px solid #aaa;
+  background:#fafafa;
+}
+.forti-compliance-checks article.is-enabled {
+  border-left-color:#10961f;
+  background:#fbfefb;
+}
+.forti-compliance-checks article > div {
+  display:grid;
+  gap:.1rem;
+}
+.forti-compliance-checks article span {
+  color:#287630;
+  font-size:.64rem;
+  font-weight:900;
+  text-transform:uppercase;
+}
+.forti-compliance-checks article strong {
+  color:#333;
+  font-size:.78rem;
+}
+.forti-compliance-checks article p {
+  margin:0;
+  color:#666;
+  font-size:.7rem;
+}
+.forti-compliance-toolbar {
+  margin:0;
+}
+.forti-compliance-toolbar input {
+  max-width:420px;
+}
+.forti-compliance-endpoint-detail {
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:.55rem;
+  padding:.65rem;
+  border:1px solid #cfd8cf;
+  background:#f8fcf8;
+}
+.forti-compliance-endpoint-detail > div {
+  display:flex;
+  flex-direction:column;
+  gap:.15rem;
+  min-width:0;
+}
+.forti-compliance-endpoint-detail i {
+  color:#168326;
+  font-size:1.1rem;
+}
+.forti-compliance-endpoint-detail span {
+  color:#6b6b6b;
+  font-size:.65rem;
+}
+.forti-compliance-endpoint-detail strong {
+  color:#333;
+  font-size:.74rem;
+  overflow-wrap:anywhere;
+}
 .forti-spaced-note {
   margin-bottom:1rem;
 }
@@ -1494,6 +1719,313 @@
   transform:rotate(-8deg);
   background:#b8c3cc;
 }
+.forti-threat-page {
+  box-sizing:border-box;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  padding:.85rem;
+  overflow-x:hidden;
+  color:#30363b;
+  background:#f4f5f6;
+}
+.forti-threat-toolbar {
+  display:grid;
+  grid-template-columns:minmax(220px, auto) minmax(0, 1fr);
+  align-items:center;
+  gap:1rem;
+  margin-bottom:.75rem;
+  padding:.7rem .8rem;
+  border:1px solid #d6dadd;
+  background:#fff;
+}
+.forti-threat-heading,
+.forti-threat-filters,
+.forti-threat-search,
+.forti-threat-heading > div,
+.forti-threat-events > header,
+.forti-threat-map-panel > header,
+.forti-threat-detail > header,
+.forti-threat-countries > header {
+  display:flex;
+  align-items:center;
+}
+.forti-threat-heading { gap:.65rem; min-width:0; }
+.forti-threat-heading-icon {
+  display:grid;
+  place-items:center;
+  width:36px;
+  height:36px;
+  border:1px solid #edb7b0;
+  background:#fff1ef;
+  color:#b72d20;
+  font-size:1.25rem;
+}
+.forti-threat-heading > div { align-items:flex-start; flex-direction:column; }
+.forti-threat-heading strong { font-size:.94rem; }
+.forti-threat-heading span { color:#737b80; font-size:.7rem; }
+.forti-threat-filters { justify-content:flex-end; flex-wrap:wrap; gap:.45rem; min-width:0; }
+.forti-threat-search {
+  flex:1 1 220px;
+  width:auto;
+  max-width:320px;
+  min-width:180px;
+  height:32px;
+  gap:.35rem;
+  padding:0 .5rem;
+  border:1px solid #cfd4d8;
+  background:#fff;
+}
+.forti-threat-search:focus-within { border-color:#5b8fb1; box-shadow:0 0 0 2px rgba(55,123,167,.12); }
+.forti-threat-search i { color:#7a8389; }
+.forti-threat-search input { width:100%; min-width:0; border:0; outline:0; font-size:.75rem; }
+.forti-threat-filters select {
+  height:32px;
+  min-width:118px;
+  border:1px solid #cfd4d8;
+  background:#fff;
+  color:#3d4448;
+  font-size:.73rem;
+}
+.forti-threat-icon-button {
+  width:32px;
+  height:32px;
+  border:1px solid #cfd4d8;
+  background:#fff;
+  color:#4c555a;
+  font-size:1rem;
+}
+.forti-threat-icon-button:hover { border-color:#8f999f; background:#f6f7f7; }
+.forti-threat-metrics {
+  display:grid;
+  grid-template-columns:repeat(4, minmax(150px, 1fr));
+  gap:.65rem;
+  margin-bottom:.65rem;
+}
+.forti-threat-metrics article {
+  position:relative;
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:.12rem .5rem;
+  min-width:0;
+  padding:.65rem .75rem .65rem .9rem;
+  border:1px solid #d6dadd;
+  border-left:4px solid #4584ae;
+  background:#fff;
+}
+.forti-threat-metrics article.is-danger { border-left-color:#c43d32; }
+.forti-threat-metrics article.is-success { border-left-color:#288543; }
+.forti-threat-metrics article.is-neutral { border-left-color:#69757d; }
+.forti-threat-metrics span { align-self:end; color:#697177; font-size:.7rem; font-weight:700; }
+.forti-threat-metrics strong { grid-row:1 / span 2; grid-column:2; align-self:center; color:#283137; font-size:1.45rem; }
+.forti-threat-metrics small { color:#92999d; font-size:.62rem; }
+.forti-threat-layout {
+  display:grid;
+  grid-template-columns:minmax(0, 1fr);
+  gap:.65rem;
+  min-width:0;
+  margin-bottom:.65rem;
+}
+.forti-threat-map-panel,
+.forti-threat-side-panel > section,
+.forti-threat-events {
+  min-width:0;
+  border:1px solid #d6dadd;
+  background:#fff;
+}
+.forti-threat-map-panel > header,
+.forti-threat-events > header {
+  justify-content:space-between;
+  gap:.75rem;
+  min-height:46px;
+  padding:.55rem .7rem;
+  border-bottom:1px solid #dfe2e4;
+}
+.forti-threat-map-panel > header > div:first-child,
+.forti-threat-events > header > div { display:flex; align-items:flex-start; flex-direction:column; }
+.forti-threat-map-panel header strong,
+.forti-threat-events header strong,
+.forti-threat-detail header strong,
+.forti-threat-countries header strong { font-size:.78rem; }
+.forti-threat-map-panel header span,
+.forti-threat-events header span { color:#7f878c; font-size:.64rem; }
+.forti-threat-legend { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.5rem; }
+.forti-threat-legend span { display:flex; align-items:center; gap:.25rem; }
+.forti-threat-legend span::before { content:""; width:7px; height:7px; border-radius:50%; background:#87939a; }
+.forti-threat-legend .critical::before { background:#a91f1a; }
+.forti-threat-legend .high::before { background:#e06f24; }
+.forti-threat-legend .medium::before { background:#d4a51d; }
+.forti-threat-legend .low::before { background:#3984af; }
+.forti-world-map {
+  position:relative;
+  aspect-ratio:2.15 / 1;
+  width:100%;
+  min-height:320px;
+  max-height:520px;
+  overflow:hidden;
+  background:#eef3f5;
+}
+.forti-map-grid {
+  position:absolute;
+  inset:0;
+  opacity:.46;
+  background-image:linear-gradient(#cbd5da 1px, transparent 1px), linear-gradient(90deg, #cbd5da 1px, transparent 1px);
+  background-size:10% 20%;
+}
+.forti-continent { position:absolute; z-index:1; background:#c4cdd1; border:1px solid #aeb9be; }
+.forti-continent.north-america { left:8%; top:16%; width:25%; height:31%; clip-path:polygon(4% 18%, 20% 3%, 60% 7%, 98% 35%, 81% 54%, 66% 53%, 57% 80%, 38% 97%, 31% 65%, 10% 55%); }
+.forti-continent.south-america { left:29%; top:48%; width:13%; height:38%; clip-path:polygon(9% 4%, 78% 0, 100% 20%, 71% 58%, 50% 100%, 31% 67%, 14% 35%); }
+.forti-continent.europe { left:46%; top:21%; width:14%; height:20%; clip-path:polygon(2% 35%, 22% 2%, 55% 12%, 72% 0, 100% 32%, 80% 54%, 48% 44%, 31% 77%, 8% 67%); }
+.forti-continent.africa { left:47%; top:39%; width:17%; height:38%; clip-path:polygon(5% 8%, 61% 0, 96% 24%, 77% 72%, 48% 100%, 23% 74%, 0 30%); }
+.forti-continent.asia { left:57%; top:17%; width:34%; height:40%; clip-path:polygon(0 23%, 21% 1%, 63% 4%, 98% 28%, 82% 48%, 65% 44%, 59% 76%, 38% 89%, 28% 61%, 8% 58%); }
+.forti-continent.australia { left:78%; top:66%; width:14%; height:20%; clip-path:polygon(11% 27%, 42% 0, 93% 22%, 100% 70%, 52% 97%, 4% 68%); }
+.forti-threat-route {
+  position:absolute;
+  z-index:2;
+  height:1px;
+  transform-origin:0 50%;
+  border-top:1px dashed #b35b52;
+  opacity:.7;
+}
+.forti-threat-route.is-medium { border-color:#b48a19; }
+.forti-threat-route.is-low { border-color:#337b9f; }
+.forti-threat-destination {
+  position:absolute;
+  z-index:5;
+  display:flex;
+  align-items:center;
+  gap:.3rem;
+  transform:translate(-50%, -50%);
+  padding:.22rem .38rem;
+  border:1px solid #26763b;
+  background:#eff9f1;
+  color:#17632b;
+  white-space:nowrap;
+  font-size:.62rem;
+  font-weight:800;
+}
+.forti-threat-marker {
+  position:absolute;
+  z-index:6;
+  display:grid;
+  place-items:center;
+  width:25px;
+  height:25px;
+  transform:translate(-50%, -50%);
+  border:2px solid #fff;
+  border-radius:50%;
+  background:#c43d32;
+  color:#fff;
+  box-shadow:0 0 0 2px rgba(164,35,27,.28);
+}
+.forti-threat-marker > span { font-size:.58rem; font-weight:900; }
+.forti-threat-marker > b { position:absolute; top:27px; color:#3e494f; font-size:.58rem; text-shadow:0 1px #fff; }
+.forti-threat-marker.is-high { background:#e06f24; box-shadow:0 0 0 2px rgba(224,111,36,.26); }
+.forti-threat-marker.is-medium { background:#c49a20; box-shadow:0 0 0 2px rgba(196,154,32,.26); }
+.forti-threat-marker.is-low { background:#3984af; box-shadow:0 0 0 2px rgba(57,132,175,.26); }
+.forti-threat-marker.is-selected { width:31px; height:31px; box-shadow:0 0 0 4px rgba(24,43,52,.22); }
+.forti-threat-map-empty { position:absolute; z-index:8; inset:0; display:grid; place-items:center; color:#657178; font-size:.76rem; font-weight:700; }
+.forti-threat-side-panel {
+  display:grid;
+  grid-template-columns:minmax(0, 1.15fr) minmax(260px, .85fr);
+  gap:.65rem;
+  min-width:0;
+}
+.forti-threat-detail { flex:1; padding:.7rem; }
+.forti-threat-detail > header,
+.forti-threat-countries > header { justify-content:space-between; gap:.5rem; margin-bottom:.55rem; }
+.forti-threat-detail h4 { margin:.2rem 0 .65rem; color:#29343a; font-size:.94rem; overflow-wrap:anywhere; }
+.forti-threat-detail dl { margin:0; }
+.forti-threat-detail dl > div { display:grid; grid-template-columns:84px minmax(0, 1fr); gap:.4rem; padding:.28rem 0; border-bottom:1px solid #eceeef; font-size:.69rem; }
+.forti-threat-detail dt { color:#7b8388; font-weight:600; }
+.forti-threat-detail dd { margin:0; color:#30383d; font-weight:700; overflow-wrap:anywhere; }
+.forti-threat-detail > button {
+  width:100%;
+  margin-top:.7rem;
+  padding:.38rem .5rem;
+  border:1px solid #b9c2c7;
+  background:#f8f9f9;
+  color:#34434b;
+  font-size:.7rem;
+  font-weight:700;
+}
+.forti-threat-detail > button:hover { border-color:#49829f; color:#255d78; }
+.forti-threat-no-selection { min-height:150px; display:grid; place-items:center; color:#7d858a; font-size:.72rem; }
+.forti-threat-countries { padding:.7rem; }
+.forti-threat-countries > header span { color:#848c91; font-size:.62rem; }
+.forti-threat-countries > button {
+  display:grid;
+  grid-template-columns:28px minmax(0, 1fr) 26px;
+  align-items:center;
+  gap:.45rem;
+  width:100%;
+  padding:.36rem .25rem;
+  border:0;
+  border-top:1px solid #eceeef;
+  background:#fff;
+  text-align:left;
+}
+.forti-threat-countries > button:hover,
+.forti-threat-countries > button.is-selected { background:#f0f6f8; }
+.forti-threat-countries button > b,
+.forti-country-code { display:inline-grid; place-items:center; min-width:25px; height:18px; padding:0 .2rem; border:1px solid #c7d1d6; background:#f5f7f8; color:#45545c; font-size:.58rem; }
+.forti-threat-countries button > span { display:flex; min-width:0; flex-direction:column; gap:.2rem; }
+.forti-threat-countries button strong { overflow:hidden; font-size:.66rem; text-overflow:ellipsis; white-space:nowrap; }
+.forti-threat-countries button i { display:block; height:3px; background:#e2e6e8; }
+.forti-threat-countries button em { display:block; height:100%; background:#c34a3e; }
+.forti-threat-countries button small { text-align:right; font-size:.65rem; font-weight:800; }
+.forti-threat-severity,
+.forti-threat-action {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:64px;
+  padding:.14rem .35rem;
+  border:1px solid #cbd2d6;
+  background:#f3f5f6;
+  color:#526069;
+  font-size:.61rem;
+  font-weight:800;
+}
+.forti-threat-severity.is-critical { border-color:#e1aaa5; background:#fff0ef; color:#a5221a; }
+.forti-threat-severity.is-high { border-color:#edc09e; background:#fff5ec; color:#a54b13; }
+.forti-threat-severity.is-medium { border-color:#e4d19a; background:#fff9e6; color:#8a6810; }
+.forti-threat-severity.is-low { border-color:#acd0e3; background:#eef8fd; color:#286b8e; }
+.forti-threat-action.is-blocked,
+.forti-threat-action.is-quarantined { border-color:#dfb4b0; background:#fff2f1; color:#9d2d25; }
+.forti-threat-action.is-allowed { border-color:#b5d8bd; background:#eff9f1; color:#217138; }
+.forti-threat-events > header button {
+  border:1px solid #bfc7cb;
+  background:#fff;
+  color:#465157;
+  padding:.28rem .5rem;
+  font-size:.68rem;
+}
+.forti-threat-table-wrap {
+  display:block;
+  width:100%;
+  max-width:100%;
+  overflow-x:auto;
+  overflow-y:hidden;
+}
+.forti-threat-events .forti-table {
+  width:100%;
+  min-width:760px;
+  table-layout:fixed;
+}
+.forti-threat-events .forti-table th:nth-child(1) { width:72px; }
+.forti-threat-events .forti-table th:nth-child(2) { width:112px; }
+.forti-threat-events .forti-table th:nth-child(3) { width:118px; }
+.forti-threat-events .forti-table th:nth-child(4) { width:160px; }
+.forti-threat-events .forti-table th:nth-child(5),
+.forti-threat-events .forti-table th:nth-child(7) { width:88px; }
+.forti-threat-events .forti-table th:last-child { width:54px; }
+.forti-threat-events .forti-table td {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.forti-threat-events > footer { padding:.45rem .65rem; border-top:1px solid #dfe2e4; color:#7b8489; text-align:right; font-size:.62rem; }
 .forti-table-empty {
   height:130px;
   text-align:center;
@@ -2245,6 +2777,9 @@
   .forti-workspace-grid { grid-template-columns:repeat(2, minmax(210px, 1fr)); }
   .forti-wide { grid-column:span 1; }
   .forti-body { grid-template-columns:170px minmax(0, 1fr); }
+  .forti-threat-metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .forti-threat-layout { grid-template-columns:1fr; }
+  .forti-threat-side-panel { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 767.98px) {
   .forti-topbar { height:auto; min-height:42px; flex-wrap:wrap; padding:.45rem .65rem; }
@@ -2266,6 +2801,21 @@
   .forti-app-control-board { grid-template-columns:1fr; }
   .forti-signature-layout { grid-template-columns:1fr; }
   .forti-compliance-layout { grid-template-columns:1fr; }
+  .forti-compliance-profile { grid-template-columns:1fr; }
+  .forti-compliance-profile-status { justify-items:start; }
+  .forti-compliance-metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .forti-compliance-fields { grid-template-columns:1fr; }
+  .forti-compliance-checks article { grid-template-columns:1fr; }
+  .forti-compliance-endpoint-detail { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .forti-threat-page { padding:.55rem; }
+  .forti-threat-toolbar { align-items:stretch; flex-direction:column; }
+  .forti-threat-filters { justify-content:flex-start; }
+  .forti-threat-search { width:100%; }
+  .forti-threat-filters select { flex:1; min-width:120px; }
+  .forti-threat-side-panel { grid-template-columns:1fr; }
+  .forti-world-map { min-height:260px; aspect-ratio:auto; }
+  .forti-threat-map-panel > header { align-items:flex-start; flex-direction:column; }
+  .forti-threat-legend { justify-content:flex-start; }
   .forti-logical-layout { grid-template-columns:1fr; }
   .forti-logical-card::after { display:none; }
   .forti-logical-flows { grid-template-columns:1fr; }

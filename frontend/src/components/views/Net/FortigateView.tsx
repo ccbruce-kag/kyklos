@@ -228,12 +228,46 @@ type FortiOverlayPeer = {
 type FortiIpsecTunnel = {
   id: number
   name: string
+  type?: 'Site to Site' | 'Remote Access' | 'Hub-and-Spoke' | 'Custom'
   remoteGateway: string
   interfaceName: string
   localSubnet: string
   remoteSubnet: string
   phase: string
+  ikeVersion?: 'IKEv1' | 'IKEv2'
+  authMethod?: 'Pre-shared Key' | 'Certificate'
+  proposal?: string
+  pfsGroup?: string
+  natTraversal?: boolean
+  dpd?: boolean
+  autoNegotiate?: boolean
+  monitor?: string
+  lastUp?: string
+  rx?: string
+  tx?: string
+  comments?: string
   status: 'Up' | 'Down'
+}
+
+type FortiIpsecTemplate = {
+  id: string
+  name: string
+  title: string
+  scenario: string
+  type: FortiIpsecTunnel['type']
+  ikeVersion: FortiIpsecTunnel['ikeVersion']
+  authMethod: FortiIpsecTunnel['authMethod']
+  proposal: string
+  pfsGroup: string
+  natTraversal: boolean
+  dpd: boolean
+  autoNegotiate: boolean
+  localSubnet: string
+  remoteSubnet: string
+  remoteGateway: string
+  interfaceName: string
+  notes: string
+  ports: string[]
 }
 
 type FortiRoute = {
@@ -254,11 +288,17 @@ type FortiFabricNode = {
   x: number
   y: number
   size: number
+  status?: 'online' | 'warning' | 'offline'
+  sourceRef?: string
+  syncedAt?: string
 }
 
 type FortiFabricLink = {
   from: string
   to: string
+  type?: 'FortiLink' | 'VLAN' | 'Policy' | 'Telemetry' | 'WAN' | 'Custom'
+  label?: string
+  status?: 'up' | 'degraded' | 'down'
 }
 
 type FortiViewConfig = {
@@ -339,6 +379,33 @@ type FabricAutomationItem = {
   type: string
   enabled: boolean
   description: string
+  triggerCondition?: string
+  actionScript?: string
+  notificationChannel?: string
+  lastRun?: string
+}
+
+type FortiDashboardWidgetId =
+  | 'system'
+  | 'fabric'
+  | 'admins'
+  | 'alerts'
+  | 'changes'
+  | 'cpu'
+  | 'memory'
+  | 'sessions'
+
+type FortiFabricConnector = {
+  id: string
+  name: string
+  connectorType: 'Fortinet' | 'Cloud SDN' | 'Endpoint' | 'SIEM' | 'Webhook'
+  provider: string
+  account: string
+  endpoint: string
+  authState: 'Verified' | 'Pending' | 'Failed'
+  enabled: boolean
+  description: string
+  lastTest?: string
 }
 
 type FortiManagedRow = {
@@ -636,8 +703,15 @@ const initialOverlayPeers: FortiOverlayPeer[] = [
 ]
 
 const initialIpsecTunnels: FortiIpsecTunnel[] = [
-  { id: 1, name: 'to-branch-tpe', remoteGateway: '203.69.10.10', interfaceName: 'wan1', localSubnet: '10.20.40.0/24', remoteSubnet: '10.30.0.0/24', phase: 'IKEv2 / AES256-SHA256', status: 'Up' },
-  { id: 2, name: 'to-cloud-vpc', remoteGateway: '198.51.100.20', interfaceName: 'wan1', localSubnet: '10.20.40.0/24', remoteSubnet: '172.16.0.0/16', phase: 'IKEv2 / AES256-SHA256', status: 'Down' },
+  { id: 1, name: 'to-branch-tpe', type: 'Site to Site', remoteGateway: '203.69.10.10', interfaceName: 'wan1', localSubnet: '10.20.40.0/24', remoteSubnet: '10.30.0.0/24', phase: 'Phase1 established / Phase2 selector up', ikeVersion: 'IKEv2', authMethod: 'Pre-shared Key', proposal: 'AES256-SHA256', pfsGroup: 'Group 14', natTraversal: true, dpd: true, autoNegotiate: true, monitor: 'wan1 SLA 8ms', lastUp: '2026/07/01 09:16:32', rx: '1.42 GB', tx: '936 MB', comments: '台北分公司主要 VPN', status: 'Up' },
+  { id: 2, name: 'to-cloud-vpc', type: 'Site to Site', remoteGateway: '198.51.100.20', interfaceName: 'wan1', localSubnet: '10.20.40.0/24', remoteSubnet: '172.16.0.0/16', phase: 'Phase1 down / waiting peer', ikeVersion: 'IKEv2', authMethod: 'Certificate', proposal: 'AES256-SHA256', pfsGroup: 'Group 14', natTraversal: true, dpd: true, autoNegotiate: false, monitor: 'No response', lastUp: '2026/06/30 18:04:11', rx: '0 B', tx: '0 B', comments: '雲端 VPC 備援通道', status: 'Down' },
+]
+
+const ipsecTemplateCatalog: FortiIpsecTemplate[] = [
+  { id: 'site-strong', name: 'Site_to_Site_Strong', title: '分公司互連', scenario: '兩台 FortiGate 或相容防火牆之間的固定站台 VPN。', type: 'Site to Site', ikeVersion: 'IKEv2', authMethod: 'Pre-shared Key', proposal: 'AES256-SHA256', pfsGroup: 'Group 14', natTraversal: true, dpd: true, autoNegotiate: true, localSubnet: '10.20.40.0/24', remoteSubnet: '10.30.0.0/24', remoteGateway: '203.0.113.10', interfaceName: 'wan1', notes: '建議用於分公司、機房、固定外部 IP 的站台互連。', ports: ['UDP 500', 'UDP 4500', 'ESP'] },
+  { id: 'remote-user', name: 'Remote_Access_User', title: '使用者撥入', scenario: '使用者端或遠端設備撥入 FortiGate，適合小量遠端維運。', type: 'Remote Access', ikeVersion: 'IKEv2', authMethod: 'Certificate', proposal: 'AES256-SHA256', pfsGroup: 'Group 14', natTraversal: true, dpd: true, autoNegotiate: false, localSubnet: '10.20.40.0/24', remoteSubnet: '10.90.0.0/24', remoteGateway: '0.0.0.0', interfaceName: 'wan1', notes: '遠端 Gateway 可保留動態 Peer，實際部署時需搭配使用者或憑證政策。', ports: ['UDP 500', 'UDP 4500'] },
+  { id: 'cloud-vpc', name: 'Cloud_VPC', title: '雲端 VPC', scenario: 'FortiGate 對接 AWS、Azure、GCP 或雲端邊界設備。', type: 'Site to Site', ikeVersion: 'IKEv2', authMethod: 'Pre-shared Key', proposal: 'AES256-SHA256', pfsGroup: 'Group 14', natTraversal: true, dpd: true, autoNegotiate: true, localSubnet: '10.20.40.0/24', remoteSubnet: '172.16.0.0/16', remoteGateway: '198.51.100.20', interfaceName: 'wan1', notes: '適合雲端 VPC/VNet 對接；請依雲端文件確認 proposal 與 lifetime。', ports: ['UDP 500', 'UDP 4500', 'ESP'] },
+  { id: 'legacy-compat', name: 'Legacy_Compat', title: '舊設備相容', scenario: '對接只支援 IKEv1 或較舊 proposal 的設備。', type: 'Custom', ikeVersion: 'IKEv1', authMethod: 'Pre-shared Key', proposal: 'AES128-SHA1', pfsGroup: 'Group 5', natTraversal: true, dpd: true, autoNegotiate: false, localSubnet: '10.20.40.0/24', remoteSubnet: '10.60.0.0/24', remoteGateway: '203.0.113.60', interfaceName: 'wan1', notes: '安全性較低，建議僅作為過渡用途，完成後改用 IKEv2/AES256。', ports: ['UDP 500', 'UDP 4500'] },
 ]
 
 const securityProfileRows: Record<string, FortiSecurityProfileRule[]> = {
@@ -881,25 +955,53 @@ const fortiLogViews: Partial<Record<FortiPage, FortiLogViewConfig>> = {
 }
 
 const initialFabricNodes: FortiFabricNode[] = [
-  { id: 'fgt', label: 'FortiGate 90D', detail: 'FGT90D3Z16007115', icon: 'bx-shield-quarter', x: 330, y: 170, size: 154 },
-  { id: 'wan', label: 'WAN', detail: '61.219.112.31', icon: 'bx-cloud', x: 120, y: 72, size: 104 },
-  { id: 'lan', label: 'VLAN_40', detail: '10.20.40.1/24', icon: 'bx-transfer', x: 120, y: 305, size: 118 },
-  { id: 'ap', label: 'FortiAP', detail: '1 online', icon: 'bx-wifi', x: 575, y: 78, size: 92 },
-  { id: 'clients', label: 'Clients', detail: '18 devices', icon: 'bx-laptop', x: 570, y: 305, size: 132 },
+  { id: 'fgt', label: 'FortiGate 90D', detail: 'FGT90D3Z16007115', icon: 'bx-shield-quarter', x: 330, y: 170, size: 154, status: 'online', sourceRef: 'root', syncedAt: '09:21:43' },
+  { id: 'wan', label: 'WAN', detail: '61.219.112.31', icon: 'bx-cloud', x: 120, y: 72, size: 104, status: 'online', sourceRef: 'wan1', syncedAt: '09:21:43' },
+  { id: 'lan', label: 'VLAN_40', detail: '10.20.40.1/24', icon: 'bx-transfer', x: 120, y: 305, size: 118, status: 'online', sourceRef: 'VLAN_40', syncedAt: '09:21:43' },
+  { id: 'ap', label: 'FortiAP', detail: '1 online', icon: 'bx-wifi', x: 575, y: 78, size: 92, status: 'online', sourceRef: 'wifiController', syncedAt: '09:21:43' },
+  { id: 'clients', label: 'Clients', detail: '18 devices', icon: 'bx-laptop', x: 570, y: 305, size: 132, status: 'warning', sourceRef: 'deviceInventory', syncedAt: '09:21:43' },
 ]
 
 const initialFabricLinks: FortiFabricLink[] = [
-  { from: 'wan', to: 'fgt' },
-  { from: 'fgt', to: 'lan' },
-  { from: 'fgt', to: 'ap' },
-  { from: 'lan', to: 'clients' },
+  { from: 'wan', to: 'fgt', type: 'WAN', label: 'wan1 uplink', status: 'up' },
+  { from: 'fgt', to: 'lan', type: 'VLAN', label: 'VLAN_40', status: 'up' },
+  { from: 'fgt', to: 'ap', type: 'FortiLink', label: 'CAPWAP / FortiTelemetry', status: 'up' },
+  { from: 'lan', to: 'clients', type: 'Telemetry', label: 'Endpoint telemetry', status: 'degraded' },
 ]
 
-const defaultFabricSettings = { telemetry: true, analyzer: true, endpoint: true }
+const defaultFabricSettings = {
+  fabricEnabled: true,
+  telemetry: true,
+  analyzer: true,
+  endpoint: true,
+  role: 'Root FortiGate',
+  upstreamManager: '10.20.100.250',
+  upstreamAnalyzer: '10.20.100.251',
+}
 const defaultFabricManagementInterfaces = ['VLAN_40', 'internal']
 const defaultFabricAutomations: FabricAutomationItem[] = [
-  { id: 'auto-warning', name: 'Stitch_FortiGuard_Warning', type: 'Security Fabric', enabled: true, description: 'FortiGuard warning notification' },
-  { id: 'auto-login', name: 'Admin_Login_Notify', type: 'Local event', enabled: true, description: 'Notify on administrator login' },
+  { id: 'auto-warning', name: 'Stitch_FortiGuard_Warning', type: 'Security Fabric', enabled: true, description: 'FortiGuard warning notification', triggerCondition: 'FortiGuard rating update failed >= 3 次', actionScript: 'execute log filter category event; execute notification fortiguard-warning', notificationChannel: 'Email: noc@kag.local', lastRun: '09:14:31' },
+  { id: 'auto-login', name: 'Admin_Login_Notify', type: 'Local event', enabled: true, description: 'Notify on administrator login', triggerCondition: 'eventid=32001 and user=admin', actionScript: 'send webhook admin-login payload=${log}', notificationChannel: 'Webhook: SOC Channel', lastRun: '09:21:44' },
+]
+
+const defaultDashboardWidgets: FortiDashboardWidgetId[] = ['system', 'fabric', 'alerts', 'changes', 'cpu', 'memory', 'sessions']
+
+const dashboardWidgetCatalog: { id: FortiDashboardWidgetId; label: string }[] = [
+  { id: 'system', label: '系統資訊' },
+  { id: 'fabric', label: '安全織網' },
+  { id: 'admins', label: '系統管理者' },
+  { id: 'alerts', label: '告警摘要' },
+  { id: 'changes', label: '最近設定變更' },
+  { id: 'cpu', label: 'CPU' },
+  { id: 'memory', label: '記憶體' },
+  { id: 'sessions', label: '連線數' },
+]
+
+const defaultFabricConnectors: FortiFabricConnector[] = [
+  { id: 'connector-fa', name: 'FortiAnalyzer', connectorType: 'Fortinet', provider: 'Fortinet', account: 'faz-admin', endpoint: '10.20.100.251', authState: 'Verified', enabled: true, description: '日誌分析與報表同步', lastTest: '09:21:43' },
+  { id: 'connector-fmg', name: 'FortiManager', connectorType: 'Fortinet', provider: 'Fortinet', account: 'fmg-admin', endpoint: '10.20.100.250', authState: 'Verified', enabled: true, description: '集中式設備管理', lastTest: '09:20:12' },
+  { id: 'connector-ems', name: 'FortiClient EMS', connectorType: 'Endpoint', provider: 'Fortinet EMS', account: 'ems-api', endpoint: 'ems.kag.local:8013', authState: 'Pending', enabled: false, description: '端點遙測與 Compliance 同步' },
+  { id: 'connector-aws', name: 'AWS SDN Connector', connectorType: 'Cloud SDN', provider: 'AWS', account: 'kag-firewall-readonly', endpoint: 'ap-northeast-1', authState: 'Pending', enabled: false, description: 'AWS VPC / Security Group 物件同步' },
 ]
 
 const defaultManagedRows: Partial<Record<FortiPage, FortiManagedRow[]>> = {
@@ -1219,20 +1321,31 @@ export default function FortigateView() {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [sideSearchOpen, setSideSearchOpen] = useState(false)
   const [sideSearch, setSideSearch] = useState('')
+  const [dashboardAutoRefresh, setDashboardAutoRefresh] = useState(() => readFortiStorage('fortigate.dashboard.autoRefresh', true))
+  const [dashboardWidgets, setDashboardWidgets] = useState<FortiDashboardWidgetId[]>(() => readFortiStorage('fortigate.dashboard.widgets', defaultDashboardWidgets))
+  const [dashboardWidgetPanelOpen, setDashboardWidgetPanelOpen] = useState(false)
+  const [dashboardRefreshTick, setDashboardRefreshTick] = useState(0)
   const [fabricNodes, setFabricNodes] = useState<FortiFabricNode[]>(() => readFortiStorage('fortigate.fabric.nodes', initialFabricNodes))
   const [fabricLinks, setFabricLinks] = useState<FortiFabricLink[]>(() => readFortiStorage('fortigate.fabric.links', initialFabricLinks))
   const [fabricConnectMode, setFabricConnectMode] = useState(false)
   const [fabricConnectFrom, setFabricConnectFrom] = useState<string | null>(null)
   const [draggingFabricNode, setDraggingFabricNode] = useState<string | null>(null)
   const [selectedFabricNode, setSelectedFabricNode] = useState<string>('fgt')
-  const [fabricSettings, setFabricSettings] = useState(() => readFortiStorage('fortigate.fabric.settings', defaultFabricSettings))
+  const [selectedFabricLinkIndex, setSelectedFabricLinkIndex] = useState<number | null>(null)
+  const [fabricLinkModalOpen, setFabricLinkModalOpen] = useState(false)
+  const [fabricLinkDraft, setFabricLinkDraft] = useState<FortiFabricLink>({ from: 'fgt', to: 'lan', type: 'Custom', label: '', status: 'up' })
+  const [fabricSettings, setFabricSettings] = useState(() => ({ ...defaultFabricSettings, ...readFortiStorage('fortigate.fabric.settings', defaultFabricSettings) }))
   const [fabricManagementInterfaces, setFabricManagementInterfaces] = useState(() => readFortiStorage('fortigate.fabric.managementInterfaces', defaultFabricManagementInterfaces))
   const [fabricInterfaceModalOpen, setFabricInterfaceModalOpen] = useState(false)
   const [fabricInterfaceDraft, setFabricInterfaceDraft] = useState('wan1')
   const [fabricAutomations, setFabricAutomations] = useState(() => readFortiStorage('fortigate.fabric.automations', defaultFabricAutomations))
   const [selectedAutomationId, setSelectedAutomationId] = useState(defaultFabricAutomations[0].id)
   const [automationModalMode, setAutomationModalMode] = useState<'add' | 'edit' | null>(null)
-  const [automationDraft, setAutomationDraft] = useState({ name: '', type: 'Security Fabric', description: '', enabled: true })
+  const [automationDraft, setAutomationDraft] = useState<Omit<FabricAutomationItem, 'id'>>({ name: '', type: 'Security Fabric', description: '', enabled: true, triggerCondition: '', actionScript: '', notificationChannel: 'Email', lastRun: '-' })
+  const [fabricConnectors, setFabricConnectors] = useState<FortiFabricConnector[]>(() => readFortiStorage('fortigate.fabric.connectors', defaultFabricConnectors))
+  const [selectedFabricConnectorId, setSelectedFabricConnectorId] = useState(defaultFabricConnectors[0].id)
+  const [fabricConnectorModalMode, setFabricConnectorModalMode] = useState<'add' | 'edit' | null>(null)
+  const [fabricConnectorDraft, setFabricConnectorDraft] = useState<FortiFabricConnector>(defaultFabricConnectors[0])
   const [managedRows, setManagedRows] = useState<Partial<Record<FortiPage, FortiManagedRow[]>>>(() => readFortiStorage('fortigate.managedRows', defaultManagedRows))
   const [selectedManagedIds, setSelectedManagedIds] = useState<Partial<Record<FortiPage, string>>>({
     fabricConnectors: defaultManagedRows.fabricConnectors?.[0]?.id,
@@ -1315,6 +1428,7 @@ export default function FortigateView() {
   const [overlayPeerDraft, setOverlayPeerDraft] = useState<FortiOverlayPeer>(initialOverlayPeers[0])
   const [ipsecTunnels, setIpsecTunnels] = useState<FortiIpsecTunnel[]>(() => readFortiStorage('fortigate.ipsec.tunnels', initialIpsecTunnels))
   const [selectedIpsecTunnelId, setSelectedIpsecTunnelId] = useState(initialIpsecTunnels[0].id)
+  const [selectedIpsecTemplateId, setSelectedIpsecTemplateId] = useState(ipsecTemplateCatalog[0].id)
   const [ipsecTunnelModalMode, setIpsecTunnelModalMode] = useState<'add' | 'edit' | null>(null)
   const [ipsecTunnelDraft, setIpsecTunnelDraft] = useState<FortiIpsecTunnel>(initialIpsecTunnels[0])
   const [ipsecWizardType, setIpsecWizardType] = useState('Site to Site')
@@ -1373,8 +1487,11 @@ export default function FortigateView() {
   useEffect(() => { writeFortiStorage('fortigate.schedules', schedules) }, [schedules])
   useEffect(() => { writeFortiStorage('fortigate.routes', routes) }, [routes])
   useEffect(() => { writeFortiStorage('fortigate.selectedInterface', selectedInterface) }, [selectedInterface])
+  useEffect(() => { writeFortiStorage('fortigate.dashboard.autoRefresh', dashboardAutoRefresh) }, [dashboardAutoRefresh])
+  useEffect(() => { writeFortiStorage('fortigate.dashboard.widgets', dashboardWidgets) }, [dashboardWidgets])
   useEffect(() => { writeFortiStorage('fortigate.fabric.nodes', fabricNodes) }, [fabricNodes])
   useEffect(() => { writeFortiStorage('fortigate.fabric.links', fabricLinks) }, [fabricLinks])
+  useEffect(() => { writeFortiStorage('fortigate.fabric.connectors', fabricConnectors) }, [fabricConnectors])
   useEffect(() => { writeFortiStorage('fortigate.managedRows', managedRows) }, [managedRows])
   useEffect(() => { writeFortiStorage('fortigate.genericSettings', genericSettings) }, [genericSettings])
   useEffect(() => { writeFortiStorage('fortigate.tags', tags) }, [tags])
@@ -1435,6 +1552,16 @@ export default function FortigateView() {
     }
     if (!fabricAutomations.length && selectedAutomationId) setSelectedAutomationId('')
   }, [fabricAutomations])
+
+  useEffect(() => {
+    if (page !== 'dashboard' || !dashboardAutoRefresh) return undefined
+    const timer = window.setInterval(() => {
+      const now = new Date()
+      setDashboardRefreshTick((tick) => tick + 1)
+      setLastRefreshAt(now.toLocaleTimeString('zh-TW', { hour12: false }))
+    }, 15000)
+    return () => window.clearInterval(timer)
+  }, [page, dashboardAutoRefresh])
 
   function updateCurrentInterface(field: keyof FortiInterface, value: string) {
     setInterfaces((items) => items.map((item) => item.name === currentInterface.name ? { ...item, [field]: value } : item))
@@ -1520,6 +1647,20 @@ export default function FortigateView() {
     setLastRefreshAt(now.toLocaleTimeString('zh-TW', { hour12: false }))
     setLastAction(`${label} 已重新整理`)
     window.setTimeout(() => setRefreshingArea(''), 700)
+  }
+
+  function toggleDashboardWidget(id: FortiDashboardWidgetId) {
+    setDashboardWidgets((items) => {
+      if (items.includes(id)) return items.filter((item) => item !== id)
+      return [...items, id]
+    })
+  }
+
+  function refreshDashboardNow() {
+    const now = new Date()
+    setDashboardRefreshTick((tick) => tick + 1)
+    setLastRefreshAt(now.toLocaleTimeString('zh-TW', { hour12: false }))
+    setLastAction('儀表板已重新整理')
   }
 
   function togglePolicy(id: number) {
@@ -1820,6 +1961,9 @@ export default function FortigateView() {
       size,
       x: 180 + ((next * 91) % 470),
       y: 90 + ((next * 63) % 310),
+      status: fabricSettings.fabricEnabled ? 'online' : 'offline',
+      sourceRef: kind === 'switch' ? 'wifiFortiSwitches' : kind === 'ap' ? 'wifiController' : kind === 'client' ? 'deviceInventory' : 'wan1',
+      syncedAt: lastRefreshAt,
     }])
     setSelectedFabricNode(id)
     setLastAction(`已新增 ${label} 節點`)
@@ -1838,7 +1982,11 @@ export default function FortigateView() {
       return
     }
     const exists = fabricLinks.some((link) => (link.from === fabricConnectFrom && link.to === id) || (link.from === id && link.to === fabricConnectFrom))
-    if (!exists) setFabricLinks((links) => [...links, { from: fabricConnectFrom, to: id }])
+    if (!exists) {
+      const fromNode = fabricNodes.find((node) => node.id === fabricConnectFrom)
+      const toNode = fabricNodes.find((node) => node.id === id)
+      setFabricLinks((links) => [...links, { from: fabricConnectFrom, to: id, type: 'Custom', label: `${fromNode?.label || fabricConnectFrom} -> ${toNode?.label || id}`, status: 'up' }])
+    }
     setFabricConnectFrom(null)
     setLastAction('已建立拓樸關係線')
   }
@@ -1865,6 +2013,62 @@ export default function FortigateView() {
     setLastAction('已移除最後一條拓樸關係線')
   }
 
+  function getFabricNodeStatus(node: FortiFabricNode): NonNullable<FortiFabricNode['status']> {
+    if (!fabricSettings.fabricEnabled) return 'offline'
+    if (node.status) return node.status
+    if (node.id === 'clients') return 'warning'
+    return 'online'
+  }
+
+  function openFabricLinkModal(index: number) {
+    const link = fabricLinks[index]
+    if (!link) return
+    setSelectedFabricLinkIndex(index)
+    setFabricLinkDraft({
+      from: link.from,
+      to: link.to,
+      type: link.type || 'Custom',
+      label: link.label || '',
+      status: link.status || 'up',
+    })
+    setFabricLinkModalOpen(true)
+  }
+
+  function saveFabricLink() {
+    if (selectedFabricLinkIndex === null) return
+    setFabricLinks((links) => links.map((link, index) => index === selectedFabricLinkIndex ? fabricLinkDraft : link))
+    setFabricLinkModalOpen(false)
+    setLastAction('拓樸連線關係已更新')
+  }
+
+  function deleteSelectedFabricLink() {
+    if (selectedFabricLinkIndex === null) {
+      setLastAction('請先選取要刪除的連線關係')
+      return
+    }
+    setFabricLinks((links) => links.filter((_, index) => index !== selectedFabricLinkIndex))
+    setSelectedFabricLinkIndex(null)
+    setFabricLinkModalOpen(false)
+    setLastAction('已刪除選取的拓樸連線關係')
+  }
+
+  function syncFabricDeviceStatus() {
+    const now = new Date().toLocaleTimeString('zh-TW', { hour12: false })
+    setFabricNodes((nodes) => nodes.map((node) => {
+      if (!fabricSettings.fabricEnabled) return { ...node, status: 'offline', syncedAt: now }
+      if (node.id === 'clients') return { ...node, detail: `${getManagedRows('deviceInventory', '設備清單').filter((row) => row.enabled).length} devices`, status: 'warning', syncedAt: now }
+      if (node.id === 'ap') return { ...node, detail: `${getManagedRows('wifiController', '受管理的 FortiAP').filter((row) => row.enabled).length} online`, status: 'online', syncedAt: now }
+      if (node.sourceRef && interfaces.some((item) => item.name === node.sourceRef)) {
+        const iface = interfaces.find((item) => item.name === node.sourceRef)
+        return { ...node, detail: iface?.ip || node.detail, status: iface?.status === 'up' ? 'online' : 'offline', syncedAt: now }
+      }
+      return { ...node, status: 'online', syncedAt: now }
+    }))
+    setFabricLinks((links) => links.map((link) => ({ ...link, status: fabricSettings.fabricEnabled ? link.status || 'up' : 'down' })))
+    setLastRefreshAt(now)
+    setLastAction(fabricSettings.fabricEnabled ? 'Security Fabric 設備狀態已同步' : 'Fabric 已停用，拓樸狀態已標示離線')
+  }
+
   function moveFabricNode(event: MouseEvent<HTMLDivElement>) {
     if (!draggingFabricNode) return
     const rect = event.currentTarget.getBoundingClientRect()
@@ -1877,6 +2081,10 @@ export default function FortigateView() {
 
   function toggleFabricSetting(key: keyof typeof fabricSettings) {
     setFabricSettings((settings) => ({ ...settings, [key]: !settings[key] }))
+  }
+
+  function updateFabricSetting<K extends keyof typeof fabricSettings>(key: K, value: typeof fabricSettings[K]) {
+    setFabricSettings((settings) => ({ ...settings, [key]: value }))
   }
 
   function addFabricManagementInterface() {
@@ -1897,9 +2105,9 @@ export default function FortigateView() {
     if (mode === 'edit') {
       const item = fabricAutomations.find((automation) => automation.id === selectedAutomationId)
       if (!item) return
-      setAutomationDraft({ name: item.name, type: item.type, description: item.description, enabled: item.enabled })
+      setAutomationDraft({ name: item.name, type: item.type, description: item.description, enabled: item.enabled, triggerCondition: item.triggerCondition || '', actionScript: item.actionScript || '', notificationChannel: item.notificationChannel || 'Email', lastRun: item.lastRun || '-' })
     } else {
-      setAutomationDraft({ name: `Automation_${fabricAutomations.length + 1}`, type: 'Security Fabric', description: 'Custom automation stitch', enabled: true })
+      setAutomationDraft({ name: `Automation_${fabricAutomations.length + 1}`, type: 'Security Fabric', description: 'Custom automation stitch', enabled: true, triggerCondition: 'event.severity >= warning', actionScript: 'execute notification custom-stitch', notificationChannel: 'Email', lastRun: '-' })
     }
     setAutomationModalMode(mode)
   }
@@ -1915,6 +2123,7 @@ export default function FortigateView() {
       setSelectedAutomationId(id)
     }
     setAutomationModalMode(null)
+    setLastAction('自動化設定已儲存')
   }
 
   function deleteSelectedAutomation() {
@@ -1923,6 +2132,58 @@ export default function FortigateView() {
       setSelectedAutomationId(next[0]?.id || '')
       return next
     })
+    setLastAction('自動化設定已刪除')
+  }
+
+  function openFabricConnectorModal(mode: 'add' | 'edit') {
+    const selected = fabricConnectors.find((connector) => connector.id === selectedFabricConnectorId) || fabricConnectors[0]
+    setFabricConnectorDraft(mode === 'edit' && selected ? selected : {
+      id: `connector-${Date.now()}`,
+      name: `Connector_${fabricConnectors.length + 1}`,
+      connectorType: 'Cloud SDN',
+      provider: 'AWS',
+      account: '',
+      endpoint: '',
+      authState: 'Pending',
+      enabled: true,
+      description: '自訂 Fabric Connector',
+      lastTest: '-',
+    })
+    setFabricConnectorModalMode(mode)
+  }
+
+  function saveFabricConnector() {
+    const name = fabricConnectorDraft.name.trim()
+    if (!name) return
+    const next = { ...fabricConnectorDraft, name, authState: fabricConnectorDraft.account.trim() && fabricConnectorDraft.endpoint.trim() ? fabricConnectorDraft.authState : 'Pending' }
+    if (fabricConnectorModalMode === 'edit') {
+      setFabricConnectors((items) => items.map((item) => item.id === selectedFabricConnectorId ? next : item))
+    } else {
+      setFabricConnectors((items) => [...items, next])
+      setSelectedFabricConnectorId(next.id)
+    }
+    setFabricConnectorModalMode(null)
+    setLastAction('Fabric Connector 已儲存')
+  }
+
+  function deleteSelectedFabricConnector() {
+    setFabricConnectors((items) => {
+      const next = items.filter((item) => item.id !== selectedFabricConnectorId)
+      setSelectedFabricConnectorId(next[0]?.id || '')
+      return next
+    })
+    setLastAction('Fabric Connector 已刪除')
+  }
+
+  function testFabricConnector(id: string) {
+    const now = new Date().toLocaleTimeString('zh-TW', { hour12: false })
+    setFabricConnectors((items) => items.map((item) => {
+      if (item.id !== id) return item
+      const verified = Boolean(item.account.trim() && item.endpoint.trim() && item.enabled)
+      return { ...item, authState: verified ? 'Verified' : 'Failed', lastTest: now }
+    }))
+    const target = fabricConnectors.find((item) => item.id === id)
+    setLastAction(`${target?.name || 'Connector'} 連線測試已完成`)
   }
 
   function getManagedRows(activePage: FortiPage, title: string) {
@@ -2176,11 +2437,24 @@ export default function FortigateView() {
     setIpsecTunnelDraft(mode === 'edit' && selected ? selected : {
       id: Math.max(0, ...ipsecTunnels.map((tunnel) => tunnel.id)) + 1,
       name: `to-branch-${ipsecTunnels.length + 1}`,
+      type: 'Site to Site',
       remoteGateway: '203.0.113.10',
       interfaceName: 'wan1',
       localSubnet: '10.20.40.0/24',
       remoteSubnet: '10.50.0.0/24',
-      phase: 'IKEv2 / AES256-SHA256',
+      phase: 'Phase1 down / not negotiated',
+      ikeVersion: 'IKEv2',
+      authMethod: 'Pre-shared Key',
+      proposal: 'AES256-SHA256',
+      pfsGroup: 'Group 14',
+      natTraversal: true,
+      dpd: true,
+      autoNegotiate: true,
+      monitor: 'Pending',
+      lastUp: '-',
+      rx: '0 B',
+      tx: '0 B',
+      comments: '',
       status: 'Down',
     })
     setIpsecTunnelModalMode(mode)
@@ -2188,11 +2462,27 @@ export default function FortigateView() {
 
   function saveIpsecTunnel() {
     if (!ipsecTunnelDraft.name.trim()) return
+    const normalizedDraft: FortiIpsecTunnel = {
+      ...ipsecTunnelDraft,
+      type: ipsecTunnelDraft.type || 'Site to Site',
+      ikeVersion: ipsecTunnelDraft.ikeVersion || 'IKEv2',
+      authMethod: ipsecTunnelDraft.authMethod || 'Pre-shared Key',
+      proposal: ipsecTunnelDraft.proposal || 'AES256-SHA256',
+      pfsGroup: ipsecTunnelDraft.pfsGroup || 'Group 14',
+      natTraversal: ipsecTunnelDraft.natTraversal ?? true,
+      dpd: ipsecTunnelDraft.dpd ?? true,
+      autoNegotiate: ipsecTunnelDraft.autoNegotiate ?? true,
+      monitor: ipsecTunnelDraft.monitor || (ipsecTunnelDraft.status === 'Up' ? 'Healthy' : 'Pending'),
+      lastUp: ipsecTunnelDraft.lastUp || '-',
+      rx: ipsecTunnelDraft.rx || '0 B',
+      tx: ipsecTunnelDraft.tx || '0 B',
+      comments: ipsecTunnelDraft.comments || '',
+    }
     if (ipsecTunnelModalMode === 'edit') {
-      setIpsecTunnels((items) => items.map((tunnel) => tunnel.id === selectedIpsecTunnelId ? ipsecTunnelDraft : tunnel))
+      setIpsecTunnels((items) => items.map((tunnel) => tunnel.id === selectedIpsecTunnelId ? normalizedDraft : tunnel))
     } else {
-      setIpsecTunnels((items) => [...items, ipsecTunnelDraft])
-      setSelectedIpsecTunnelId(ipsecTunnelDraft.id)
+      setIpsecTunnels((items) => [...items, normalizedDraft])
+      setSelectedIpsecTunnelId(normalizedDraft.id)
     }
     setIpsecTunnelModalMode(null)
     setLastAction('IPsec 通道已儲存')
@@ -2210,6 +2500,49 @@ export default function FortigateView() {
   function toggleIpsecTunnel(id: number) {
     setIpsecTunnels((items) => items.map((tunnel) => tunnel.id === id ? { ...tunnel, status: tunnel.status === 'Up' ? 'Down' : 'Up' } : tunnel))
     setLastAction('IPsec 通道狀態已切換')
+  }
+
+  function createIpsecTunnelFromTemplate(template: FortiIpsecTemplate) {
+    const nextTunnel: FortiIpsecTunnel = {
+      id: Math.max(0, ...ipsecTunnels.map((tunnel) => tunnel.id)) + 1,
+      name: `${template.name.toLowerCase()}-${ipsecTunnels.length + 1}`,
+      type: template.type,
+      remoteGateway: template.remoteGateway,
+      interfaceName: template.interfaceName,
+      localSubnet: template.localSubnet,
+      remoteSubnet: template.remoteSubnet,
+      phase: 'Phase1 down / created from template',
+      ikeVersion: template.ikeVersion,
+      authMethod: template.authMethod,
+      proposal: template.proposal,
+      pfsGroup: template.pfsGroup,
+      natTraversal: template.natTraversal,
+      dpd: template.dpd,
+      autoNegotiate: template.autoNegotiate,
+      monitor: 'Template draft',
+      lastUp: '-',
+      rx: '0 B',
+      tx: '0 B',
+      comments: template.notes,
+      status: 'Down',
+    }
+    setIpsecTunnels((items) => [...items, nextTunnel])
+    setSelectedIpsecTunnelId(nextTunnel.id)
+    setLastAction(`已由範本建立 IPsec 通道草稿：${template.name}`)
+  }
+
+  function applyIpsecTemplateToWizard(template: FortiIpsecTemplate) {
+    setIpsecWizardMode('create')
+    setIpsecWizardStep(1)
+    setIpsecWizardType(template.type || 'Site to Site')
+    setIpsecWizardName(`${template.name.toLowerCase()}-vpn`)
+    setIpsecWizardGateway(template.remoteGateway)
+    setIpsecWizardLocalSubnet(template.localSubnet)
+    setIpsecWizardRemoteSubnet(template.remoteSubnet)
+    setIpsecWizardNatTraversal(template.natTraversal)
+    setIpsecWizardEnabled(false)
+    setPage('ipsecWizard')
+    setLastAction(`已套用範本至 IPsec 精靈：${template.name}`)
   }
 
   function addSslBookmark() {
@@ -2294,47 +2627,112 @@ export default function FortigateView() {
   }
 
   function renderDashboard() {
+    const hasWidget = (id: FortiDashboardWidgetId) => dashboardWidgets.includes(id)
+    const enabledPolicies = policies.filter((policy) => policy.status === '啟用').length
+    const enabledConnectors = fabricConnectors.filter((connector) => connector.enabled && connector.authState === 'Verified').length
+    const recentChanges = [
+      `Security Fabric ${fabricSettings.fabricEnabled ? '已啟用' : '已停用'}，管理介面 ${fabricManagementInterfaces.join(', ') || '-'}`,
+      `IPv4 政策：${policies.length} 筆，啟用 ${enabledPolicies} 筆`,
+      `Fabric Connectors：${fabricConnectors.length} 筆，驗證 ${enabledConnectors} 筆`,
+      `拓樸節點位置 / 連線關係最後刷新：${lastRefreshAt}`,
+    ]
     return (
-      <div className="forti-workspace-grid">
-        <section className="forti-widget">
-          <div className="forti-widget-title">系統資訊</div>
-          <div className="forti-info-grid">
-            <span>主機名稱</span><strong>FGT90D3Z16007115</strong>
-            <span>序號</span><strong>FGT90D3Z16007115</strong>
-            <span>韌體</span><strong>v6.0.14 build0457 (GA)</strong>
-            <span>模式</span><strong>NAT (Flow-based)</strong>
-            <span>系統時間</span><strong>2026/06/22 09:21:36</strong>
-            <span>WAN IP</span><strong>61.219.112.31</strong>
+      <div className="forti-dashboard-page">
+        <div className="forti-dashboard-toolbar">
+          <div>
+            <strong>儀表板</strong>
+            <span>最後刷新 {lastRefreshAt} / tick {dashboardRefreshTick}</span>
           </div>
-        </section>
-        <section className="forti-widget">
-          <div className="forti-widget-title">安全織網</div>
-          <div className="forti-fabric-icons">
-            {['bx-bar-chart-alt-2', 'bx-time', 'bx-cloud', 'bx-clipboard', 'bx-envelope', 'bx-wifi'].map((icon) => <i key={icon} className={`bx ${icon}`}></i>)}
+          <div>
+            <FortiSwitch checked={dashboardAutoRefresh} onChange={() => setDashboardAutoRefresh((enabled) => !enabled)} label={dashboardAutoRefresh ? '自動刷新' : '手動刷新'} />
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={refreshDashboardNow}><i className="bx bx-refresh"></i> 重新整理</button>
+            <button type="button" className="btn btn-sm forti-btn" onClick={() => setDashboardWidgetPanelOpen((open) => !open)}><i className="bx bx-customize"></i> Widget 自訂</button>
           </div>
-          <div className="forti-device-line"><i className="bx bx-server"></i> FGT90D3Z16007115</div>
-          <div className="forti-warning">FortiGate Telemetry 已關閉</div>
-        </section>
-        <section className="forti-widget">
-          <div className="forti-widget-title">系統管理者</div>
-          <div className="forti-admin-line"><span>1</span> HTTPS <span>0</span> FortiExplorer</div>
-          <a href="#" onClick={(e) => e.preventDefault()}>admin</a> <span className="text-muted">super_admin</span>
-        </section>
-        <section className="forti-widget forti-chart-widget">
-          <div className="forti-widget-title">CPU <span>1 分鐘</span></div>
-          <MiniChart spike />
-          <div className="forti-chart-foot">目前使用量 <strong>70%</strong></div>
-        </section>
-        <section className="forti-widget forti-chart-widget forti-wide">
-          <div className="forti-widget-title">記憶體 <span>1 分鐘</span></div>
-          <MiniChart tone="orange" />
-          <div className="forti-chart-foot">目前使用量 <strong>27%</strong></div>
-        </section>
-        <section className="forti-widget forti-chart-widget forti-wide">
-          <div className="forti-widget-title">連線數 <span>1 分鐘</span></div>
-          <MiniChart tone="gray" />
-          <div className="forti-chart-foot">目前連線數 <strong>423</strong> <span>SPU 54.4%</span></div>
-        </section>
+        </div>
+        {dashboardWidgetPanelOpen && (
+          <div className="forti-widget-picker">
+            {dashboardWidgetCatalog.map((widget) => (
+              <label key={widget.id}>
+                <input type="checkbox" checked={dashboardWidgets.includes(widget.id)} onChange={() => toggleDashboardWidget(widget.id)} />
+                {widget.label}
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="forti-workspace-grid">
+          {hasWidget('system') && (
+            <section className="forti-widget">
+              <div className="forti-widget-title">系統資訊</div>
+              <div className="forti-info-grid">
+                <span>主機名稱</span><strong>FGT90D3Z16007115</strong>
+                <span>序號</span><strong>FGT90D3Z16007115</strong>
+                <span>韌體</span><strong>v6.0.14 build0457 (GA)</strong>
+                <span>模式</span><strong>NAT (Flow-based)</strong>
+                <span>系統時間</span><strong>{lastRefreshAt}</strong>
+                <span>WAN IP</span><strong>{interfaces.find((item) => item.name === 'wan1')?.ip || '61.219.112.31'}</strong>
+              </div>
+            </section>
+          )}
+          {hasWidget('fabric') && (
+            <section className="forti-widget">
+              <div className="forti-widget-title">安全織網</div>
+              <div className="forti-fabric-icons">
+                {['bx-bar-chart-alt-2', 'bx-time', 'bx-cloud', 'bx-clipboard', 'bx-envelope', 'bx-wifi'].map((icon) => <i key={icon} className={`bx ${icon}`}></i>)}
+              </div>
+              <div className="forti-device-line"><i className="bx bx-server"></i> FGT90D3Z16007115</div>
+              <div className={fabricSettings.fabricEnabled ? 'forti-info-note' : 'forti-warning'}>{fabricSettings.fabricEnabled ? `Fabric 啟用 / ${fabricNodes.length} devices / ${fabricLinks.length} links` : 'FortiGate Telemetry 已關閉'}</div>
+            </section>
+          )}
+          {hasWidget('admins') && (
+            <section className="forti-widget">
+              <div className="forti-widget-title">系統管理者</div>
+              <div className="forti-admin-line"><span>1</span> HTTPS <span>0</span> FortiExplorer</div>
+              <button type="button" className="forti-link-button" onClick={() => setPage('systemAdmins')}>admin <span className="text-muted">super_admin</span></button>
+            </section>
+          )}
+          {hasWidget('alerts') && (
+            <section className="forti-widget forti-wide">
+              <div className="forti-widget-title">告警摘要 <span>{fortiNotifications.length} 筆</span></div>
+              <div className="forti-alert-list">
+                {fortiNotifications.map((notice) => (
+                  <button key={notice.id} type="button" onClick={() => openFortiNotification(notice)}>
+                    <i className={notice.icon}></i>
+                    <span><strong>{notice.title}</strong><small>{notice.source}</small></span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+          {hasWidget('changes') && (
+            <section className="forti-widget forti-wide">
+              <div className="forti-widget-title">最近設定變更 <span>local draft</span></div>
+              <div className="forti-change-list">
+                {recentChanges.map((item) => <span key={item}>{item}</span>)}
+              </div>
+            </section>
+          )}
+          {hasWidget('cpu') && (
+            <section className="forti-widget forti-chart-widget">
+              <div className="forti-widget-title">CPU <span>1 分鐘</span></div>
+              <MiniChart spike />
+              <div className="forti-chart-foot">目前使用量 <strong>{70 + (dashboardRefreshTick % 4)}%</strong></div>
+            </section>
+          )}
+          {hasWidget('memory') && (
+            <section className="forti-widget forti-chart-widget forti-wide">
+              <div className="forti-widget-title">記憶體 <span>1 分鐘</span></div>
+              <MiniChart tone="orange" />
+              <div className="forti-chart-foot">目前使用量 <strong>{27 + (dashboardRefreshTick % 3)}%</strong></div>
+            </section>
+          )}
+          {hasWidget('sessions') && (
+            <section className="forti-widget forti-chart-widget forti-wide">
+              <div className="forti-widget-title">連線數 <span>1 分鐘</span></div>
+              <MiniChart tone="gray" />
+              <div className="forti-chart-foot">目前連線數 <strong>{423 + dashboardRefreshTick}</strong> <span>SPU 54.4%</span></div>
+            </section>
+          )}
+        </div>
       </div>
     )
   }
@@ -3081,6 +3479,7 @@ export default function FortigateView() {
   }
 
   function renderFabric() {
+    const selectedNode = fabricNodes.find((node) => node.id === selectedFabricNode)
     return (
       <div className="forti-fabric-page">
         <div className="forti-section-title">安全織網 - 實體拓樸圖</div>
@@ -3098,9 +3497,11 @@ export default function FortigateView() {
           <button className="btn btn-sm btn-outline-secondary" onClick={removeLastFabricLink} disabled={!fabricLinks.length}><i className="bx bx-unlink"></i> 移除最後關係</button>
           <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedFabricNode} disabled={selectedFabricNode === 'fgt'}><i className="bx bx-trash"></i> 刪除選取物件</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => { setFabricLinks([]); setLastAction('已清除拓樸關係線') }}><i className="bx bx-eraser"></i> 清除關係</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => { writeFortiStorage('fortigate.fabric.nodes', fabricNodes); setLastAction('拓樸位置已保存') }}><i className="bx bx-save"></i> 保存位置</button>
+          <button className="btn btn-sm forti-btn" onClick={syncFabricDeviceStatus}><i className="bx bx-sync"></i> 同步狀態</button>
         </div>
         <div className="forti-diagram-selection">
-          已選取：{fabricNodes.find((node) => node.id === selectedFabricNode)?.label || '無'}
+          已選取：{selectedNode?.label || '無'} / 狀態：{selectedNode ? getFabricNodeStatus(selectedNode) : '-'} / 來源：{selectedNode?.sourceRef || '-'} / 同步：{selectedNode?.syncedAt || '-'}
         </div>
         <div
           className={`forti-diagram-canvas ${fabricConnectMode ? 'is-connect-mode' : ''}`}
@@ -3109,18 +3510,18 @@ export default function FortigateView() {
           onMouseLeave={() => setDraggingFabricNode(null)}
         >
           <svg className="forti-diagram-lines" aria-hidden="true">
-            {fabricLinks.map((link) => {
+            {fabricLinks.map((link, index) => {
               const from = fabricNodes.find((node) => node.id === link.from)
               const to = fabricNodes.find((node) => node.id === link.to)
               if (!from || !to) return null
-              return <line key={`${link.from}-${link.to}`} x1={from.x + (from.size / 2)} y1={from.y + (from.size / 2)} x2={to.x + (to.size / 2)} y2={to.y + (to.size / 2)} />
+              return <line key={`${link.from}-${link.to}-${index}`} className={`is-${link.status || 'up'}`} x1={from.x + (from.size / 2)} y1={from.y + (from.size / 2)} x2={to.x + (to.size / 2)} y2={to.y + (to.size / 2)} />
             })}
           </svg>
           {fabricNodes.map((node) => (
             <button
               key={node.id}
               type="button"
-              className={`forti-diagram-node ${node.id === 'fgt' ? 'is-root' : ''} ${fabricConnectFrom === node.id ? 'is-connecting' : ''} ${selectedFabricNode === node.id ? 'is-selected' : ''}`}
+              className={`forti-diagram-node ${node.id === 'fgt' ? 'is-root' : ''} ${fabricConnectFrom === node.id ? 'is-connecting' : ''} ${selectedFabricNode === node.id ? 'is-selected' : ''} is-${getFabricNodeStatus(node)}`}
               style={{ left: node.x, top: node.y, width: node.size, height: node.size }}
               onMouseDown={() => { if (!fabricConnectMode) setDraggingFabricNode(node.id) }}
               onClick={() => connectFabricNode(node.id)}
@@ -3134,45 +3535,112 @@ export default function FortigateView() {
             {fabricConnectMode ? '關係線模式：依序點選兩個物件建立連線' : '拖曳物件調整位置，或使用上方按鈕新增物件'}
           </div>
         </div>
+        <div className="forti-link-editor">
+          <section>
+            <strong>連線關係</strong>
+            <span>選取一條關係可編輯類型、標籤與狀態。</span>
+          </section>
+          <div className="forti-link-list">
+            {fabricLinks.map((link, index) => {
+              const from = fabricNodes.find((node) => node.id === link.from)?.label || link.from
+              const to = fabricNodes.find((node) => node.id === link.to)?.label || link.to
+              return (
+                <button key={`${link.from}-${link.to}-${index}`} type="button" className={selectedFabricLinkIndex === index ? 'is-selected' : ''} onClick={() => setSelectedFabricLinkIndex(index)} onDoubleClick={() => openFabricLinkModal(index)}>
+                  <b>{from} {'->'} {to}</b>
+                  <small>{link.type || 'Custom'} / {link.label || '未命名'} / {link.status || 'up'}</small>
+                </button>
+              )
+            })}
+            {!fabricLinks.length && <span className="forti-table-empty">尚未建立連線關係</span>}
+          </div>
+          <div className="forti-modal-actions">
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => selectedFabricLinkIndex !== null && openFabricLinkModal(selectedFabricLinkIndex)} disabled={selectedFabricLinkIndex === null}>編輯關係</button>
+            <button type="button" className="btn btn-sm btn-outline-danger" onClick={deleteSelectedFabricLink} disabled={selectedFabricLinkIndex === null}>刪除關係</button>
+          </div>
+        </div>
+        {fabricLinkModalOpen && (
+          <div className="forti-modal-backdrop" role="presentation">
+            <div className="forti-modal" role="dialog" aria-modal="true" aria-label="編輯拓樸連線">
+              <div className="forti-modal-title">編輯拓樸連線</div>
+              <label>來源節點</label>
+              <select className="form-select form-select-sm" value={fabricLinkDraft.from} onChange={(event) => setFabricLinkDraft((draft) => ({ ...draft, from: event.target.value }))}>
+                {fabricNodes.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}
+              </select>
+              <label className="mt-2">目的節點</label>
+              <select className="form-select form-select-sm" value={fabricLinkDraft.to} onChange={(event) => setFabricLinkDraft((draft) => ({ ...draft, to: event.target.value }))}>
+                {fabricNodes.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}
+              </select>
+              <label className="mt-2">連線類型</label>
+              <select className="form-select form-select-sm" value={fabricLinkDraft.type || 'Custom'} onChange={(event) => setFabricLinkDraft((draft) => ({ ...draft, type: event.target.value as NonNullable<FortiFabricLink['type']> }))}>
+                <option>FortiLink</option><option>VLAN</option><option>Policy</option><option>Telemetry</option><option>WAN</option><option>Custom</option>
+              </select>
+              <label className="mt-2">標籤</label>
+              <input className="form-control form-control-sm" value={fabricLinkDraft.label || ''} onChange={(event) => setFabricLinkDraft((draft) => ({ ...draft, label: event.target.value }))} />
+              <label className="mt-2">狀態</label>
+              <select className="form-select form-select-sm" value={fabricLinkDraft.status || 'up'} onChange={(event) => setFabricLinkDraft((draft) => ({ ...draft, status: event.target.value as NonNullable<FortiFabricLink['status']> }))}>
+                <option value="up">up</option><option value="degraded">degraded</option><option value="down">down</option>
+              </select>
+              <div className="forti-modal-actions">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setFabricLinkModalOpen(false)}>取消</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={saveFabricLink}>儲存</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
 
   function renderLogicalFabric() {
+    const activeInterfaces = interfaces.filter((item) => item.status === 'up')
+    const vlanInterfaces = interfaces.filter((item) => item.name.toLowerCase().includes('vlan') || item.type.includes('硬體交換器'))
+    const activePolicies = policies.filter((policy) => policy.status === '啟用')
     return (
       <div className="forti-fabric-page">
         <div className="forti-section-title">邏輯拓樸圖</div>
-        <div className="forti-logical-layout">
+        <div className="forti-logical-summary">
+          <section><strong>{activeInterfaces.length}</strong><span>啟用介面</span></section>
+          <section><strong>{vlanInterfaces.length}</strong><span>VLAN / Switch Interface</span></section>
+          <section><strong>{activePolicies.length}</strong><span>啟用 Policy</span></section>
+          <section><strong>{fabricConnectors.filter((item) => item.enabled).length}</strong><span>Fabric Connector</span></section>
+        </div>
+        <div className="forti-logical-layout forti-logical-linked">
           <section className="forti-logical-column">
-            <div className="forti-logical-heading">安全區段</div>
-            <div className="forti-logical-card"><i className="bx bx-cloud"></i><strong>WAN</strong><span>wan1 / 61.219.112.31</span></div>
-            <div className="forti-logical-card"><i className="bx bx-network-chart"></i><strong>LAN</strong><span>VLAN_40 / 10.20.40.0/24</span></div>
-            <div className="forti-logical-card"><i className="bx bx-laptop"></i><strong>SSL-VPN</strong><span>ssl.root / {sslTunnelRange}</span></div>
+            <div className="forti-logical-heading">介面 / VLAN</div>
+            {interfaces.map((item) => (
+              <button key={item.name} type="button" className={`forti-logical-card forti-logical-button ${item.name === selectedInterface ? 'is-selected' : ''}`} onClick={() => { setSelectedInterface(item.name); setPage('interfaces') }}>
+                <i className={item.role === 'WAN' ? 'bx bx-cloud' : item.name.toLowerCase().includes('vlan') ? 'bx bx-network-chart' : 'bx bx-transfer'}></i>
+                <strong>{item.name}</strong>
+                <span>{item.role} / {item.ip} / {item.status === 'up' ? '啟用' : '停用'}</span>
+              </button>
+            ))}
           </section>
           <section className="forti-logical-core">
             <div className="forti-logical-device">
               <i className="bx bx-shield-quarter"></i>
               <strong>FortiGate 90D</strong>
-              <span>Root FortiGate / NAT mode</span>
+              <span>{fabricSettings.role || 'Root FortiGate'} / NAT mode / {fabricSettings.fabricEnabled ? 'Fabric enabled' : 'Fabric disabled'}</span>
             </div>
             <div className="forti-logical-policy">
               <span>Policy Path</span>
-              <b>LAN_to_WAN</b>
-              <b>SSLVPN_to_LAN</b>
-              <b>Block_Malware</b>
+              {policies.map((policy) => (
+                <button key={policy.id} type="button" className={policy.id === selectedPolicyId ? 'is-selected' : ''} onClick={() => { setSelectedPolicyId(policy.id); setPage('policyIpv4') }}>
+                  {policy.source} {'->'} {policy.destination} / {policy.service} / {policy.action}
+                </button>
+              ))}
             </div>
           </section>
           <section className="forti-logical-column">
             <div className="forti-logical-heading">服務與保護</div>
-            <div className="forti-logical-card"><i className="bx bx-radar"></i><strong>Security Profiles</strong><span>AV / IPS / Web Filter / DNS Filter</span></div>
-            <div className="forti-logical-card"><i className="bx bx-cloud-upload"></i><strong>FortiGuard</strong><span>Rating / AV DB / IPS Signature</span></div>
-            <div className="forti-logical-card"><i className="bx bx-stats"></i><strong>FortiAnalyzer</strong><span>Logs and reports connector</span></div>
+            <button type="button" className="forti-logical-card forti-logical-button" onClick={() => setPage('antivirus')}><i className="bx bx-radar"></i><strong>Security Profiles</strong><span>AV {antivirusProfiles.length} / URL {urlFilters.length} / DNS {dnsFilters.length}</span></button>
+            <button type="button" className="forti-logical-card forti-logical-button" onClick={() => setPage('fortiguard')}><i className="bx bx-cloud-upload"></i><strong>FortiGuard</strong><span>{fortiguardUpdateMode} / Proxy {fortiguardProxy ? 'on' : 'off'}</span></button>
+            <button type="button" className="forti-logical-card forti-logical-button" onClick={() => setPage('fabricConnectors')}><i className="bx bx-stats"></i><strong>Fabric Connectors</strong><span>{fabricConnectors.filter((item) => item.authState === 'Verified').length} verified connectors</span></button>
           </section>
         </div>
         <div className="forti-logical-flows">
-          <span><b>WAN</b> 到 <b>FortiGate</b> 經由邊界政策與 IPS 檢查</span>
-          <span><b>LAN</b> 到 <b>WAN</b> 經由 NAT、Web Filter 與 DNS Filter</span>
-          <span><b>SSL-VPN</b> 登入後套用入口頁與 SSLVPN_to_LAN 政策</span>
+          {activePolicies.slice(0, 3).map((policy) => (
+            <span key={policy.id}><b>{policy.source}</b> 到 <b>{policy.destination}</b> 經由 {policy.securityProfiles || '未套用資安設定檔'}，服務 {policy.service}</span>
+          ))}
         </div>
       </div>
     )
@@ -3661,19 +4129,28 @@ export default function FortigateView() {
   }
 
   function renderFabricAutomation() {
+    const selectedAutomation = fabricAutomations.find((item) => item.id === selectedAutomationId)
     return (
-      <div className="forti-table-page">
+      <div className="forti-table-page forti-automation-page">
         <div className="forti-section-title">安全織網 - 自動化</div>
+        <div className="forti-profile-summary">
+          <section><strong>事件觸發</strong><span>依系統事件、Security Fabric、Webhook 或排程觸發。</span></section>
+          <section><strong>Action 腳本</strong><span>可記錄 CLI/通知/隔離等自動化動作草稿。</span></section>
+          <section><strong>通知管道</strong><span>Email、Webhook、Syslog、FortiAnalyzer Event Handler。</span></section>
+        </div>
         <div className="forti-toolbar">
           <button className="btn btn-sm forti-btn" onClick={() => openAutomationModal('add')}>新增</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => openAutomationModal('edit')} disabled={!selectedAutomationId}>編輯</button>
           <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedAutomation} disabled={!selectedAutomationId}>刪除</button>
-          <input className="form-control form-control-sm" placeholder="搜尋" />
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => selectedAutomation && setLastAction(`已模擬執行 ${selectedAutomation.name}`)} disabled={!selectedAutomation}>執行測試</button>
+          <input className="form-control form-control-sm" placeholder="搜尋" value={getTableSearch('fabricAutomation')} onChange={(event) => updateTableSearch('fabricAutomation', event.target.value)} />
         </div>
         <table className="forti-table forti-selectable-table">
-          <thead><tr><th>名稱</th><th>觸發類型</th><th>狀態</th><th>說明</th></tr></thead>
+          <thead><tr><th>名稱</th><th>觸發類型</th><th>事件觸發條件</th><th>通知管道</th><th>最近執行</th><th>狀態</th></tr></thead>
           <tbody>
-            {fabricAutomations.map((item) => (
+            {fabricAutomations
+              .filter((item) => !getTableSearch('fabricAutomation').trim() || `${item.name} ${item.type} ${item.triggerCondition} ${item.notificationChannel}`.toLowerCase().includes(getTableSearch('fabricAutomation').trim().toLowerCase()))
+              .map((item) => (
               <tr
                 key={item.id}
                 className={item.id === selectedAutomationId ? 'is-selected' : ''}
@@ -3681,30 +4158,48 @@ export default function FortigateView() {
               >
                 <td>{item.name}</td>
                 <td>{item.type}</td>
+                <td>{item.triggerCondition || '-'}</td>
+                <td>{item.notificationChannel || '-'}</td>
+                <td>{item.lastRun || '-'}</td>
                 <td><span className={item.enabled ? 'forti-pill success' : 'forti-pill muted'}>{item.enabled ? '啟用' : '停用'}</span></td>
-                <td>{item.description}</td>
               </tr>
             ))}
-            {!fabricAutomations.length && <tr><td colSpan={4} className="forti-table-empty">無自動化項目</td></tr>}
+            {!fabricAutomations.length && <tr><td colSpan={6} className="forti-table-empty">無自動化項目</td></tr>}
           </tbody>
         </table>
+        {selectedAutomation && (
+          <div className="forti-automation-detail">
+            <section><strong>Action 腳本</strong><pre>{selectedAutomation.actionScript || '尚未設定 Action 腳本'}</pre></section>
+            <section><strong>說明</strong><span>{selectedAutomation.description}</span></section>
+          </div>
+        )}
         {automationModalMode && (
           <div className="forti-modal-backdrop" role="presentation">
-            <div className="forti-modal" role="dialog" aria-modal="true" aria-label={automationModalMode === 'add' ? '新增自動化' : '編輯自動化'}>
+            <div className="forti-modal forti-modal-wide" role="dialog" aria-modal="true" aria-label={automationModalMode === 'add' ? '新增自動化' : '編輯自動化'}>
               <div className="forti-modal-title">{automationModalMode === 'add' ? '新增自動化' : '編輯自動化'}</div>
-              <label>名稱</label>
-              <input className="form-control form-control-sm" value={automationDraft.name} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, name: event.target.value }))} />
-              <label className="mt-2">觸發類型</label>
-              <select className="form-select form-select-sm" value={automationDraft.type} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, type: event.target.value }))}>
-                <option>Security Fabric</option>
-                <option>Local event</option>
-                <option>Webhook</option>
-                <option>Schedule</option>
-              </select>
-              <label className="mt-2">狀態</label>
-              <FortiSwitch checked={automationDraft.enabled} onChange={() => setAutomationDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={automationDraft.enabled ? '啟用' : '停用'} />
-              <label className="mt-2">說明</label>
-              <input className="form-control form-control-sm" value={automationDraft.description} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, description: event.target.value }))} />
+              <div className="forti-modal-grid">
+                <label>名稱</label>
+                <input className="form-control form-control-sm" value={automationDraft.name} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                <label>觸發類型</label>
+                <select className="form-select form-select-sm" value={automationDraft.type} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, type: event.target.value }))}>
+                  <option>Security Fabric</option>
+                  <option>Local event</option>
+                  <option>Webhook</option>
+                  <option>Schedule</option>
+                </select>
+                <label>事件觸發條件</label>
+                <input className="form-control form-control-sm" value={automationDraft.triggerCondition || ''} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, triggerCondition: event.target.value }))} />
+                <label>通知管道</label>
+                <select className="form-select form-select-sm" value={automationDraft.notificationChannel || 'Email'} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, notificationChannel: event.target.value }))}>
+                  <option>Email</option><option>Webhook: SOC Channel</option><option>Syslog</option><option>FortiAnalyzer Event Handler</option>
+                </select>
+                <label>狀態</label>
+                <FortiSwitch checked={automationDraft.enabled} onChange={() => setAutomationDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={automationDraft.enabled ? '啟用' : '停用'} />
+                <label>說明</label>
+                <input className="form-control form-control-sm" value={automationDraft.description} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, description: event.target.value }))} />
+                <label>Action 腳本</label>
+                <textarea className="form-control form-control-sm" rows={4} value={automationDraft.actionScript || ''} onChange={(event) => setAutomationDraft((draft) => ({ ...draft, actionScript: event.target.value }))} />
+              </div>
               <div className="forti-modal-actions">
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setAutomationModalMode(null)}>取消</button>
                 <button type="button" className="btn btn-sm forti-btn" onClick={saveAutomation}>儲存</button>
@@ -3720,17 +4215,35 @@ export default function FortigateView() {
     return (
       <div className="forti-form-page forti-fabric-settings-page">
         <div className="forti-section-title">安全織網 - 設置</div>
-        <div className="forti-band">FortiGate Telemetry</div>
+        <div className="forti-profile-summary">
+          <section><strong>{fabricSettings.fabricEnabled ? 'Fabric Enabled' : 'Fabric Disabled'}</strong><span>控制 FortiGate 是否參與 Security Fabric 拓樸與遙測同步。</span></section>
+          <section><strong>FortiManager</strong><span>{fabricSettings.upstreamManager || '未設定'}</span></section>
+          <section><strong>FortiAnalyzer</strong><span>{fabricSettings.upstreamAnalyzer || '未設定'}</span></section>
+        </div>
+        <div className="forti-band">Security Fabric</div>
         <div className="forti-form-section">
-          <label>狀態</label>
+          <label>Fabric 狀態</label>
+          <FortiSwitch
+            checked={fabricSettings.fabricEnabled}
+            onChange={() => updateFabricSetting('fabricEnabled', !fabricSettings.fabricEnabled)}
+            label={fabricSettings.fabricEnabled ? '啟用' : '停用'}
+          />
+          <label>FortiGate Telemetry</label>
           <FortiSwitch
             checked={fabricSettings.telemetry}
             onChange={() => toggleFabricSetting('telemetry')}
             label={fabricSettings.telemetry ? '啟用' : '停用'}
           />
-          <label>設備角色</label><select className="form-select form-select-sm" defaultValue="Root FortiGate"><option>Root FortiGate</option><option>Downstream FortiGate</option></select>
+          <label>設備角色</label>
+          <select className="form-select form-select-sm" value={fabricSettings.role || 'Root FortiGate'} onChange={(event) => updateFabricSetting('role', event.target.value)}>
+            <option>Root FortiGate</option><option>Downstream FortiGate</option><option>Standalone</option>
+          </select>
           <label>FortiAnalyzer Logging</label><FortiSwitch checked={fabricSettings.analyzer} onChange={() => toggleFabricSetting('analyzer')} label={fabricSettings.analyzer ? '啟用' : '停用'} />
           <label>Endpoint Telemetry</label><FortiSwitch checked={fabricSettings.endpoint} onChange={() => toggleFabricSetting('endpoint')} label={fabricSettings.endpoint ? '啟用' : '停用'} />
+          <label>上游 FortiManager</label>
+          <input className="form-control form-control-sm" value={fabricSettings.upstreamManager || ''} onChange={(event) => updateFabricSetting('upstreamManager', event.target.value)} placeholder="10.20.100.250 或 fmg.example.local" />
+          <label>上游 FortiAnalyzer</label>
+          <input className="form-control form-control-sm" value={fabricSettings.upstreamAnalyzer || ''} onChange={(event) => updateFabricSetting('upstreamAnalyzer', event.target.value)} placeholder="10.20.100.251 或 faz.example.local" />
           <label>管理介面</label>
           <div className="forti-chip-box">
             {fabricManagementInterfaces.map((item) => (
@@ -3743,6 +4256,9 @@ export default function FortigateView() {
           </div>
         </div>
         <div className="forti-info-note">停用後，實體拓樸圖與下游裝置同步狀態會停止更新；已建立的拓樸物件仍會保留在畫面中。</div>
+        <div className="forti-centered-actions">
+          <button type="button" className="btn forti-apply" onClick={() => { syncFabricDeviceStatus(); setLastAction('Security Fabric 設定已套用') }}>套用</button>
+        </div>
         {fabricInterfaceModalOpen && (
           <div className="forti-modal-backdrop" role="presentation">
             <div className="forti-modal" role="dialog" aria-modal="true" aria-label="新增管理介面">
@@ -3754,6 +4270,82 @@ export default function FortigateView() {
               <div className="forti-modal-actions">
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setFabricInterfaceModalOpen(false)}>取消</button>
                 <button type="button" className="btn btn-sm forti-btn" onClick={addFabricManagementInterface}>新增</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderFabricConnectors() {
+    const selectedConnector = fabricConnectors.find((item) => item.id === selectedFabricConnectorId)
+    const connectorSearch = getTableSearch('fabricConnectors').trim().toLowerCase()
+    const filteredConnectors = fabricConnectors.filter((item) => !connectorSearch || `${item.name} ${item.connectorType} ${item.provider} ${item.account} ${item.endpoint}`.toLowerCase().includes(connectorSearch))
+    return (
+      <div className="forti-table-page forti-connectors-page">
+        <div className="forti-section-title">Fabric Connectors</div>
+        <div className="forti-connector-summary">
+          {(['Fortinet', 'Cloud SDN', 'Endpoint', 'SIEM', 'Webhook'] as FortiFabricConnector['connectorType'][]).map((type) => (
+            <section key={type}>
+              <strong>{fabricConnectors.filter((item) => item.connectorType === type).length}</strong>
+              <span>{type}</span>
+            </section>
+          ))}
+        </div>
+        <div className="forti-toolbar">
+          <button className="btn btn-sm forti-btn" onClick={() => openFabricConnectorModal('add')}>新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openFabricConnectorModal('edit')} disabled={!selectedConnector}>編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedFabricConnector} disabled={!selectedConnector}>刪除</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => selectedConnector && testFabricConnector(selectedConnector.id)} disabled={!selectedConnector}>連線測試</button>
+          <input className="form-control form-control-sm" placeholder="搜尋 Connector / Provider / Endpoint" value={getTableSearch('fabricConnectors')} onChange={(event) => updateTableSearch('fabricConnectors', event.target.value)} />
+        </div>
+        <table className="forti-table forti-selectable-table">
+          <thead><tr><th>名稱</th><th>類型</th><th>Provider</th><th>帳號</th><th>Endpoint</th><th>驗證</th><th>狀態</th><th>最後測試</th></tr></thead>
+          <tbody>
+            {filteredConnectors.map((connector) => (
+              <tr key={connector.id} className={connector.id === selectedFabricConnectorId ? 'is-selected' : ''} onClick={() => setSelectedFabricConnectorId(connector.id)}>
+                <td>{connector.name}</td>
+                <td>{connector.connectorType}</td>
+                <td>{connector.provider}</td>
+                <td>{connector.account || '-'}</td>
+                <td>{connector.endpoint || '-'}</td>
+                <td><span className={connector.authState === 'Verified' ? 'forti-pill success' : connector.authState === 'Failed' ? 'forti-pill danger' : 'forti-pill muted'}>{connector.authState}</span></td>
+                <td><FortiSwitch checked={connector.enabled} onChange={() => setFabricConnectors((items) => items.map((item) => item.id === connector.id ? { ...item, enabled: !item.enabled } : item))} label={connector.enabled ? '啟用' : '停用'} /></td>
+                <td>{connector.lastTest || '-'}</td>
+              </tr>
+            ))}
+            {!filteredConnectors.length && <tr><td colSpan={8} className="forti-table-empty">無符合條件的 Fabric Connector</td></tr>}
+          </tbody>
+        </table>
+        {selectedConnector && (
+          <div className="forti-connector-detail">
+            <section><strong>用途</strong><span>{selectedConnector.description}</span></section>
+            <section><strong>連線檢查</strong><span>{selectedConnector.account && selectedConnector.endpoint ? '已具備帳號與 Endpoint，可執行連線測試。' : '請先補齊雲端帳號與 Endpoint。'}</span></section>
+          </div>
+        )}
+        {fabricConnectorModalMode && (
+          <div className="forti-modal-backdrop" role="presentation">
+            <div className="forti-modal forti-modal-wide" role="dialog" aria-modal="true" aria-label={fabricConnectorModalMode === 'add' ? '新增 Fabric Connector' : '編輯 Fabric Connector'}>
+              <div className="forti-modal-title">{fabricConnectorModalMode === 'add' ? '新增 Fabric Connector' : '編輯 Fabric Connector'}</div>
+              <div className="forti-modal-grid">
+                <label>名稱</label><input className="form-control form-control-sm" value={fabricConnectorDraft.name} onChange={(event) => setFabricConnectorDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                <label>Connector 類型</label>
+                <select className="form-select form-select-sm" value={fabricConnectorDraft.connectorType} onChange={(event) => setFabricConnectorDraft((draft) => ({ ...draft, connectorType: event.target.value as FortiFabricConnector['connectorType'] }))}>
+                  <option>Fortinet</option><option>Cloud SDN</option><option>Endpoint</option><option>SIEM</option><option>Webhook</option>
+                </select>
+                <label>Provider</label>
+                <select className="form-select form-select-sm" value={fabricConnectorDraft.provider} onChange={(event) => setFabricConnectorDraft((draft) => ({ ...draft, provider: event.target.value }))}>
+                  <option>Fortinet</option><option>AWS</option><option>Azure</option><option>GCP</option><option>Fortinet EMS</option><option>Splunk</option><option>Custom Webhook</option>
+                </select>
+                <label>雲端帳號 / API 帳號</label><input className="form-control form-control-sm" value={fabricConnectorDraft.account} onChange={(event) => setFabricConnectorDraft((draft) => ({ ...draft, account: event.target.value }))} />
+                <label>Endpoint / Region</label><input className="form-control form-control-sm" value={fabricConnectorDraft.endpoint} onChange={(event) => setFabricConnectorDraft((draft) => ({ ...draft, endpoint: event.target.value }))} />
+                <label>狀態</label><FortiSwitch checked={fabricConnectorDraft.enabled} onChange={() => setFabricConnectorDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={fabricConnectorDraft.enabled ? '啟用' : '停用'} />
+                <label>說明</label><input className="form-control form-control-sm" value={fabricConnectorDraft.description} onChange={(event) => setFabricConnectorDraft((draft) => ({ ...draft, description: event.target.value }))} />
+              </div>
+              <div className="forti-modal-actions">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setFabricConnectorModalMode(null)}>取消</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={saveFabricConnector}>儲存</button>
               </div>
             </div>
           </div>
@@ -4241,35 +4833,161 @@ export default function FortigateView() {
   }
 
   function renderIpsecTunnels() {
+    const selectedTunnel = ipsecTunnels.find((tunnel) => tunnel.id === selectedIpsecTunnelId) || ipsecTunnels[0]
+    const upCount = ipsecTunnels.filter((tunnel) => tunnel.status === 'Up').length
+    const downCount = Math.max(0, ipsecTunnels.length - upCount)
+    const selectedType = selectedTunnel?.type || 'Site to Site'
+    const selectedIke = selectedTunnel?.ikeVersion || (selectedTunnel?.phase?.includes('IKEv1') ? 'IKEv1' : 'IKEv2')
+    const selectedProposal = selectedTunnel?.proposal || selectedTunnel?.phase?.split('/').pop()?.trim() || 'AES256-SHA256'
+    const selectedPhase = selectedTunnel?.phase || '尚未協商'
+
     return (
-      <div className="forti-table-page">
+      <div className="forti-table-page forti-ipsec-page">
         <div className="forti-section-title">IPsec 通道</div>
-        <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openIpsecTunnelModal('add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openIpsecTunnelModal('edit')} disabled={!selectedIpsecTunnelId}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedIpsecTunnel} disabled={!selectedIpsecTunnelId}>刪除</button>
+
+        <div className="forti-ipsec-hero">
+          <section>
+            <span>總通道</span>
+            <strong>{ipsecTunnels.length}</strong>
+            <small>Phase 1 / Phase 2 設定</small>
+          </section>
+          <section className="is-up">
+            <span>已連線</span>
+            <strong>{upCount}</strong>
+            <small>目前可轉送流量</small>
+          </section>
+          <section className="is-down">
+            <span>未連線</span>
+            <strong>{downCount}</strong>
+            <small>等待 Peer 或需檢查設定</small>
+          </section>
+          <section>
+            <span>選取通道</span>
+            <strong>{selectedTunnel?.name || '-'}</strong>
+            <small>{selectedTunnel ? `${selectedTunnel.remoteGateway} / ${selectedTunnel.interfaceName}` : '尚未選取'}</small>
+          </section>
         </div>
-        <table className="forti-table forti-selectable-table"><thead><tr><th>名稱</th><th>遠端 Gateway</th><th>介面</th><th>本地子網</th><th>遠端子網</th><th>Phase1/2</th><th>狀態</th></tr></thead><tbody>
+
+        <div className="forti-toolbar forti-ipsec-toolbar">
+          <div>
+            <button className="btn btn-sm forti-btn" onClick={() => openIpsecTunnelModal('add')}><i className="bx bx-plus"></i> 新增通道</button>
+            <button className="btn btn-sm btn-outline-secondary" onClick={() => openIpsecTunnelModal('edit')} disabled={!selectedIpsecTunnelId}><i className="bx bx-edit"></i> 編輯</button>
+            <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedIpsecTunnel} disabled={!selectedIpsecTunnelId}><i className="bx bx-trash"></i> 刪除</button>
+          </div>
+          <div>
+            <button className="btn btn-sm btn-outline-secondary" onClick={() => { if (selectedTunnel) toggleIpsecTunnel(selectedTunnel.id) }} disabled={!selectedTunnel}>
+              {selectedTunnel?.status === 'Up' ? '停用選取通道' : '啟用選取通道'}
+            </button>
+            <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === 'IPsec 通道' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('IPsec 通道')}><i className="bx bx-refresh"></i> 重新整理</button>
+          </div>
+        </div>
+
+        <div className="forti-ipsec-layout">
+          <section className="forti-ipsec-list">
+            <header><strong>通道清單</strong><span>{ipsecTunnels.length} tunnels</span></header>
+            {ipsecTunnels.map((tunnel) => (
+              <button type="button" key={tunnel.id} className={tunnel.id === selectedIpsecTunnelId ? 'is-selected' : ''} onClick={() => setSelectedIpsecTunnelId(tunnel.id)}>
+                <span className={`forti-ipsec-status-dot ${tunnel.status === 'Up' ? 'is-up' : 'is-down'}`}></span>
+                <div>
+                  <strong>{tunnel.name}</strong>
+                  <small>{tunnel.remoteGateway} · {tunnel.interfaceName}</small>
+                </div>
+                <b className={tunnel.status === 'Up' ? 'is-up' : 'is-down'}>{tunnel.status}</b>
+              </button>
+            ))}
+            {!ipsecTunnels.length && <div className="forti-table-empty">尚未建立 IPsec 通道</div>}
+          </section>
+
+          <section className="forti-ipsec-canvas">
+            <header><strong>通道狀態</strong>{selectedTunnel && <span className={selectedTunnel.status === 'Up' ? 'forti-pill success' : 'forti-pill muted'}>{selectedTunnel.status}</span>}</header>
+            {selectedTunnel ? (
+              <>
+                <div className="forti-ipsec-path">
+                  <div className="forti-ipsec-node is-local"><i className="bx bx-shield-quarter"></i><strong>FortiGate 90D</strong><span>{selectedTunnel.interfaceName}</span><small>{selectedTunnel.localSubnet}</small></div>
+                  <div className={`forti-ipsec-tunnel-line ${selectedTunnel.status === 'Up' ? 'is-up' : 'is-down'}`}>
+                    <span>{selectedTunnel.status === 'Up' ? 'IPsec tunnel established' : 'Tunnel is down'}</span>
+                    <small>ESP / UDP 500 / UDP 4500</small>
+                  </div>
+                  <div className="forti-ipsec-node is-remote"><i className="bx bx-buildings"></i><strong>Remote Peer</strong><span>{selectedTunnel.remoteGateway}</span><small>{selectedTunnel.remoteSubnet}</small></div>
+                </div>
+                <div className="forti-ipsec-status-note">
+                  <strong>{selectedPhase}</strong>
+                  <span>{selectedType} · {selectedIke} · {selectedTunnel.authMethod || 'Pre-shared Key'} · Last Up {selectedTunnel.lastUp || '-'}</span>
+                </div>
+              </>
+            ) : <div className="forti-table-empty">請先新增或選取 IPsec 通道</div>}
+          </section>
+        </div>
+
+        <div className="forti-ipsec-lower">
+          <section className="forti-ipsec-phase-panel">
+            <header><strong>Phase 與流量資訊</strong><span>{selectedTunnel ? selectedProposal : '尚未選取通道'}</span></header>
+            {selectedTunnel ? (
+              <div className="forti-ipsec-phase-grid">
+                <article className={selectedTunnel.status === 'Up' ? 'is-ok' : 'is-warn'}><span>Phase 1</span><strong>{selectedTunnel.status === 'Up' ? 'Established' : 'Down'}</strong><small>{selectedIke} · {selectedTunnel.authMethod || 'Pre-shared Key'}</small></article>
+                <article className={selectedTunnel.status === 'Up' ? 'is-ok' : 'is-warn'}><span>Phase 2</span><strong>{selectedTunnel.status === 'Up' ? 'Selector Up' : 'Not negotiated'}</strong><small>{selectedTunnel.localSubnet} ⇄ {selectedTunnel.remoteSubnet}</small></article>
+                <article><span>Proposal</span><strong>{selectedProposal}</strong><small>{selectedTunnel.pfsGroup || 'Group 14'} · NAT-T {selectedTunnel.natTraversal ?? true ? 'On' : 'Off'}</small></article>
+                <article><span>流量</span><strong>{selectedTunnel.rx || '0 B'} / {selectedTunnel.tx || '0 B'}</strong><small>RX / TX</small></article>
+              </div>
+            ) : <div className="forti-table-empty">尚未選取通道</div>}
+          </section>
+          <aside className="forti-ipsec-detail">
+            <header><strong>設定摘要</strong>{selectedTunnel && <span className={selectedTunnel.status === 'Up' ? 'forti-pill success' : 'forti-pill muted'}>{selectedTunnel.status}</span>}</header>
+            {selectedTunnel ? (
+              <>
+                <dl>
+                  <div><dt>VPN 類型</dt><dd>{selectedType}</dd></div>
+                  <div><dt>遠端 Gateway</dt><dd>{selectedTunnel.remoteGateway}</dd></div>
+                  <div><dt>介面</dt><dd>{selectedTunnel.interfaceName}</dd></div>
+                  <div><dt>IKE 版本</dt><dd>{selectedIke}</dd></div>
+                  <div><dt>DPD</dt><dd>{selectedTunnel.dpd ?? true ? '啟用' : '停用'}</dd></div>
+                  <div><dt>Auto-negotiate</dt><dd>{selectedTunnel.autoNegotiate ?? true ? '啟用' : '停用'}</dd></div>
+                  <div><dt>Monitor</dt><dd>{selectedTunnel.monitor || '-'}</dd></div>
+                  <div><dt>Last Up</dt><dd>{selectedTunnel.lastUp || '-'}</dd></div>
+                </dl>
+                <div className="forti-ipsec-comment">{selectedTunnel.comments || '未填寫備註'}</div>
+              </>
+            ) : <div className="forti-table-empty">尚未選取通道</div>}
+          </aside>
+        </div>
+
+        <section className="forti-ipsec-selectors">
+          <header><strong>Phase 2 Selectors</strong><span>本地 / 遠端子網與協商狀態</span></header>
+          <div className="forti-ipsec-table-wrap">
+        <table className="forti-table forti-selectable-table"><thead><tr><th>名稱</th><th>類型</th><th>遠端 Gateway</th><th>介面</th><th>本地子網</th><th>遠端子網</th><th>Proposal</th><th>狀態</th></tr></thead><tbody>
           {ipsecTunnels.map((tunnel) => (
             <tr key={tunnel.id} className={tunnel.id === selectedIpsecTunnelId ? 'is-selected' : ''} onClick={() => setSelectedIpsecTunnelId(tunnel.id)}>
-              <td>{tunnel.name}</td><td>{tunnel.remoteGateway}</td><td>{tunnel.interfaceName}</td><td>{tunnel.localSubnet}</td><td>{tunnel.remoteSubnet}</td><td>{tunnel.phase}</td>
-              <td><button className="forti-switch-button" onClick={() => toggleIpsecTunnel(tunnel.id)}><span className={tunnel.status === 'Up' ? 'forti-pill success' : 'forti-pill muted'}>{tunnel.status}</span></button></td>
+              <td>{tunnel.name}</td><td>{tunnel.type || 'Site to Site'}</td><td>{tunnel.remoteGateway}</td><td>{tunnel.interfaceName}</td><td>{tunnel.localSubnet}</td><td>{tunnel.remoteSubnet}</td><td>{tunnel.proposal || tunnel.phase}</td>
+              <td><button className="forti-switch-button" onClick={(event) => { event.stopPropagation(); toggleIpsecTunnel(tunnel.id) }}><span className={tunnel.status === 'Up' ? 'forti-pill success' : 'forti-pill muted'}>{tunnel.status}</span></button></td>
             </tr>
           ))}
-          {!ipsecTunnels.length && <tr><td colSpan={7} className="forti-table-empty">尚未建立 IPsec 通道</td></tr>}
+          {!ipsecTunnels.length && <tr><td colSpan={8} className="forti-table-empty">尚未建立 IPsec 通道</td></tr>}
         </tbody></table>
+          </div>
+        </section>
         {ipsecTunnelModalMode && (
           <div className="forti-modal-backdrop" role="presentation">
             <div className="forti-modal forti-modal-wide" role="dialog" aria-modal="true" aria-label={ipsecTunnelModalMode === 'add' ? '新增 IPsec 通道' : '編輯 IPsec 通道'}>
               <div className="forti-modal-title">{ipsecTunnelModalMode === 'add' ? '新增 IPsec 通道' : '編輯 IPsec 通道'}</div>
               <div className="forti-modal-grid">
                 <label>名稱</label><input className="form-control form-control-sm" value={ipsecTunnelDraft.name} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                <label>VPN 類型</label><select className="form-select form-select-sm" value={ipsecTunnelDraft.type || 'Site to Site'} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, type: event.target.value as FortiIpsecTunnel['type'] }))}><option>Site to Site</option><option>Remote Access</option><option>Hub-and-Spoke</option><option>Custom</option></select>
                 <label>遠端 Gateway</label><input className="form-control form-control-sm" value={ipsecTunnelDraft.remoteGateway} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, remoteGateway: event.target.value }))} />
                 <label>介面</label><select className="form-select form-select-sm" value={ipsecTunnelDraft.interfaceName} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, interfaceName: event.target.value }))}>{interfaces.map((item) => <option key={item.name}>{item.name}</option>)}</select>
                 <label>本地子網</label><input className="form-control form-control-sm" value={ipsecTunnelDraft.localSubnet} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, localSubnet: event.target.value }))} />
                 <label>遠端子網</label><input className="form-control form-control-sm" value={ipsecTunnelDraft.remoteSubnet} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, remoteSubnet: event.target.value }))} />
-                <label>Phase1/2</label><input className="form-control form-control-sm" value={ipsecTunnelDraft.phase} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, phase: event.target.value }))} />
+                <label>IKE 版本</label><select className="form-select form-select-sm" value={ipsecTunnelDraft.ikeVersion || 'IKEv2'} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, ikeVersion: event.target.value as FortiIpsecTunnel['ikeVersion'] }))}><option>IKEv1</option><option>IKEv2</option></select>
+                <label>認證方式</label><select className="form-select form-select-sm" value={ipsecTunnelDraft.authMethod || 'Pre-shared Key'} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, authMethod: event.target.value as FortiIpsecTunnel['authMethod'] }))}><option>Pre-shared Key</option><option>Certificate</option></select>
+                <label>Proposal</label><select className="form-select form-select-sm" value={ipsecTunnelDraft.proposal || 'AES256-SHA256'} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, proposal: event.target.value }))}><option>AES256-SHA256</option><option>AES256-SHA1</option><option>AES128-SHA256</option><option>CHACHA20-POLY1305</option></select>
+                <label>PFS Group</label><select className="form-select form-select-sm" value={ipsecTunnelDraft.pfsGroup || 'Group 14'} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, pfsGroup: event.target.value }))}><option>Disable</option><option>Group 2</option><option>Group 5</option><option>Group 14</option><option>Group 19</option></select>
+                <label>Phase 狀態</label><input className="form-control form-control-sm" value={ipsecTunnelDraft.phase} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, phase: event.target.value }))} />
+                <label>NAT Traversal</label><FortiSwitch checked={ipsecTunnelDraft.natTraversal ?? true} onChange={() => setIpsecTunnelDraft((draft) => ({ ...draft, natTraversal: !(draft.natTraversal ?? true) }))} label={(ipsecTunnelDraft.natTraversal ?? true) ? '啟用' : '停用'} />
+                <label>DPD</label><FortiSwitch checked={ipsecTunnelDraft.dpd ?? true} onChange={() => setIpsecTunnelDraft((draft) => ({ ...draft, dpd: !(draft.dpd ?? true) }))} label={(ipsecTunnelDraft.dpd ?? true) ? '啟用' : '停用'} />
+                <label>Auto-negotiate</label><FortiSwitch checked={ipsecTunnelDraft.autoNegotiate ?? true} onChange={() => setIpsecTunnelDraft((draft) => ({ ...draft, autoNegotiate: !(draft.autoNegotiate ?? true) }))} label={(ipsecTunnelDraft.autoNegotiate ?? true) ? '啟用' : '停用'} />
+                <label>監測狀態</label><input className="form-control form-control-sm" value={ipsecTunnelDraft.monitor || ''} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, monitor: event.target.value }))} />
+                <label>最後連線</label><input className="form-control form-control-sm" value={ipsecTunnelDraft.lastUp || ''} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, lastUp: event.target.value }))} />
                 <label>狀態</label><FortiSwitch checked={ipsecTunnelDraft.status === 'Up'} onChange={() => setIpsecTunnelDraft((draft) => ({ ...draft, status: draft.status === 'Up' ? 'Down' : 'Up' }))} label={ipsecTunnelDraft.status} />
+                <label>備註</label><textarea className="form-control form-control-sm" rows={2} value={ipsecTunnelDraft.comments || ''} onChange={(event) => setIpsecTunnelDraft((draft) => ({ ...draft, comments: event.target.value }))} />
               </div>
               <div className="forti-modal-actions"><button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setIpsecTunnelModalMode(null)}>取消</button><button type="button" className="btn btn-sm forti-btn" onClick={saveIpsecTunnel}>儲存</button></div>
             </div>
@@ -4363,14 +5081,57 @@ export default function FortigateView() {
   }
 
   function renderIpsecTemplates() {
+    const selectedTemplate = ipsecTemplateCatalog.find((template) => template.id === selectedIpsecTemplateId) || ipsecTemplateCatalog[0]
+
     return (
-      <div className="forti-table-page">
+      <div className="forti-table-page forti-ipsec-template-page">
         <div className="forti-section-title">IPsec 通道範本</div>
-        <table className="forti-table"><thead><tr><th>範本</th><th>用途</th><th>IKE</th><th>加密</th><th>NAT Traversal</th><th>DPD</th></tr></thead><tbody>
-          <tr><td>Site_to_Site_Strong</td><td>分公司互連</td><td>IKEv2</td><td>AES256/SHA256/DH14</td><td>啟用</td><td>On idle</td></tr>
-          <tr><td>Remote_Access_User</td><td>使用者撥入</td><td>IKEv2</td><td>AES256/SHA256</td><td>啟用</td><td>On demand</td></tr>
-          <tr><td>Cloud_VPC</td><td>雲端 VPC</td><td>IKEv2</td><td>AES256/SHA256/DH14</td><td>啟用</td><td>On idle</td></tr>
-        </tbody></table>
+        <div className="forti-ipsec-template-hero">
+          <section><span>範本數</span><strong>{ipsecTemplateCatalog.length}</strong><small>內建常用 IPsec 情境</small></section>
+          <section><span>預設 IKE</span><strong>{selectedTemplate.ikeVersion}</strong><small>{selectedTemplate.proposal}</small></section>
+          <section><span>目前選取</span><strong>{selectedTemplate.name}</strong><small>{selectedTemplate.title}</small></section>
+        </div>
+
+        <div className="forti-ipsec-template-layout">
+          <section className="forti-ipsec-template-list">
+            <header><strong>範本清單</strong><span>選取後查看參數</span></header>
+            {ipsecTemplateCatalog.map((template) => (
+              <button type="button" key={template.id} className={template.id === selectedTemplate.id ? 'is-selected' : ''} onClick={() => setSelectedIpsecTemplateId(template.id)}>
+                <i className={template.type === 'Remote Access' ? 'bx bx-user-voice' : template.id === 'cloud-vpc' ? 'bx bx-cloud' : 'bx bx-git-branch'}></i>
+                <div><strong>{template.name}</strong><span>{template.title}</span><small>{template.scenario}</small></div>
+                <b>{template.ikeVersion}</b>
+              </button>
+            ))}
+          </section>
+
+          <section className="forti-ipsec-template-detail">
+            <header><strong>範本內容</strong><span>{selectedTemplate.scenario}</span></header>
+            <div className="forti-ipsec-template-diagram">
+              <div><i className="bx bx-shield-quarter"></i><strong>FortiGate 90D</strong><span>{selectedTemplate.localSubnet}</span></div>
+              <b><span>{selectedTemplate.proposal}</span><small>{selectedTemplate.ports.join(' / ')}</small></b>
+              <div><i className="bx bx-server"></i><strong>Remote Peer</strong><span>{selectedTemplate.remoteGateway}</span></div>
+            </div>
+            <div className="forti-ipsec-template-actions">
+              <button type="button" className="btn btn-sm forti-btn" onClick={() => createIpsecTunnelFromTemplate(selectedTemplate)}><i className="bx bx-plus"></i> 建立草稿</button>
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => applyIpsecTemplateToWizard(selectedTemplate)}><i className="bx bx-magic-wand"></i> 套用至精靈</button>
+            </div>
+          </section>
+        </div>
+
+        <section className="forti-ipsec-template-params">
+          <header><strong>參數摘要</strong><span>建立草稿後仍可在 IPsec 通道頁面編輯</span></header>
+          <div className="forti-ipsec-template-grid">
+            <article><span>VPN 類型</span><strong>{selectedTemplate.type}</strong></article>
+            <article><span>介面</span><strong>{selectedTemplate.interfaceName}</strong></article>
+            <article><span>遠端 Gateway</span><strong>{selectedTemplate.remoteGateway}</strong></article>
+            <article><span>本地子網</span><strong>{selectedTemplate.localSubnet}</strong></article>
+            <article><span>遠端子網</span><strong>{selectedTemplate.remoteSubnet}</strong></article>
+            <article><span>認證</span><strong>{selectedTemplate.authMethod}</strong></article>
+            <article><span>PFS</span><strong>{selectedTemplate.pfsGroup}</strong></article>
+            <article><span>NAT-T / DPD</span><strong>{selectedTemplate.natTraversal ? 'On' : 'Off'} / {selectedTemplate.dpd ? 'On' : 'Off'}</strong></article>
+          </div>
+          <div className="forti-ipsec-template-note">{selectedTemplate.notes}</div>
+        </section>
       </div>
     )
   }
@@ -4626,7 +5387,7 @@ export default function FortigateView() {
     if (page === 'fabricLogical') return renderLogicalFabric()
     if (page === 'fabricAutomation') return renderFabricAutomation()
     if (page === 'fabricSettings') return renderFabricSettings()
-    if (page === 'fabricConnectors') return renderManagedTable(page, 'Fabric Connectors')
+    if (page === 'fabricConnectors') return renderFabricConnectors()
     if (page.startsWith('fortiview')) return renderFortiView(page)
     if (page === 'interfaces') return renderInterfaces()
     if (page === 'dns') return renderDns()

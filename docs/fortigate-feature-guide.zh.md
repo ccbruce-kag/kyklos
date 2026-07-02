@@ -72,57 +72,56 @@
 
 ## FortiView
 
-FortiView 目前以視覺化與表格模擬為主，適合展示操作流程，不是真實即時流量分析。
+FortiView 目前以視覺化與表格模擬為主，適合展示操作流程，不是真實即時流量分析。各頁面的搜尋、Top N、時間範圍與主要下拉篩選已會實際影響前端表格結果；但資料仍為範例資料，尚未串接真實 FortiGate log / runtime statistics。
 
 | 次選單 | 功能 | 是否正常 | 是否需要 | 設計評估 | 尚缺或可加 |
 |---|---|---|---|---|---|
-| 流量來自 LAN/DMZ | 來源區段流量檢視 | 展示用 | 需要 | 基本合理 | 真實流量來源、時間範圍 |
-| 來源 | 來源 IP/主機排行 | 展示用 | 需要 | 可用於展示 | Top N、篩選條件 |
-| 目的 | 目的 IP/服務排行 | 展示用 | 需要 | 可用於展示 | 真實 destination 統計 |
-| 應用程式 | 應用程式流量卡片/排行 | 展示用 | 需要 | 目前較接近參考圖 | App category、風險等級 |
-| 雲端應用程式 | 雲端 App 流量 | 展示用 | 視需求 | 可保留 | SaaS 分類、使用者關聯 |
-| 網站 | 網站流量/分類 | 展示用 | 需要 | 基本可用 | URL category、blocked/allowed |
-| 威脅 | 威脅排行 | 展示用 | 需要 | 基本可用 | IPS/AV 真實事件 |
-| WiFi 客戶端 | WiFi client 統計 | 展示用 | 視是否管理 WiFi | 可保留 | FortiAP client list |
-| 流量塑形 | Shaping 統計 | 展示用 | 視需求 | 可保留 | Shaper policy、bandwidth |
-| 流量來自 WAN | WAN 來源流量 | 展示用 | 需要 | 可保留 | WAN interface 統計 |
-| 主機 | 主機排行 | 展示用 | 需要 | 可保留 | IP/MAC/user mapping |
-| 威脅 | WAN 威脅檢視 | 展示用 | 需要 | 可保留 | 威脅來源與 policy 關聯 |
-| 所有區段 | 全區段事件 | 展示用 | 需要 | 可保留 | 多維度篩選 |
-| VPN | VPN 流量/連線 | 展示用 | 需要 | 應與 VPN 監測串接 | IPsec/SSL-VPN 真實 session |
-| Endpoint 漏洞 | 端點弱點摘要 | 展示用 | 視 FortiClient 使用情況 | 可保留 | FortiClient EMS 整合 |
-| 資安威脅地圖 | 地圖化威脅來源、事件表、篩選 | 部分正常 | 可選但有展示價值 | 目前已重新設計 | 真實 GeoIP、即時事件流 |
-| 政策 | Policy hit 統計 | 展示用 | 需要 | 可保留 | Policy UUID / hit count |
-| 介面 | 介面流量統計 | 展示用 | 需要 | 可保留 | RX/TX、錯誤封包 |
-| 連線會話 | Session 統計 | 展示用 | 需要 | 可保留 | Session table、kill session |
+| 流量來自 LAN/DMZ | 來源區段流量檢視、真實流量來源欄位、時間範圍 | 展示用 | 需要 | 已加入資料來源提示與時間範圍 | 待串接真實 Traffic log |
+| 來源 | 來源 IP/主機排行、Top N、篩選條件 | 部分正常 | 需要 | Top N、來源角色、排序依據、時間範圍已可篩選/排序前端資料 | 待串接真實 source 統計 |
+| 目的 | 目的 IP/FQDN、國家、目的介面統計 | 展示用 | 需要 | 已加入 destination 統計欄位 | 待串接真實 destination 統計 |
+| 應用程式 | App category、風險等級、使用者、Policy | 展示用 | 需要 | 已加入 App category 與 risk 欄位 | 待串接 Application Control |
+| 雲端應用程式 | SaaS 分類、使用者關聯、動作 | 展示用 | 視需求 | 已加入 SaaS 分類與 user mapping | 待串接 Cloud App DB |
+| 網站 | URL category、allowed/blocked、Policy | 展示用 | 需要 | 已加入 URL 類別與動作欄位 | 待串接 Web Filter log |
+| 威脅 | IPS/AV/DNS 事件、嚴重性、動作 | 展示用 | 需要 | 已整合成單一威脅選單 | 待串接 IPS/AV 真實事件 |
+| WiFi 客戶端 | FortiAP client list、SSID、訊號、頻段 | 展示用 | 視是否管理 WiFi | 已加入 FortiAP client 欄位 | 待串接 FortiAP client list |
+| 流量塑形 | Shaper policy、bandwidth、Dropped bytes | 展示用 | 視需求 | 已加入 Shaper policy 與頻寬欄位 | 待串接 Traffic Shaper counters |
+| 流量來自 WAN | WAN interface、Rx/Tx、來源國家統計 | 展示用 | 需要 | 已加入 WAN interface 統計欄位 | 待串接介面流量來源 |
+| 主機 | IP/MAC/user mapping、OS、最後活動 | 展示用 | 需要 | 已加入主機映射欄位 | 待串接 DHCP/Device inventory |
+| 所有區段 | 多維度篩選、Traffic/Security/Event 彙整 | 展示用 | 需要 | 已加入區段與資料類型篩選 | 待串接多來源 log |
+| VPN | IPsec/SSL-VPN session | 展示用 | 需要 | 已加入真實 session 欄位設計 | 待串接 VPN runtime status |
+| Endpoint 漏洞 | FortiClient EMS、Compliance、漏洞數 | 展示用 | 視 FortiClient 使用情況 | 已加入 EMS 整合欄位 | 待串接 FortiClient EMS |
+| 資安威脅地圖 | GeoIP、即時事件流、事件表、篩選 | 部分正常 | 可選但有展示價值 | 目前已重新設計 | 待串接真實 GeoIP / event stream |
+| 政策 | Policy UUID / hit count | 展示用 | 需要 | 已加入 UUID 與 Hit Count 欄位 | 待串接 Policy statistics |
+| 介面 | RX/TX、錯誤封包、Sessions | 展示用 | 需要 | 已加入 RX/TX error 欄位 | 待串接 interface counters |
+| 連線會話 | Session table、Kill session preview | 展示用 | 需要 | 已加入 Session ID 與 Kill 操作入口 | 待串接真實 kill session API/CLI |
 
 ## 網路
 
 | 次選單 | 功能 | 是否正常 | 是否需要 | 設計評估 | 尚缺或可加 |
 |---|---|---|---|---|---|
-| 介面 | 介面清單、成員、DHCP、狀態 | 部分正常 | 必要 | 是 FortiGate 核心頁 | 真實介面讀取、VLAN 建立、IP/DHCP 下發 |
-| DNS | DNS 模式、Primary/Secondary、本機網域 | 部分正常 | 必要 | 基本合理 | DNS over TLS、FortiGuard DNS、CLI 同步 |
-| 封包擷取 | Capture 條件與結果區 | 展示用 | 需要 | 排版已改善 | 真實 sniffer、pcap 下載、停止/開始 |
-| SD-WAN | SD-WAN member 管理 | 部分正常 | 視需求 | 有初步管理介面 | SLA、Zone、member 狀態 |
-| SD-WAN 服務品質檢測 | SLA 目標與狀態 | 部分正常 | 視需求 | 可保留 | latency/jitter/loss 實測 |
-| SD-WAN 優先等級規則 | SD-WAN rule 管理 | 部分正常 | 視需求 | 可保留 | rule match 條件與 policy linkage |
-| 靜態路由 | Route 清單與管理 | 部分正常 | 必要 | 合理 | 真實 routing table、route distance/priority 下發 |
+| 介面 | 介面清單、成員、DHCP、狀態、讀取介面、建立 VLAN、IP/DHCP 下發入口 | 部分正常 | 必要 | 已加入同步/下發與 CLI 預覽流程 | 待串接真實 FortiGate interface API/CLI |
+| DNS | DNS 模式、Primary/Secondary、本機網域、DNS over TLS、FortiGuard DNS、CLI 同步 | 部分正常 | 必要 | 已加入 DoT/FortiGuard DNS 與 CLI preview | 待串接真實 DNS CLI 下發 |
+| 封包擷取 | Capture 條件、開始/停止、輸出摘要、pcap preview 下載 | 部分正常 | 需要 | 已具備可操作 sniffer 流程 | 待串接真實 sniffer 與 pcap 檔案 |
+| SD-WAN | SD-WAN member、Zone、gateway、SLA、member 狀態 | 部分正常 | 視需求 | 已改為專用 SD-WAN member 頁 | 待串接真實 SD-WAN member 狀態 |
+| SD-WAN 服務品質檢測 | SLA 目標、latency、jitter、loss、linked member | 部分正常 | 視需求 | 已加入實測結果欄位與執行實測入口 | 待串接真實 SLA probe |
+| SD-WAN 優先等級規則 | SD-WAN rule、match 條件、策略、policy linkage | 部分正常 | 視需求 | 已加入 Policy 關聯與規則條件欄位 | 待串接真實 SD-WAN rule 下發 |
+| 靜態路由 | Route 清單、routing table 讀取、distance/priority 下發入口 | 部分正常 | 必要 | 已加入 routing table 同步與 distance/priority 預覽 | 待串接真實 routing table 與 route 下發 |
 
 ## 系統管理
 
 | 次選單 | 功能 | 是否正常 | 是否需要 | 設計評估 | 尚缺或可加 |
 |---|---|---|---|---|---|
-| 系統管理員 | 管理員清單 CRUD | 正常 | 必要 | 作為模擬可用 | 密碼、2FA、trusthost、profile |
-| 管理權限配置表 | Admin profile 管理 | 正常 | 必要 | 基本合理 | 權限矩陣 |
-| 證書 | 憑證清單管理 | 正常 | 必要 | 初版可用 | 匯入/匯出、CSR、到期提醒 |
-| 設定 | 系統設定頁 | 部分正常 | 必要 | 有基本欄位 | Hostname、時區、管理 port、NTP |
-| 高可靠性 | HA 模式與心跳介面 | 部分正常 | 視環境 | 需要真實資料才完整 | HA peer、sync status、failover |
-| SNMP | Community/User 設定 | 部分正常 | 視需求 | 初版可用 | v3 user、trap host、測試 |
-| 替換訊息 | Replacement message 管理 | 部分正常 | 可選 | 可保留 | 編輯 HTML/template |
-| FortiGuard | FortiGuard 狀態 | 展示用 | 必要 | 應保留 | 授權、更新、連線測試 |
-| 進階設定 | Advanced settings | 部分正常 | 可選 | 需再明確分類 | CLI-only 參數、風險提示 |
-| 進階功能開關 | Feature visibility 類開關 | 部分正常 | 需要 | 方向正確 | 真實 feature visibility 同步 |
-| 標籤 | Tag/Label 管理 | 部分正常 | 可選 | 已重新設計過 | 物件引用統計 |
+| 系統管理員 | 管理員清單、密碼更新入口、2FA、trusthost、profile、管理方式 | 前端正常 | 必要 | 已改為管理員專用表格與彈窗 | 待串接真實 FortiGate admin CLI/API |
+| 管理權限配置表 | Admin profile 權限矩陣 | 前端正常 | 必要 | 已加入 System/Network/Policy/VPN/Log read-write/read/none 矩陣 | 待串接真實 profile 權限讀寫 |
+| 證書 | 匯入/匯出、CSR、Issuer、使用服務、到期提醒 | 前端正常 | 必要 | 已改為憑證管理頁與提醒狀態 | 待串接檔案上傳、CSR 產生與 FortiGate 憑證庫 |
+| 設定 | Hostname、時區、管理 port、NTP、CLI preview | 前端正常 | 必要 | 欄位已持久化並可產生 CLI 同步草稿 | 待串接真實 CLI 下發 |
+| 高可靠性 | HA peer、heartbeat、sync status、failover | 前端正常 | 視環境 | 已加入 peer/sync/failover 操作入口 | 待串接 HA status 與 failover API/CLI |
+| SNMP | v2c、v3 user、trap host、測試 | 前端正常 | 視需求 | 已加入 v3/trap/test 區塊 | 待串接 snmpwalk/trap 測試與 CLI 下發 |
+| 替換訊息 | Replacement message 清單、HTML/template editor | 前端正常 | 可選 | 已可編輯並保存 template 草稿 | 待串接 FortiGate replacement message 寫入 |
+| FortiGuard | 授權、資料庫版本、更新、連線測試 | 前端正常 | 必要 | 已加入 license/update/connectivity 操作入口 | 待串接授權與 FortiGuard update 狀態 |
+| 進階設定 | CLI-only 參數、管理安全性、風險提示 | 前端正常 | 可選 | 已加入 CLI-only 參數與風險提示 | 待串接 CLI diff 與備份流程 |
+| 進階功能開關 | Feature visibility、同步時間 | 前端正常 | 需要 | 已加入真實狀態同步入口與同步時間 | 待串接真實 feature visibility CLI |
+| 標籤 | Tag/Label 管理、物件引用統計 | 前端正常 | 可選 | 已加入引用總數與目前選取標籤引用摘要 | 待串接政策/物件實際引用查詢 |
 
 ## 政策 & 物件
 

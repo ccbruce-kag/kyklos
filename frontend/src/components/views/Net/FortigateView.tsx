@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { Fragment, useEffect, useMemo, useState, type MouseEvent } from 'react'
 
 type FortiPage =
   | 'dashboard'
@@ -18,7 +18,6 @@ type FortiPage =
   | 'fortiviewTrafficShaping'
   | 'fortiviewWanSources'
   | 'fortiviewWanHosts'
-  | 'fortiviewWanThreats'
   | 'fortiviewSystemEvents'
   | 'fortiviewVpn'
   | 'fortiviewEndpoint'
@@ -308,7 +307,18 @@ type FortiViewConfig = {
   visual: 'empty' | 'summary' | 'bubble' | 'vpn' | 'map' | 'session'
   searchPlaceholder?: string
   timeLabel?: string
+  sourceLabel?: string
+  metrics?: { label: string; value: string; detail: string; tone?: 'success' | 'danger' | 'neutral' }[]
+  filters?: { label: string; options: string[] }[]
+  topN?: string[]
+  rowAction?: 'killSession'
 }
+
+type FortiViewSelections = Partial<Record<FortiPage, {
+  topN?: string
+  timeRange?: string
+  filters?: Record<string, string>
+}>>
 
 type FortiLogViewConfig = {
   summary: string
@@ -489,7 +499,6 @@ const fortiGroups: FortiMenuSection[] = [
       { id: 'fortiviewTrafficShaping', label: '流量塑形' },
       { id: 'fortiviewWanSources', label: '流量來自 WAN' },
       { id: 'fortiviewWanHosts', label: '主機' },
-      { id: 'fortiviewWanThreats', label: '威脅' },
       { id: 'fortiviewSystemEvents', label: '所有區段' },
       { id: 'fortiviewVpn', label: 'VPN' },
       { id: 'fortiviewEndpoint', label: 'Endpoint 漏洞' },
@@ -1012,28 +1021,28 @@ const defaultManagedRows: Partial<Record<FortiPage, FortiManagedRow[]>> = {
     { id: 'connector-aws', name: 'AWS SDN Connector', type: 'Cloud Connector', enabled: false, description: 'AWS VPC 物件同步' },
   ],
   sdwan: [
-    { id: 'sdwan-wan1', name: 'wan1_member', type: 'SD-WAN Member', enabled: true, description: 'wan1 / gateway 61.219.112.254' },
-    { id: 'sdwan-wan2', name: 'wan2_member', type: 'SD-WAN Member', enabled: false, description: 'wan2 / backup link' },
+    { id: 'sdwan-wan1', name: 'wan1_member', type: 'SD-WAN Member', enabled: true, description: 'Zone virtual-wan-link / Interface wan1 / Gateway 61.219.112.254 / SLA Google_DNS_SLA / Status online' },
+    { id: 'sdwan-wan2', name: 'wan2_member', type: 'SD-WAN Member', enabled: false, description: 'Zone virtual-wan-link / Interface wan2 / Gateway 203.0.113.254 / SLA FortiGuard_SLA / Status standby' },
   ],
   sdwanSla: [
-    { id: 'sla-google-dns', name: 'Google_DNS_SLA', type: 'Performance SLA', enabled: true, description: '8.8.8.8 latency / packet loss' },
-    { id: 'sla-fortiguard', name: 'FortiGuard_SLA', type: 'Performance SLA', enabled: true, description: 'service.fortiguard.net health check' },
+    { id: 'sla-google-dns', name: 'Google_DNS_SLA', type: 'Performance SLA', enabled: true, description: 'Target 8.8.8.8 / latency 8ms / jitter 1.2ms / loss 0.0% / linked wan1_member' },
+    { id: 'sla-fortiguard', name: 'FortiGuard_SLA', type: 'Performance SLA', enabled: true, description: 'Target service.fortiguard.net / latency 19ms / jitter 2.8ms / loss 0.2% / linked wan2_member' },
   ],
   sdwanRules: [
-    { id: 'rule-business', name: 'Business_App_Priority', type: 'SD-WAN Rule', enabled: true, description: 'HTTPS / Office365 preferred wan1' },
-    { id: 'rule-backup', name: 'Backup_Link_Rule', type: 'SD-WAN Rule', enabled: false, description: 'Use wan2 when SLA fails' },
+    { id: 'rule-business', name: 'Business_App_Priority', type: 'SD-WAN Rule', enabled: true, description: 'Match app Office365, HTTPS / Source VLAN_40 / Strategy lowest-cost SLA / Policy LAN_to_WAN / preferred wan1_member' },
+    { id: 'rule-backup', name: 'Backup_Link_Rule', type: 'SD-WAN Rule', enabled: false, description: 'Match destination all / Source internal / Strategy failover / Policy LAN_to_WAN / use wan2 when SLA fails' },
   ],
   systemAdmins: [
-    { id: 'admin-admin', name: 'admin', type: 'super_admin', enabled: true, description: 'HTTPS / SSH 管理者' },
-    { id: 'admin-audit', name: 'audit', type: 'read_only', enabled: false, description: '稽核檢視帳號' },
+    { id: 'admin-admin', name: 'admin', type: 'super_admin', enabled: true, description: '2FA: FortiToken / Trusthost: 10.20.100.0/24 / Access: HTTPS, SSH / Last login: 09:21:43' },
+    { id: 'admin-audit', name: 'audit', type: 'read_only', enabled: false, description: '2FA: Disabled / Trusthost: 10.20.100.50/32 / Access: HTTPS / Last login: 2026/06/30 18:04:11' },
   ],
   adminProfiles: [
-    { id: 'profile-super', name: 'super_admin', type: 'Admin Profile', enabled: true, description: '完整系統權限' },
-    { id: 'profile-read', name: 'read_only', type: 'Admin Profile', enabled: true, description: '唯讀檢視權限' },
+    { id: 'profile-super', name: 'super_admin', type: 'Admin Profile', enabled: true, description: 'System: read-write / Network: read-write / Policy: read-write / VPN: read-write / Log: read-write' },
+    { id: 'profile-read', name: 'read_only', type: 'Admin Profile', enabled: true, description: 'System: read / Network: read / Policy: read / VPN: read / Log: read' },
   ],
   certificates: [
-    { id: 'cert-factory', name: 'Fortinet_Factory', type: 'Local Certificate', enabled: true, description: '內建 HTTPS 憑證' },
-    { id: 'cert-vpn', name: 'SSLVPN_Local_Cert', type: 'Local Certificate', enabled: false, description: 'SSL-VPN 自訂憑證' },
+    { id: 'cert-factory', name: 'Fortinet_Factory', type: 'Local Certificate', enabled: true, description: 'Expires: 2030/12/31 / Used by: HTTPS Admin / Issuer: Fortinet Factory CA' },
+    { id: 'cert-vpn', name: 'SSLVPN_Local_Cert', type: 'Local Certificate', enabled: false, description: 'Expires: 2026/08/15 / Used by: SSL-VPN / Issuer: KAG Internal CA' },
   ],
   userDefinition: [
     { id: 'user-admin', name: 'admin', type: '本地用戶', enabled: true, description: 'super_admin 管理帳號' },
@@ -1119,119 +1128,169 @@ function writeFortiStorage<T>(key: string, value: T) {
 const fortiViewConfigs: Partial<Record<FortiPage, FortiViewConfig>> = {
   fortiviewLanDmz: {
     title: 'FortiView - 流量來自 LAN/DMZ',
-    columns: ['來源', '設備', '威脅積分', '位元組', '連線數'],
+    columns: ['時間', '來源 IP', '使用者 / 設備', '介面', '應用程式', '位元組', '連線數'],
+    rows: [['09:31:18', '10.20.40.113', 'king / MacBook-Pro', 'VLAN_40', 'HTTPS.BROWSER', '689.19 MB', '88'], ['09:30:52', '10.20.40.118', 'rd-user / Windows-PC', 'internal', 'RDP', '144.3 MB', '12'], ['09:29:44', '10.20.60.34', 'guest-phone / iPhone', 'DMZ', 'DNS', '18.7 MB', '42']],
     visual: 'summary',
-    searchPlaceholder: '搜尋來源、設備或位元組',
+    searchPlaceholder: '搜尋來源、使用者、設備或介面',
+    sourceLabel: '資料來源：Traffic log / Forward traffic',
+    metrics: [{ label: 'LAN/DMZ Bytes', value: '852.19 MB', detail: '5 分鐘內彙整' }, { label: 'Top Source', value: '10.20.40.113', detail: '689.19 MB', tone: 'success' }, { label: 'Active Sources', value: '24', detail: '真實來源欄位待後端串接' }],
+    filters: [{ label: '來源介面', options: ['全部介面', 'internal', 'VLAN_40', 'DMZ'] }, { label: '流量方向', options: ['全部方向', 'LAN -> WAN', 'LAN -> DMZ', 'DMZ -> WAN'] }],
   },
   fortiviewSources: {
     title: 'FortiView - 來源',
-    columns: ['來源', '設備', '威脅積分', '位元組', '連線數'],
-    visual: 'empty',
+    columns: ['排名', '來源 IP', '使用者', '設備 / MAC', '介面', '威脅積分', '位元組', '連線數'],
+    rows: [['1', '10.20.40.113', 'king', 'MacBook-Pro / 8c:85:90:aa:10:21', 'VLAN_40', '12', '689.19 MB', '88'], ['2', '10.20.40.118', 'rd-user', 'Windows-PC / 40:b0:76:1e:23:61', 'internal', '4', '144.3 MB', '12'], ['3', '10.20.60.34', 'guest-phone', 'iPhone / d2:4f:01:88:09:aa', 'DMZ', '41', '18.7 MB', '42'], ['4', '10.20.40.220', 'backup-svc', 'NAS / 00:11:32:98:aa:10', 'VLAN_40', '3', '84.6 MB', '18'], ['5', '10.20.50.24', 'web-node', 'Ubuntu / 52:54:00:77:91:11', 'DMZ', '27', '62.1 MB', '31'], ['6', '10.20.70.15', 'vpn-user', 'SSLVPN Client / virtual', 'ssl.root', '8', '21.3 MB', '9'], ['7', '10.20.60.88', 'guest-tablet', 'Android / 6e:30:c1:88:34:22', 'KAG-GUEST', '19', '12.6 MB', '26'], ['8', '10.20.40.15', 'printer', 'Printer / 00:80:92:21:44:99', 'internal', '1', '2.4 MB', '5']],
+    visual: 'summary',
     searchPlaceholder: '搜尋來源 IP、使用者或設備',
+    sourceLabel: '資料來源：Traffic log source 欄位',
+    topN: ['Top 5', 'Top 10', 'Top 20', 'Top 50'],
+    filters: [{ label: '來源角色', options: ['全部來源', 'LAN', 'DMZ', 'VPN', 'WiFi'] }, { label: '排序依據', options: ['位元組', '連線數', '威脅積分'] }],
   },
   fortiviewDestinations: {
     title: 'FortiView - 目的',
-    columns: ['目的', '國家/地區', '應用程式', '位元組', '連線數'],
-    rows: [['10.20.50.2', 'Taiwan', 'SSH', '148.2 KB', '6'], ['update.fortinet.com', 'United States', 'HTTPS', '27.8 MB', '14']],
+    columns: ['排名', '目的 IP / FQDN', '國家/地區', '目的介面', '應用程式', '位元組', '連線數'],
+    rows: [['1', '172.217.160.110', 'Taiwan', 'wan1', 'Google.Services', '248.2 MB', '66'], ['2', 'update.fortinet.com', 'United States', 'wan1', 'HTTPS', '27.8 MB', '14'], ['3', '10.20.50.2', 'Local', 'VLAN_50', 'SSH', '148.2 KB', '6']],
     visual: 'summary',
     searchPlaceholder: '搜尋目的 IP、網域或國家',
+    sourceLabel: '資料來源：Traffic log destination 欄位',
+    topN: ['Top 5', 'Top 10', 'Top 20', 'Top 50'],
+    filters: [{ label: '目的類型', options: ['全部目的', 'Internet', 'Local Subnet', 'FortiGuard', 'VPN Remote'] }],
   },
   fortiviewApplications: {
     title: 'FortiView - 應用程式',
-    columns: ['應用程式', '類別', '風險', '位元組', '連線數', '頻寬'],
-    visual: 'empty',
+    columns: ['應用程式', 'App Category', '風險等級', '使用者', 'Policy', '位元組', '連線數'],
+    rows: [['HTTPS.BROWSER', 'Web.Client', 'Low', 'king', 'LAN_to_WAN', '412.2 MB', '245'], ['Microsoft.Teams', 'Collaboration', 'Medium', 'it-user', 'LAN_to_WAN', '118.4 MB', '38'], ['BitTorrent', 'P2P', 'High', 'guest-phone', 'Guest_to_WAN', '0 B', '7']],
+    visual: 'bubble',
     searchPlaceholder: '搜尋應用程式或類別',
     timeLabel: '現在',
+    sourceLabel: '資料來源：Application Control / App ID',
+    filters: [{ label: 'App Category', options: ['全部分類', 'Web.Client', 'Collaboration', 'P2P', 'Remote.Access'] }, { label: '風險等級', options: ['全部風險', 'Low', 'Medium', 'High', 'Critical'] }],
   },
   fortiviewCloudApps: {
     title: 'FortiView - 雲端應用程式',
-    columns: ['雲端應用程式', '類別', '風險', '位元組', '連線數', '頻寬'],
-    visual: 'empty',
+    columns: ['SaaS 應用', 'SaaS 分類', '使用者', '來源 IP', '風險', '位元組', '動作'],
+    rows: [['Microsoft 365', 'Productivity', 'it-user', '10.20.40.118', 'Low', '92.4 MB', 'Allowed'], ['Google Drive', 'Storage', 'king', '10.20.40.113', 'Medium', '44.8 MB', 'Allowed'], ['Dropbox', 'Storage', 'guest-phone', '10.20.60.34', 'High', '0 B', 'Blocked']],
+    visual: 'summary',
     searchPlaceholder: '搜尋雲端服務',
     timeLabel: '現在',
+    sourceLabel: '資料來源：Cloud App DB / App Control',
+    filters: [{ label: 'SaaS 分類', options: ['全部分類', 'Productivity', 'Storage', 'Messaging', 'CRM'] }, { label: '使用者關聯', options: ['全部使用者', '已識別使用者', '未識別來源'] }],
   },
   fortiviewWebsites: {
     title: 'FortiView - 網站',
-    columns: ['網站', '類別', '瀏覽時間', '位元組', '連線數'],
-    rows: [['docs.fortinet.com', 'Information Technology', '12m 40s', '18.2 MB', '22'], ['support.fortinet.com', 'Business', '8m 10s', '9.7 MB', '11']],
+    columns: ['URL / 網站', 'URL Category', '使用者', 'Policy', 'Allowed / Blocked', '位元組', '次數'],
+    rows: [['docs.fortinet.com', 'Information Technology', 'king', 'LAN_to_WAN', 'Allowed', '18.2 MB', '22'], ['support.fortinet.com', 'Business', 'admin', 'LAN_to_WAN', 'Allowed', '9.7 MB', '11'], ['malware-test.example', 'Malicious Websites', 'guest-phone', 'Guest_to_WAN', 'Blocked', '0 B', '3']],
     visual: 'summary',
+    searchPlaceholder: '搜尋 URL、分類、使用者或政策',
+    sourceLabel: '資料來源：Web Filter log',
+    filters: [{ label: 'URL Category', options: ['全部分類', 'Information Technology', 'Business', 'Malicious Websites', 'Social Networking'] }, { label: '動作', options: ['全部動作', 'Allowed', 'Blocked', 'Monitored'] }],
   },
   fortiviewThreats: {
     title: 'FortiView - 威脅',
-    columns: ['威脅', '嚴重性', '來源', '目的', '動作', '次數'],
-    rows: [['EICAR_TEST_FILE', 'High', '10.20.40.113', '10.20.100.241', 'Blocked', '1'], ['Suspicious DNS', 'Medium', '10.20.40.118', '8.8.8.8', 'Monitored', '3']],
+    columns: ['時間', '事件來源', '威脅 / Signature', '嚴重性', '來源', '目的', '動作', '次數'],
+    rows: [['09:27:44', 'AV', 'EICAR_TEST_FILE', 'High', '10.20.40.113', '10.20.100.241', 'Blocked', '1'], ['09:22:18', 'IPS', 'Apache.Struts.RCE', 'Critical', '198.51.100.77', 'wan1:443', 'Dropped', '6'], ['09:18:49', 'DNS Filter', 'Suspicious DNS', 'Medium', '10.20.40.118', '8.8.8.8', 'Monitored', '3']],
     visual: 'summary',
+    searchPlaceholder: '搜尋 IPS、AV、來源或目的',
+    sourceLabel: '資料來源：IPS / AV / DNS Filter event',
+    filters: [{ label: '事件來源', options: ['全部來源', 'IPS', 'AV', 'DNS Filter', 'Web Filter'] }, { label: '嚴重性', options: ['全部嚴重性', 'Critical', 'High', 'Medium', 'Low'] }],
   },
   fortiviewWifi: {
     title: 'FortiView - WiFi 客戶端',
-    columns: ['客戶端', 'SSID', 'FortiAP', '訊號', '位元組', '連線時間'],
-    rows: [['MacBook-Pro', 'KAG-WIFI', 'FAP-U221EV', '-51 dBm', '86.4 MB', '47m'], ['iPhone', 'KAG-GUEST', 'FAP-U221EV', '-64 dBm', '12.2 MB', '18m']],
+    columns: ['Client', 'IP / MAC', 'SSID', 'FortiAP', '訊號', '頻段', '位元組', '連線時間'],
+    rows: [['MacBook-Pro', '10.20.60.21 / 8c:85:90:aa:10:21', 'KAG-WIFI', 'FAP-U221EV', '-51 dBm', '5 GHz', '86.4 MB', '47m'], ['iPhone', '10.20.60.34 / d2:4f:01:88:09:aa', 'KAG-GUEST', 'FAP-U221EV', '-64 dBm', '2.4 GHz', '12.2 MB', '18m']],
     visual: 'summary',
+    searchPlaceholder: '搜尋 Client、SSID、FortiAP 或 MAC',
+    sourceLabel: '資料來源：FortiAP client list',
+    filters: [{ label: 'SSID', options: ['全部 SSID', 'KAG-WIFI', 'KAG-GUEST'] }, { label: 'FortiAP', options: ['全部 FortiAP', 'FAP-U221EV', 'FAP221E-01'] }],
   },
   fortiviewTrafficShaping: {
     title: 'FortiView - 流量塑形',
-    columns: ['政策', 'Shared Shaper', '目前頻寬', 'Dropped Bytes', 'Sessions'],
-    rows: [['Web_Limit', 'shared-20M', '4.2 Mbps', '0 B', '21'], ['VPN_Control', 'guaranteed-5M', '1.1 Mbps', '0 B', '3']],
+    columns: ['Shaper Policy', 'Shared / Per-IP Shaper', '保證頻寬', '最大頻寬', '目前頻寬', 'Dropped Bytes', 'Sessions'],
+    rows: [['Web_Limit', 'shared-20M', '2 Mbps', '20 Mbps', '4.2 Mbps', '0 B', '21'], ['VPN_Control', 'guaranteed-5M', '5 Mbps', '30 Mbps', '1.1 Mbps', '0 B', '3']],
     visual: 'session',
+    searchPlaceholder: '搜尋 Shaper policy 或頻寬',
+    sourceLabel: '資料來源：Traffic Shaper / Policy statistics',
+    filters: [{ label: 'Shaper 類型', options: ['全部類型', 'Shared', 'Per-IP', 'Guaranteed'] }],
   },
   fortiviewWanSources: {
     title: 'FortiView - 流量來自 WAN',
-    columns: ['來源', '介面', '國家/地區', '位元組', '連線數'],
-    visual: 'empty',
+    columns: ['WAN Interface', '來源 IP', '國家/地區', '服務', 'Rx Bytes', 'Tx Bytes', '連線數'],
+    rows: [['wan1', '203.0.113.71', 'Taiwan', 'SSL-VPN', '18.1 MB', '4.2 MB', '9'], ['wan1', '198.51.100.77', 'United States', 'HTTPS', '2.4 MB', '160 KB', '6'], ['wan2', '192.0.2.94', 'Australia', 'IPsec', '8.8 MB', '6.4 MB', '3']],
+    visual: 'summary',
+    searchPlaceholder: '搜尋 WAN 介面、來源或服務',
+    sourceLabel: '資料來源：WAN interface traffic statistics',
+    filters: [{ label: 'WAN 介面', options: ['全部 WAN', 'wan1', 'wan2', 'SD-WAN'] }],
   },
   fortiviewWanHosts: {
     title: 'FortiView - 主機',
-    columns: ['主機', 'MAC', '作業系統', '介面', '目前頻寬'],
-    rows: [['WAN Client', '00:09:0f:da:1f:ad', 'Unknown', 'wan1', '0 bps']],
+    columns: ['主機 / IP', 'MAC', '使用者', '作業系統', '介面', '目前頻寬', '最後活動'],
+    rows: [['10.20.40.113', '8c:85:90:aa:10:21', 'king', 'macOS', 'VLAN_40', '4.8 Mbps', '09:31:18'], ['10.20.40.118', '40:b0:76:1e:23:61', 'rd-user', 'Windows', 'internal', '1.6 Mbps', '09:30:52'], ['10.20.60.34', 'd2:4f:01:88:09:aa', 'guest-phone', 'iOS', 'KAG-GUEST', '220 Kbps', '09:29:44']],
     visual: 'summary',
-  },
-  fortiviewWanThreats: {
-    title: 'FortiView - WAN 威脅',
-    columns: ['威脅', '來源國家', '目的', '嚴重性', '動作'],
-    rows: [['Port Scan', 'Unknown', 'wan1', 'Medium', 'Dropped']],
-    visual: 'summary',
+    searchPlaceholder: '搜尋 IP、MAC、使用者或 OS',
+    sourceLabel: '資料來源：Device inventory / DHCP / Traffic log',
+    filters: [{ label: 'Mapping 狀態', options: ['全部主機', '已識別使用者', '未識別使用者', 'WiFi Client'] }],
   },
   fortiviewSystemEvents: {
-    title: 'FortiView - 系統相關事件',
-    columns: ['時間', '事件', '等級', '使用者', '訊息'],
-    rows: [['09:21:13', 'Admin Login', 'information', 'admin', '登入管理介面'], ['09:20:44', 'Config Change', 'notice', 'admin', '更新安全織網設定']],
+    title: 'FortiView - 所有區段',
+    columns: ['時間', '區段', '來源', '目的', '應用 / 事件', 'Policy', '動作', '位元組'],
+    rows: [['09:31:18', 'LAN', '10.20.40.113', 'Google', 'HTTPS.BROWSER', 'LAN_to_WAN', 'Allowed', '412.2 MB'], ['09:27:44', 'DMZ', '10.20.50.2', '10.20.100.241', 'SSH', 'MGMT_to_DMZ', 'Allowed', '148.2 KB'], ['09:22:18', 'WAN', '198.51.100.77', 'wan1:443', 'Apache.Struts.RCE', 'WAN_Local_In', 'Dropped', '0 B']],
     visual: 'session',
+    searchPlaceholder: '搜尋區段、來源、目的、Policy 或事件',
+    sourceLabel: '資料來源：Traffic / Security / Event log 多維度彙整',
+    filters: [{ label: '區段', options: ['全部區段', 'LAN', 'DMZ', 'WAN', 'VPN', 'WiFi'] }, { label: '資料類型', options: ['全部資料', 'Traffic', 'Security', 'Event'] }],
   },
   fortiviewVpn: {
     title: 'FortiView - VPN',
-    columns: ['用戶', '連線', '前次連線時間', 'VPN 類型', '持續時間', '位元組'],
+    columns: ['VPN 類型', '用戶 / Peer', '來源', 'Tunnel / Portal', '登入 / 建立時間', '持續時間', 'Rx / Tx', '狀態'],
+    rows: [['SSL-VPN', 'Taiwan_ip', '203.0.113.71', 'full-access', '09:18:02', '00:21:41', '18.1 MB / 4.2 MB', 'Connected'], ['IPsec', 'to-branch-tpe', '203.69.10.10', 'Phase1/Phase2', '09:16:32', '02:14:08', '1.42 GB / 936 MB', 'Up']],
     visual: 'vpn',
     searchPlaceholder: '搜尋 VPN 用戶或類型',
+    sourceLabel: '資料來源：IPsec / SSL-VPN session',
+    filters: [{ label: 'VPN 類型', options: ['全部 VPN', 'IPsec', 'SSL-VPN'] }, { label: '狀態', options: ['全部狀態', 'Connected', 'Up', 'Down', 'Failed'] }],
   },
   fortiviewEndpoint: {
     title: 'FortiView - Endpoint 漏洞',
-    columns: ['Endpoint', '作業系統', '漏洞數', '嚴重性', '最後回報'],
-    rows: [['VAN-200492-PC', 'Windows', '4', 'Medium', '09:10:20'], ['MacBook-Pro', 'macOS', '1', 'Low', '09:12:11']],
+    columns: ['Endpoint', '使用者', 'EMS Server', '作業系統', '漏洞數', 'Compliance', '最後回報'],
+    rows: [['VAN-200492-PC', 'rd-user', 'EMS-01', 'Windows', '4', 'Warning', '09:10:20'], ['MacBook-Pro', 'king', 'EMS-01', 'macOS', '1', 'Compliant', '09:12:11'], ['Guest-Notebook', 'guest', 'Not Registered', 'Windows', '9', 'At Risk', '08:58:44']],
     visual: 'summary',
+    searchPlaceholder: '搜尋 Endpoint、使用者、EMS 或狀態',
+    sourceLabel: '資料來源：FortiClient EMS posture / vulnerability feed',
+    filters: [{ label: 'Compliance', options: ['全部狀態', 'Compliant', 'Warning', 'At Risk'] }, { label: 'EMS', options: ['全部 EMS', 'EMS-01', 'Not Registered'] }],
   },
   fortiviewSecurityMap: {
     title: 'FortiView - 資安威脅地圖',
-    columns: ['來源國家', '目的', '威脅', '動作', '次數'],
-    rows: [['Taiwan', 'FortiGate 90D', 'Malware', 'Blocked', '1'], ['United States', 'FortiGuard', 'Update', 'Allowed', '8']],
+    columns: ['時間', 'GeoIP 國家', '來源 IP', '目的', '威脅', '動作', '次數'],
+    rows: [['09:22:18', 'United States', '198.51.100.77', 'wan1:443', 'Apache.Struts.RCE', 'Dropped', '6'], ['09:20:01', 'Japan', '203.0.113.12', 'ssl-vpn:10443', 'Credential.Stuffing', 'Blocked', '11']],
     visual: 'map',
+    sourceLabel: '資料來源：GeoIP + 即時威脅事件流',
   },
   fortiviewPolicies: {
     title: 'FortiView - 政策',
-    columns: ['政策', '來源', '目的', '服務', '位元組', 'Sessions'],
-    rows: [['LAN_to_WAN', 'VLAN_40', 'wan1', 'ALL', '412.2 MB', '245'], ['SSLVPN_to_LAN', 'ssl.root', 'VLAN_40', 'HTTPS', '18.1 MB', '9']],
+    columns: ['Policy ID / UUID', '政策', '來源', '目的', '服務', 'Hit Count', '位元組', 'Sessions'],
+    rows: [['1 / 7f5b-0a21', 'LAN_to_WAN', 'VLAN_40', 'wan1', 'ALL', '12,438', '412.2 MB', '245'], ['2 / 82ac-4491', 'SSLVPN_to_LAN', 'ssl.root', 'VLAN_40', 'HTTPS', '488', '18.1 MB', '9']],
     visual: 'session',
+    searchPlaceholder: '搜尋 Policy、UUID、來源或目的',
+    sourceLabel: '資料來源：Policy UUID / hit count / traffic log',
+    filters: [{ label: 'Policy 狀態', options: ['全部 Policy', '有命中', '無命中', '已停用'] }],
   },
   fortiviewInterfaces: {
     title: 'FortiView - 介面',
-    columns: ['介面', '角色', 'IP', 'Rx Bytes', 'Tx Bytes', 'Sessions'],
-    rows: [['wan1', 'WAN', '61.219.112.31', '182.1 MB', '64.3 MB', '88'], ['VLAN_40', 'LAN', '10.20.40.1/24', '420.3 MB', '118.1 MB', '156']],
+    columns: ['介面', '角色', 'IP', 'Rx Bytes', 'Tx Bytes', 'Rx Errors', 'Tx Errors', 'Sessions'],
+    rows: [['wan1', 'WAN', '61.219.112.31', '182.1 MB', '64.3 MB', '0', '0', '88'], ['VLAN_40', 'LAN', '10.20.40.1/24', '420.3 MB', '118.1 MB', '0', '1', '156'], ['ssl.root', 'VPN', '10.20.40.240/28', '18.1 MB', '4.2 MB', '0', '0', '9']],
     visual: 'session',
+    searchPlaceholder: '搜尋介面、角色或 IP',
+    sourceLabel: '資料來源：Interface RX/TX counters / error packets',
+    filters: [{ label: '介面角色', options: ['全部角色', 'WAN', 'LAN', 'DMZ', 'VPN'] }],
   },
   fortiviewSessions: {
     title: 'FortiView - 連線會話',
-    columns: ['來源', '目的', '應用程式', '協定', '持續時間', '位元組'],
-    rows: [['10.20.40.113:54822', '10.20.50.2:22', 'SSH', 'TCP', '00:01:12', '48.2 KB'], ['10.20.40.118:62421', 'FortiGuard:443', 'HTTPS', 'TCP', '00:00:18', '1.8 MB']],
+    columns: ['Session ID', '來源', '目的', '應用程式', '協定', 'Policy', '持續時間', '位元組'],
+    rows: [['672913', '10.20.40.113:54822', '10.20.50.2:22', 'SSH', 'TCP', 'MGMT_to_DMZ', '00:01:12', '48.2 KB'], ['672914', '10.20.40.118:62421', 'FortiGuard:443', 'HTTPS', 'TCP', 'LAN_to_WAN', '00:00:18', '1.8 MB']],
     visual: 'session',
+    searchPlaceholder: '搜尋 Session ID、來源、目的或 Policy',
+    sourceLabel: '資料來源：Session table',
+    filters: [{ label: '協定', options: ['全部協定', 'TCP', 'UDP', 'ICMP'] }, { label: '動作', options: ['目前連線', '可 Kill Session'] }],
+    rowAction: 'killSession',
   },
 }
 
@@ -1270,6 +1329,57 @@ function FortiSwitch({ checked, onChange, label }: { checked: boolean; onChange?
   return <span className={`forti-switch ${checked ? 'is-on' : ''}`}></span>
 }
 
+function parseFortiNumber(value: string) {
+  const normalized = value.replaceAll(',', '').trim()
+  const match = normalized.match(/([\d.]+)/)
+  if (!match) return 0
+  const amount = Number(match[1])
+  if (Number.isNaN(amount)) return 0
+  if (/GB/i.test(normalized)) return amount * 1024 * 1024 * 1024
+  if (/MB/i.test(normalized)) return amount * 1024 * 1024
+  if (/KB/i.test(normalized)) return amount * 1024
+  if (/Mbps/i.test(normalized)) return amount * 1000 * 1000
+  if (/Kbps/i.test(normalized)) return amount * 1000
+  return amount
+}
+
+function fortiDemoRowAgeMinutes(rowIndex: number) {
+  return [1, 3, 4, 12, 25, 50, 120, 900][rowIndex] || 1200
+}
+
+function fortiTimeLimitMinutes(range: string) {
+  if (range === '現在' || range === '5 分鐘') return 5
+  if (range === '1 小時') return 60
+  return 1440
+}
+
+function getFortiColumnValue(config: FortiViewConfig, row: string[], column: string) {
+  const index = config.columns.findIndex((item) => item === column)
+  return index >= 0 ? row[index] || '' : ''
+}
+
+function getFortiSortColumn(config: FortiViewConfig, sortBy: string) {
+  if (sortBy === '位元組') return config.columns.find((column) => column.includes('位元組') || column.includes('Bytes')) || ''
+  if (sortBy === '連線數') return config.columns.find((column) => column.includes('連線數') || column.includes('Sessions')) || ''
+  if (sortBy === '威脅積分') return config.columns.find((column) => column.includes('威脅積分')) || ''
+  return ''
+}
+
+function getFortiFilterNeedle(label: string, option: string) {
+  if (option.startsWith('全部')) return ''
+  if (label === '來源角色' && option === 'LAN') return 'VLAN'
+  if (label === '來源角色' && option === 'WiFi') return 'KAG-'
+  if (label === '來源介面' || label === 'WAN 介面' || label === '介面角色' || label === '區段' || label === '協定') return option
+  if (label.includes('Category') || label.includes('分類') || label === 'URL Category') return option
+  if (label === '事件來源' || label === '嚴重性' || label === 'VPN 類型' || label === '狀態' || label === 'Compliance' || label === 'EMS') return option
+  if (label === '目的類型') return option === 'Internet' ? 'wan' : option === 'Local Subnet' ? 'Local' : option === 'VPN Remote' ? '10.20.50.2' : option
+  if (label === '動作') return option === '全部動作' || option === '目前連線' || option === '可 Kill Session' ? '' : option
+  if (label === 'Mapping 狀態') return option === '已識別使用者' ? 'king|rd-user' : option === '未識別使用者' ? 'guest' : option === 'WiFi Client' ? 'KAG-' : ''
+  if (label === '資料類型') return option === 'Traffic' ? 'Allowed' : option === 'Security' ? 'Dropped' : option === 'Event' ? 'Admin|Config|event' : ''
+  if (label === 'Shaper 類型') return option === 'Shared' ? 'shared' : option === 'Per-IP' ? 'per-ip' : option === 'Guaranteed' ? 'guaranteed' : ''
+  return option
+}
+
 export default function FortigateView() {
   const [page, setPage] = useState<FortiPage>(() => readFortiStorage('fortigate.page', 'dashboard' as FortiPage))
   const [openMenus, setOpenMenus] = useState<string[]>(() => readFortiStorage('fortigate.openMenus', ['securityFabric', 'fortiview', 'network', 'logsReports']))
@@ -1299,6 +1409,16 @@ export default function FortigateView() {
   const [interfaceDnsHostMode, setInterfaceDnsHostMode] = useState('與系統DNS相同')
   const [dnsMode, setDnsMode] = useState('指定')
   const [dnsTls, setDnsTls] = useState(false)
+  const [dnsFortiguard, setDnsFortiguard] = useState(() => readFortiStorage('fortigate.dns.fortiguard', true))
+  const [dnsCliSynced, setDnsCliSynced] = useState(() => readFortiStorage('fortigate.dns.cliSynced', false))
+  const [packetRunning, setPacketRunning] = useState(() => readFortiStorage('fortigate.packet.running', false))
+  const [packetInterface, setPacketInterface] = useState(() => readFortiStorage('fortigate.packet.interface', 'wan1'))
+  const [packetProtocol, setPacketProtocol] = useState(() => readFortiStorage('fortigate.packet.protocol', 'Any'))
+  const [packetCount, setPacketCount] = useState(() => readFortiStorage('fortigate.packet.count', '1000'))
+  const [packetHost, setPacketHost] = useState(() => readFortiStorage('fortigate.packet.host', '10.20.40.113'))
+  const [packetPort, setPacketPort] = useState(() => readFortiStorage('fortigate.packet.port', '443'))
+  const [packetDirection, setPacketDirection] = useState(() => readFortiStorage('fortigate.packet.direction', 'both'))
+  const [packetCapturedAt, setPacketCapturedAt] = useState(() => readFortiStorage('fortigate.packet.capturedAt', '尚未擷取'))
   const [sslListenPort, setSslListenPort] = useState(() => readFortiStorage('fortigate.ssl.listenPort', '10443'))
   const [sslTunnelRange, setSslTunnelRange] = useState(() => readFortiStorage('fortigate.ssl.tunnelRange', '10.20.40.240 - 10.20.40.250'))
   const [sslListenInterfaces, setSslListenInterfaces] = useState<string[]>(() => readFortiStorage('fortigate.ssl.listenInterfaces', ['wan1']))
@@ -1393,7 +1513,16 @@ export default function FortigateView() {
   const [tagModalMode, setTagModalMode] = useState<'add' | 'edit' | null>(null)
   const [tagDraft, setTagDraft] = useState<FortiTag>(initialTags[0])
   const [tableSearches, setTableSearches] = useState<Partial<Record<FortiPage, string>>>(() => readFortiStorage('fortigate.tableSearches', {}))
+  const [fortiViewSelections, setFortiViewSelections] = useState<FortiViewSelections>(() => readFortiStorage('fortigate.fortiview.selections', {}))
   const [systemSettingType, setSystemSettingType] = useState(() => readFortiStorage('fortigate.system.settingType', '系統全域設定'))
+  const [systemHostname, setSystemHostname] = useState(() => readFortiStorage('fortigate.system.hostname', 'FGT90D3Z16007115'))
+  const [systemTimezone, setSystemTimezone] = useState(() => readFortiStorage('fortigate.system.timezone', 'Asia/Taipei'))
+  const [systemHttpsPort, setSystemHttpsPort] = useState(() => readFortiStorage('fortigate.system.httpsPort', '443'))
+  const [systemSshPort, setSystemSshPort] = useState(() => readFortiStorage('fortigate.system.sshPort', '22'))
+  const [systemNtpServer, setSystemNtpServer] = useState(() => readFortiStorage('fortigate.system.ntpServer', 'pool.ntp.org'))
+  const [systemNtpSync, setSystemNtpSync] = useState(() => readFortiStorage('fortigate.system.ntpSync', true))
+  const [replacementTemplate, setReplacementTemplate] = useState(() => readFortiStorage('fortigate.replacement.template', '<html><body><h1>Access Blocked</h1><p>%%URL%% has been blocked by policy.</p></body></html>'))
+  const [featureSyncedAt, setFeatureSyncedAt] = useState(() => readFortiStorage('fortigate.featureVisibility.syncedAt', '尚未同步'))
   const [antivirusProfiles, setAntivirusProfiles] = useState<FortiAntivirusProfile[]>(() => readFortiStorage('fortigate.antivirus.profiles', initialAntivirusProfiles))
   const [selectedAntivirusProfileId, setSelectedAntivirusProfileId] = useState(() => readFortiStorage('fortigate.antivirus.selectedProfileId', initialAntivirusProfiles[0].id))
   const [antivirusSettings, setAntivirusSettings] = useState<FortiAntivirusSettings>(() => readFortiStorage('fortigate.antivirus.settings', initialAntivirusProfiles[0].settings))
@@ -1497,7 +1626,16 @@ export default function FortigateView() {
   useEffect(() => { writeFortiStorage('fortigate.tags', tags) }, [tags])
   useEffect(() => { writeFortiStorage('fortigate.featureVisibility', featureVisibility) }, [featureVisibility])
   useEffect(() => { writeFortiStorage('fortigate.tableSearches', tableSearches) }, [tableSearches])
+  useEffect(() => { writeFortiStorage('fortigate.fortiview.selections', fortiViewSelections) }, [fortiViewSelections])
   useEffect(() => { writeFortiStorage('fortigate.system.settingType', systemSettingType) }, [systemSettingType])
+  useEffect(() => { writeFortiStorage('fortigate.system.hostname', systemHostname) }, [systemHostname])
+  useEffect(() => { writeFortiStorage('fortigate.system.timezone', systemTimezone) }, [systemTimezone])
+  useEffect(() => { writeFortiStorage('fortigate.system.httpsPort', systemHttpsPort) }, [systemHttpsPort])
+  useEffect(() => { writeFortiStorage('fortigate.system.sshPort', systemSshPort) }, [systemSshPort])
+  useEffect(() => { writeFortiStorage('fortigate.system.ntpServer', systemNtpServer) }, [systemNtpServer])
+  useEffect(() => { writeFortiStorage('fortigate.system.ntpSync', systemNtpSync) }, [systemNtpSync])
+  useEffect(() => { writeFortiStorage('fortigate.replacement.template', replacementTemplate) }, [replacementTemplate])
+  useEffect(() => { writeFortiStorage('fortigate.featureVisibility.syncedAt', featureSyncedAt) }, [featureSyncedAt])
   useEffect(() => { writeFortiStorage('fortigate.ha.mode', haMode) }, [haMode])
   useEffect(() => { writeFortiStorage('fortigate.ha.override', haOverride) }, [haOverride])
   useEffect(() => { writeFortiStorage('fortigate.ha.heartbeatInterfaces', haHeartbeatInterfaces) }, [haHeartbeatInterfaces])
@@ -1536,6 +1674,16 @@ export default function FortigateView() {
   useEffect(() => { writeFortiStorage('fortigate.ssl.portalBookmarks', sslPortalBookmarks) }, [sslPortalBookmarks])
   useEffect(() => { writeFortiStorage('fortigate.dns.primary', dnsPrimary) }, [dnsPrimary])
   useEffect(() => { writeFortiStorage('fortigate.dns.secondary', dnsSecondary) }, [dnsSecondary])
+  useEffect(() => { writeFortiStorage('fortigate.dns.fortiguard', dnsFortiguard) }, [dnsFortiguard])
+  useEffect(() => { writeFortiStorage('fortigate.dns.cliSynced', dnsCliSynced) }, [dnsCliSynced])
+  useEffect(() => { writeFortiStorage('fortigate.packet.running', packetRunning) }, [packetRunning])
+  useEffect(() => { writeFortiStorage('fortigate.packet.interface', packetInterface) }, [packetInterface])
+  useEffect(() => { writeFortiStorage('fortigate.packet.protocol', packetProtocol) }, [packetProtocol])
+  useEffect(() => { writeFortiStorage('fortigate.packet.count', packetCount) }, [packetCount])
+  useEffect(() => { writeFortiStorage('fortigate.packet.host', packetHost) }, [packetHost])
+  useEffect(() => { writeFortiStorage('fortigate.packet.port', packetPort) }, [packetPort])
+  useEffect(() => { writeFortiStorage('fortigate.packet.direction', packetDirection) }, [packetDirection])
+  useEffect(() => { writeFortiStorage('fortigate.packet.capturedAt', packetCapturedAt) }, [packetCapturedAt])
 
   useEffect(() => {
     writeFortiStorage('fortigate.fabric.settings', fabricSettings)
@@ -1647,6 +1795,72 @@ export default function FortigateView() {
     setLastRefreshAt(now.toLocaleTimeString('zh-TW', { hour12: false }))
     setLastAction(`${label} 已重新整理`)
     window.setTimeout(() => setRefreshingArea(''), 700)
+  }
+
+  function syncFortiInterfaces() {
+    const now = new Date().toLocaleTimeString('zh-TW', { hour12: false })
+    setLastRefreshAt(now)
+    setLastAction(`已讀取真實介面清單草稿：${interfaces.length} 筆。待 FortiGate API/CLI 後端串接。`)
+  }
+
+  function createVlanInterfaceDraft() {
+    const nextId = 40 + interfaces.filter((item) => item.name.toLowerCase().startsWith('vlan')).length + 1
+    setInterfaceModalMode('add')
+    setInterfaceDraft({
+      name: `VLAN_${nextId}`,
+      alias: `VLAN ${nextId}`,
+      type: 'VLAN Interface',
+      role: 'LAN',
+      ip: `10.20.${nextId}.1/24`,
+      access: ['PING', 'HTTPS'],
+      status: 'up',
+      members: [currentInterface.name],
+      dhcp: `10.20.${nextId}.100 - 10.20.${nextId}.200`,
+    })
+    setLastAction(`已建立 VLAN_${nextId} 草稿，可確認後儲存`)
+  }
+
+  function pushInterfaceNetworkSettings() {
+    setLastAction(`${currentInterface.name} IP/DHCP 下發預覽已產生：set ip ${currentInterface.ip}${currentInterface.dhcp ? `, dhcp ${currentInterface.dhcp}` : ''}`)
+  }
+
+  function syncDnsCli() {
+    setDnsCliSynced(true)
+    setLastAction(`DNS CLI 同步預覽完成：primary ${dnsPrimary}, secondary ${dnsSecondary}, DoT ${dnsTls ? 'enable' : 'disable'}, FortiGuard DNS ${dnsFortiguard ? 'enable' : 'disable'}`)
+  }
+
+  function startPacketCapture() {
+    const now = new Date().toLocaleTimeString('zh-TW', { hour12: false })
+    setPacketRunning(true)
+    setPacketCapturedAt(now)
+    setLastAction(`封包擷取已開始：${packetInterface} ${packetProtocol} host ${packetHost || 'any'} port ${packetPort || 'any'}`)
+  }
+
+  function stopPacketCapture() {
+    setPacketRunning(false)
+    setLastAction('封包擷取已停止，pcap 草稿可下載')
+  }
+
+  function downloadPacketCapture() {
+    const content = [
+      '# Kyklos FortiGate packet capture preview',
+      `interface=${packetInterface}`,
+      `protocol=${packetProtocol}`,
+      `host=${packetHost || 'any'}`,
+      `port=${packetPort || 'any'}`,
+      `direction=${packetDirection}`,
+      `count=${packetCount}`,
+      `captured_at=${packetCapturedAt}`,
+      '09:31:18.100000 10.20.40.113.54822 > 172.217.160.110.443 TCP SYN',
+      '09:31:18.101200 172.217.160.110.443 > 10.20.40.113.54822 TCP SYN,ACK',
+    ].join('\n')
+    const url = URL.createObjectURL(new Blob([content], { type: 'application/octet-stream' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `fortigate-${packetInterface}-${Date.now()}.pcap.txt`
+    link.click()
+    URL.revokeObjectURL(url)
+    setLastAction('封包擷取檔已下載：pcap preview')
   }
 
   function toggleDashboardWidget(id: FortiDashboardWidgetId) {
@@ -2280,6 +2494,27 @@ export default function FortigateView() {
     setLastAction(`${title} 狀態已切換`)
   }
 
+  function getFortiMeta(description: string, key: string, fallback = '-') {
+    const match = description.match(new RegExp(`${key}:\\s*([^/]+)`, 'i'))
+    return match?.[1]?.trim() || fallback
+  }
+
+  function setFortiMeta(description: string, key: string, value: string) {
+    const parts = description
+      .split('/')
+      .map((part) => part.trim())
+      .filter(Boolean)
+    const index = parts.findIndex((part) => part.toLowerCase().startsWith(`${key.toLowerCase()}:`))
+    const next = `${key}: ${value}`
+    if (index >= 0) parts[index] = next
+    else parts.push(next)
+    return parts.join(' / ')
+  }
+
+  function updateManagedDraftMeta(key: string, value: string) {
+    setManagedDraft((draft) => ({ ...draft, description: setFortiMeta(draft.description, key, value) }))
+  }
+
   function getGenericSetting(activePage: FortiPage) {
     return genericSettings[activePage] || { enabled: true, mode: '啟用', strictHttps: true, logAdmin: true }
   }
@@ -2294,6 +2529,71 @@ export default function FortigateView() {
 
   function updateTableSearch(activePage: FortiPage, value: string) {
     setTableSearches((items) => ({ ...items, [activePage]: value }))
+  }
+
+  function getFortiViewSelection(activePage: FortiPage) {
+    return fortiViewSelections[activePage] || {}
+  }
+
+  function updateFortiViewFilter(activePage: FortiPage, label: string, value: string) {
+    setFortiViewSelections((items) => ({
+      ...items,
+      [activePage]: {
+        ...items[activePage],
+        filters: { ...(items[activePage]?.filters || {}), [label]: value },
+      },
+    }))
+    setLastAction(`${getPageLabel(activePage)} ${label} 已套用：${value}`)
+  }
+
+  function updateFortiViewTopN(activePage: FortiPage, value: string) {
+    setFortiViewSelections((items) => ({ ...items, [activePage]: { ...items[activePage], topN: value } }))
+    setLastAction(`${getPageLabel(activePage)} Top N 已套用：${value}`)
+  }
+
+  function updateFortiViewTimeRange(activePage: FortiPage, value: string) {
+    setFortiViewSelections((items) => ({ ...items, [activePage]: { ...items[activePage], timeRange: value } }))
+    setLastAction(`${getPageLabel(activePage)} 時間範圍已套用：${value}`)
+  }
+
+  function getFilteredFortiViewRows(activePage: FortiPage, config: FortiViewConfig, rows: string[][], search: string) {
+    const selection = getFortiViewSelection(activePage)
+    const normalizedSearch = search.trim().toLowerCase()
+    const filterEntries = Object.entries(selection.filters || {})
+    const timeRange = selection.timeRange || config.timeLabel || '5 分鐘'
+    const timeLimit = fortiTimeLimitMinutes(timeRange)
+
+    let nextRows = rows
+      .map((row, index) => ({ row, index }))
+      .filter((item) => fortiDemoRowAgeMinutes(item.index) <= timeLimit)
+      .filter((item) => !normalizedSearch || item.row.join(' ').toLowerCase().includes(normalizedSearch))
+      .filter((item) => filterEntries.every(([label, value]) => {
+        if (label === '排序依據' || value.startsWith('全部')) return true
+        if (label === 'Policy 狀態') {
+          const hitColumn = getFortiColumnValue(config, item.row, 'Hit Count')
+          const hits = parseFortiNumber(hitColumn)
+          if (value === '有命中') return hits > 0
+          if (value === '無命中') return hits === 0
+          if (value === '已停用') return item.row.join(' ').includes('停用')
+          return true
+        }
+        const needle = getFortiFilterNeedle(label, value)
+        if (!needle) return true
+        const haystack = item.row.join(' ').toLowerCase()
+        return needle.split('|').some((part) => haystack.includes(part.toLowerCase()))
+      }))
+
+    const sortBy = selection.filters?.['排序依據']
+    const sortColumn = sortBy ? getFortiSortColumn(config, sortBy) : ''
+    if (sortColumn) {
+      nextRows = [...nextRows].sort((left, right) => parseFortiNumber(getFortiColumnValue(config, right.row, sortColumn)) - parseFortiNumber(getFortiColumnValue(config, left.row, sortColumn)))
+    }
+
+    const topN = Number((selection.topN || config.topN?.[0] || '').match(/\d+/)?.[0] || nextRows.length)
+    return nextRows.slice(0, topN).map((item, index) => {
+      if (config.columns[0] === '排名') return [String(index + 1), ...item.row.slice(1)]
+      return item.row
+    })
   }
 
   function addHaHeartbeatInterface() {
@@ -2745,10 +3045,18 @@ export default function FortigateView() {
           <select className="form-select form-select-sm forti-select" value={selectedInterface} onChange={(e) => setSelectedInterface(e.target.value)}>
             {interfaces.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
           </select>
+          <button className="btn btn-sm btn-outline-secondary" onClick={syncFortiInterfaces}>讀取真實介面</button>
           <button className="btn btn-sm forti-btn" onClick={() => openInterfaceModal('add')}>新增</button>
+          <button className="btn btn-sm forti-btn" onClick={createVlanInterfaceDraft}>建立 VLAN</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => openInterfaceModal('edit')}>編輯</button>
           <button className="btn btn-sm btn-outline-danger" onClick={deleteCurrentInterface}>刪除</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={pushInterfaceNetworkSettings}>下發 IP/DHCP</button>
           <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '網路介面' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('網路介面')}><i className="bx bx-refresh"></i></button>
+        </div>
+        <div className="forti-network-summary">
+          <article><span>真實介面讀取</span><strong>{interfaces.length}</strong><small>目前為 UI 草稿，待 API/CLI 串接</small></article>
+          <article><span>VLAN / Switch</span><strong>{interfaces.filter((item) => item.name.toLowerCase().includes('vlan') || item.type.includes('VLAN') || item.type.includes('交換器')).length}</strong><small>可由「建立 VLAN」產生草稿</small></article>
+          <article><span>DHCP 下發</span><strong>{interfaces.filter((item) => item.dhcp).length}</strong><small>IP / DHCP 會產生 CLI 預覽</small></article>
         </div>
         <div className="forti-form-section">
           <label>介面名稱</label><input className="form-control form-control-sm" value={currentInterface.name} readOnly />
@@ -2838,7 +3146,16 @@ export default function FortigateView() {
           <label>主要 DNS</label><input className="form-control form-control-sm" value={dnsPrimary} onChange={(e) => setDnsPrimary(e.target.value)} />
           <label>次要 DNS</label><input className="form-control form-control-sm" value={dnsSecondary} onChange={(e) => setDnsSecondary(e.target.value)} />
           <label>DNS over TLS</label><FortiSwitch checked={dnsTls} onChange={() => setDnsTls((enabled) => !enabled)} label={dnsTls ? '啟用' : '停用'} />
+          <label>FortiGuard DNS</label><FortiSwitch checked={dnsFortiguard} onChange={() => setDnsFortiguard((enabled) => !enabled)} label={dnsFortiguard ? '使用 FortiGuard DNS' : '停用 FortiGuard DNS'} />
+          <label>DoT Server</label><select className="form-select form-select-sm" defaultValue="dns.google"><option>dns.google</option><option>cloudflare-dns.com</option><option>FortiGuard Secure DNS</option></select>
           <label>本機網域名稱</label><input className="form-control form-control-sm" defaultValue="fortigate.local" />
+        </div>
+        <div className="forti-cli-preview">
+          <strong>CLI 同步預覽</strong>
+          <code>config system dns{'\n'}    set primary {dnsPrimary}{'\n'}    set secondary {dnsSecondary}{'\n'}    set protocol {dnsTls ? 'dot' : 'cleartext'}{'\n'}    set fortiguard-dns {dnsFortiguard ? 'enable' : 'disable'}{'\n'}end</code>
+          <div className="forti-centered-actions">
+            <button className="btn forti-apply" onClick={syncDnsCli}>{dnsCliSynced ? '重新同步 CLI' : '同步 CLI'}</button>
+          </div>
         </div>
       </div>
     )
@@ -2852,7 +3169,17 @@ export default function FortigateView() {
           <button className="btn btn-sm forti-btn" onClick={() => openRouteModal('add')}>新增</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => openRouteModal('edit')} disabled={!selectedRouteId}>編輯</button>
           <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedRoute} disabled={!selectedRouteId}>刪除</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction(`已讀取 routing table：${routes.length} 筆路由，distance/priority 已同步至表格草稿`)}>讀取 routing table</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('靜態路由下發預覽已產生，包含 destination/gateway/interface/distance/priority')}>下發 distance/priority</button>
           <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '靜態路由' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('靜態路由')}><i className="bx bx-refresh"></i></button>
+        </div>
+        <div className="forti-route-health">
+          {routes.map((route) => (
+            <button type="button" key={route.id} className={route.id === selectedRouteId ? 'is-selected' : ''} onClick={() => setSelectedRouteId(route.id)}>
+              <strong>{route.destination}</strong>
+              <small><b>{route.interfaceName}</b><em>via {route.gateway} / distance {route.distance} / priority {route.priority}</em></small>
+            </button>
+          ))}
         </div>
         <table className="forti-table forti-selectable-table">
           <thead><tr><th>狀態</th><th>目的地</th><th>閘道</th><th>介面</th><th>距離</th><th>優先權</th></tr></thead>
@@ -3155,19 +3482,23 @@ export default function FortigateView() {
       )
     }
     if (config.visual === 'session') {
+      const metrics = config.metrics || [
+        { label: '目前連線', value: config.rows?.length ? String(config.rows.length) : '245', detail: 'Session table rows' },
+        { label: 'SPU 使用率', value: '52.7%', detail: 'FortiGate runtime' },
+        { label: 'Dropped', value: '0', detail: '所選時間範圍' },
+      ]
       return (
         <div className="forti-view-visual forti-session-strip">
           <MiniChart tone="gray" />
-          <div><strong>245</strong><span>目前連線</span></div>
-          <div><strong>52.7%</strong><span>SPU 使用率</span></div>
-          <div><strong>0</strong><span>Dropped</span></div>
+          {metrics.slice(0, 3).map((metric) => <div key={metric.label}><strong>{metric.value}</strong><span>{metric.label}</span></div>)}
         </div>
       )
     }
     if (config.visual === 'summary') {
+      const primaryMetric = config.metrics?.[0]
       return (
         <div className="forti-view-visual forti-summary-visual">
-          <div className="forti-view-summary-card"><i className="bx bx-user"></i><strong>10.20.40.113</strong><span>689.19 MB</span></div>
+          <div className="forti-view-summary-card"><i className="bx bx-user"></i><strong>{primaryMetric?.value || '10.20.40.113'}</strong><span>{primaryMetric?.label || '689.19 MB'}</span></div>
           <MiniChart spike />
         </div>
       )
@@ -3285,28 +3616,51 @@ export default function FortigateView() {
       visual: 'empty' as const,
     }
     const rows = config.rows || []
+    const search = getTableSearch(activePage)
+    const selection = getFortiViewSelection(activePage)
+    const filteredRows = getFilteredFortiViewRows(activePage, config, rows, search)
+    const activeFilterText = [
+      selection.topN,
+      ...(config.filters || []).map((filter) => selection.filters?.[filter.label] || filter.options[0]).filter((value) => !value.startsWith('全部')),
+      selection.timeRange || config.timeLabel || '5 分鐘',
+    ].filter(Boolean).join(' / ')
     return (
       <div className="forti-table-page forti-fortiview">
         <div className="forti-section-title">{config.title}</div>
         <div className="forti-toolbar forti-viewbar">
           <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === config.title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(config.title)}><i className="bx bx-refresh"></i></button>
           <button className="btn btn-sm forti-btn" onClick={() => setLastAction(`${config.title} 過濾條件視窗已開啟`)}>新增過濾條件</button>
-          <input className="form-control form-control-sm" placeholder={config.searchPlaceholder || '搜尋來源、目的、應用程式'} />
+          <input className="form-control form-control-sm" value={search} onChange={(event) => updateTableSearch(activePage, event.target.value)} placeholder={config.searchPlaceholder || '搜尋來源、目的、應用程式'} />
+          {config.topN && <select className="form-select form-select-sm forti-view-small-select" value={selection.topN || config.topN[0]} onChange={(event) => updateFortiViewTopN(activePage, event.target.value)}>{config.topN.map((option) => <option key={option}>{option}</option>)}</select>}
+          {config.filters?.map((filter) => (
+            <select key={filter.label} className="form-select form-select-sm forti-view-filter-select" value={selection.filters?.[filter.label] || filter.options[0]} onChange={(event) => updateFortiViewFilter(activePage, filter.label, event.target.value)}>
+              {filter.options.map((option) => <option key={option}>{option}</option>)}
+            </select>
+          ))}
           <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction(`${config.title} 已切換表格檢視`)}><i className="bx bx-table"></i></button>
-          <select className="form-select form-select-sm" defaultValue={config.timeLabel || '5 分鐘'}><option>現在</option><option>5 分鐘</option><option>1 小時</option><option>24 小時</option></select>
+          <select className="form-select form-select-sm" value={selection.timeRange || config.timeLabel || '5 分鐘'} onChange={(event) => updateFortiViewTimeRange(activePage, event.target.value)}><option>現在</option><option>5 分鐘</option><option>1 小時</option><option>24 小時</option></select>
         </div>
+        <div className="forti-view-source-line">
+          <span>{config.sourceLabel || '資料來源：FortiGate log / runtime statistics，待真實設備 API 串接'}</span>
+          <span>{filteredRows.length} / {rows.length} 筆{activeFilterText ? ` · ${activeFilterText}` : ''}</span>
+        </div>
+        {config.metrics?.length && (
+          <div className="forti-view-metrics">
+            {config.metrics.map((metric) => <article key={metric.label} className={metric.tone ? `is-${metric.tone}` : ''}><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.detail}</small></article>)}
+          </div>
+        )}
         {renderFortiViewVisual(config)}
         <table className="forti-table">
-          <thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+          <thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}{config.rowAction && <th>操作</th>}</tr></thead>
           <tbody>
-            {rows.length ? rows.map((row, rowIndex) => (
-              <tr key={`${config.title}-${rowIndex}`}>{config.columns.map((column, columnIndex) => <td key={column}>{row[columnIndex] || '-'}</td>)}</tr>
+            {filteredRows.length ? filteredRows.map((row, rowIndex) => (
+              <tr key={`${config.title}-${rowIndex}`}>{config.columns.map((column, columnIndex) => <td key={column}>{row[columnIndex] || '-'}</td>)}{config.rowAction === 'killSession' && <td><button type="button" className="btn btn-sm btn-outline-danger forti-session-kill" onClick={() => setLastAction(`Kill session preview: ${row[0]} (${row[1]} -> ${row[2]})`)}>Kill</button></td>}</tr>
             )) : (
-              <tr><td colSpan={config.columns.length} className="forti-table-empty">無結果</td></tr>
+              <tr><td colSpan={config.columns.length + (config.rowAction ? 1 : 0)} className="forti-table-empty">無結果</td></tr>
             )}
           </tbody>
         </table>
-        <div className="forti-view-updated">0 | Updated: {lastRefreshAt}</div>
+        <div className="forti-view-updated">{filteredRows.length} | Updated: {lastRefreshAt}</div>
       </div>
     )
   }
@@ -3405,27 +3759,95 @@ export default function FortigateView() {
           <section className="forti-group-card">
             <strong>擷取條件</strong>
             <div className="forti-form-section forti-compact-form">
-              <label>介面</label><select className="form-select form-select-sm" defaultValue="wan1"><option>wan1</option><option>VLAN_40</option><option>ssl.root</option></select>
-              <label>協定</label><select className="form-select form-select-sm"><option>Any</option><option>TCP</option><option>UDP</option><option>ICMP</option></select>
-              <label>擷取數量</label><input className="form-control form-control-sm" defaultValue="1000" />
+              <label>介面</label><select className="form-select form-select-sm" value={packetInterface} onChange={(event) => setPacketInterface(event.target.value)}>{interfaces.map((item) => <option key={item.name}>{item.name}</option>)}</select>
+              <label>協定</label><select className="form-select form-select-sm" value={packetProtocol} onChange={(event) => setPacketProtocol(event.target.value)}><option>Any</option><option>TCP</option><option>UDP</option><option>ICMP</option></select>
+              <label>擷取數量</label><input className="form-control form-control-sm" value={packetCount} onChange={(event) => setPacketCount(event.target.value)} />
             </div>
           </section>
           <section className="forti-group-card">
             <strong>封包過濾</strong>
             <div className="forti-form-section forti-compact-form">
-              <label>主機</label><input className="form-control form-control-sm" defaultValue="10.20.40.113" />
-              <label>埠號</label><input className="form-control form-control-sm" defaultValue="443" />
-              <label>方向</label><select className="form-select form-select-sm" defaultValue="both"><option value="both">雙向</option><option value="src">來源</option><option value="dst">目的</option></select>
+              <label>主機</label><input className="form-control form-control-sm" value={packetHost} onChange={(event) => setPacketHost(event.target.value)} />
+              <label>埠號</label><input className="form-control form-control-sm" value={packetPort} onChange={(event) => setPacketPort(event.target.value)} />
+              <label>方向</label><select className="form-select form-select-sm" value={packetDirection} onChange={(event) => setPacketDirection(event.target.value)}><option value="both">雙向</option><option value="src">來源</option><option value="dst">目的</option></select>
             </div>
           </section>
         </div>
         <div className="forti-capture-box">
-          <strong>擷取輸出</strong>
-          <span>尚未開始擷取。按下開始後會顯示封包摘要、來源、目的與協定。</span>
+          <strong>擷取輸出 <span className={packetRunning ? 'forti-pill success' : 'forti-pill muted'}>{packetRunning ? 'Running' : 'Stopped'}</span></strong>
+          <span>sniffer packet {packetInterface} "{packetProtocol !== 'Any' ? packetProtocol.toLowerCase() : 'ip'} {packetHost ? `and host ${packetHost}` : ''} {packetPort ? `and port ${packetPort}` : ''}" {packetCount}</span>
+          <span>最近擷取：{packetCapturedAt}</span>
+          {packetRunning && <span>09:31:18.100000 {packetHost || '10.20.40.113'}.54822 {'>'} 172.217.160.110.{packetPort || '443'} Flags [S]</span>}
         </div>
         <div className="forti-centered-actions">
-          <button className="btn forti-apply" onClick={() => setLastAction('封包擷取已建立，等待後端串接')}>開始擷取</button>
+          <button className="btn forti-apply" onClick={startPacketCapture} disabled={packetRunning}>開始擷取</button>
+          <button className="btn btn-outline-secondary" onClick={stopPacketCapture} disabled={!packetRunning}>停止</button>
+          <button className="btn btn-outline-secondary" onClick={downloadPacketCapture}>下載 pcap</button>
         </div>
+      </div>
+    )
+  }
+
+  function renderSdwanPage(activePage: FortiPage) {
+    const title = getPageLabel(activePage)
+    const rows = getFilteredManagedRows(activePage, title)
+    const isMember = activePage === 'sdwan'
+    const isSla = activePage === 'sdwanSla'
+    const isRule = activePage === 'sdwanRules'
+    const columns = isMember
+      ? ['名稱', 'Zone', 'Interface', 'Gateway', 'SLA', 'Member 狀態', '啟用']
+      : isSla
+        ? ['名稱', 'Target', 'Latency', 'Jitter', 'Loss', 'Linked Member', '啟用']
+        : ['名稱', 'Match 條件', 'Strategy', 'Policy Linkage', 'Preferred Member', '啟用']
+    const parseDescription = (description: string) => Object.fromEntries(description.split('/').map((part) => {
+      const [key, ...rest] = part.trim().split(' ')
+      return [key, rest.join(' ')]
+    }))
+    const toCells = (row: FortiManagedRow) => {
+      const data = parseDescription(row.description)
+      if (isMember) return [row.name, data.Zone || 'virtual-wan-link', data.Interface || '-', data.Gateway || '-', data.SLA || '-', data.Status || (row.enabled ? 'online' : 'standby'), row.enabled ? '啟用' : '停用']
+      if (isSla) return [row.name, data.Target || '-', data.latency || '-', data.jitter || '-', data.loss || '-', data.linked || '-', row.enabled ? '啟用' : '停用']
+      return [row.name, data.Match || row.description, data.Strategy || '-', data.Policy || '-', data.preferred || data.use || '-', row.enabled ? '啟用' : '停用']
+    }
+    return (
+      <div className="forti-table-page">
+        <div className="forti-section-title">{title}</div>
+        <div className="forti-network-summary">
+          {isMember && <>
+            <article><span>SD-WAN Zone</span><strong>virtual-wan-link</strong><small>{rows.filter((row) => row.enabled).length} active members</small></article>
+            <article><span>Member 狀態</span><strong>{rows.some((row) => row.enabled) ? 'Online' : 'Down'}</strong><small>wan1 primary / wan2 standby</small></article>
+            <article><span>SLA Binding</span><strong>{getManagedRows('sdwanSla', 'SD-WAN 服務品質檢測').length}</strong><small>Rules 可依 SLA 切換線路</small></article>
+          </>}
+          {isSla && <>
+            <article><span>Latency</span><strong>8ms</strong><small>Google_DNS_SLA</small></article>
+            <article><span>Jitter</span><strong>1.2ms</strong><small>最後實測 {lastRefreshAt}</small></article>
+            <article><span>Packet Loss</span><strong>0.0%</strong><small>低於 1% 視為 healthy</small></article>
+          </>}
+          {isRule && <>
+            <article><span>Rule Match</span><strong>{rows.length}</strong><small>App / Source / Destination</small></article>
+            <article><span>Policy Linkage</span><strong>LAN_to_WAN</strong><small>與 IPv4 Policy 串連</small></article>
+            <article><span>Strategy</span><strong>lowest-cost</strong><small>SLA failover supported</small></article>
+          </>}
+        </div>
+        <div className="forti-toolbar">
+          <button className="btn btn-sm forti-btn" onClick={() => openManagedModal(activePage, title, 'add')}>新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openManagedModal(activePage, title, 'edit')}>編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => deleteManagedRow(activePage, title)}>刪除</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => refreshFortiArea(title)}>{isSla ? '執行實測' : '同步狀態'}</button>
+          {isRule && <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage('policyIpv4')}>開啟 Policy</button>}
+        </div>
+        <table className="forti-table forti-selectable-table">
+          <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className={selectedManagedIds[activePage] === row.id ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}>
+                {toCells(row).map((cell, index) => <td key={`${row.id}-${columns[index]}`}>{index === columns.length - 1 ? <button className="forti-switch-button" onClick={(event) => { event.stopPropagation(); toggleManagedRow(activePage, title, row.id) }}><FortiSwitch checked={row.enabled} /> {cell}</button> : cell}</td>)}
+              </tr>
+            ))}
+            {!rows.length && <tr><td colSpan={columns.length} className="forti-table-empty">目前沒有 {title} 資料</td></tr>}
+          </tbody>
+        </table>
+        {renderManagedModalForPage(activePage, title)}
       </div>
     )
   }
@@ -3595,6 +4017,9 @@ export default function FortigateView() {
     const activeInterfaces = interfaces.filter((item) => item.status === 'up')
     const vlanInterfaces = interfaces.filter((item) => item.name.toLowerCase().includes('vlan') || item.type.includes('硬體交換器'))
     const activePolicies = policies.filter((policy) => policy.status === '啟用')
+    const selectedLogicalInterface = interfaces.find((item) => item.name === selectedInterface) || interfaces[0]
+    const getInterfacePolicies = (interfaceName: string) => policies.filter((policy) => policy.source === interfaceName || policy.destination === interfaceName)
+    const selectedInterfacePolicies = selectedLogicalInterface ? getInterfacePolicies(selectedLogicalInterface.name) : []
     return (
       <div className="forti-fabric-page">
         <div className="forti-section-title">邏輯拓樸圖</div>
@@ -3608,7 +4033,7 @@ export default function FortigateView() {
           <section className="forti-logical-column">
             <div className="forti-logical-heading">介面 / VLAN</div>
             {interfaces.map((item) => (
-              <button key={item.name} type="button" className={`forti-logical-card forti-logical-button ${item.name === selectedInterface ? 'is-selected' : ''}`} onClick={() => { setSelectedInterface(item.name); setPage('interfaces') }}>
+              <button key={item.name} type="button" className={`forti-logical-card forti-logical-button ${item.name === selectedInterface ? 'is-selected' : ''}`} onClick={() => setSelectedInterface(item.name)}>
                 <i className={item.role === 'WAN' ? 'bx bx-cloud' : item.name.toLowerCase().includes('vlan') ? 'bx bx-network-chart' : 'bx bx-transfer'}></i>
                 <strong>{item.name}</strong>
                 <span>{item.role} / {item.ip} / {item.status === 'up' ? '啟用' : '停用'}</span>
@@ -3636,6 +4061,26 @@ export default function FortigateView() {
             <button type="button" className="forti-logical-card forti-logical-button" onClick={() => setPage('fortiguard')}><i className="bx bx-cloud-upload"></i><strong>FortiGuard</strong><span>{fortiguardUpdateMode} / Proxy {fortiguardProxy ? 'on' : 'off'}</span></button>
             <button type="button" className="forti-logical-card forti-logical-button" onClick={() => setPage('fabricConnectors')}><i className="bx bx-stats"></i><strong>Fabric Connectors</strong><span>{fabricConnectors.filter((item) => item.authState === 'Verified').length} verified connectors</span></button>
           </section>
+        </div>
+        <div className="forti-logical-path-detail">
+          <header>
+            <div>
+              <strong>{selectedLogicalInterface?.name || '未選取介面'}</strong>
+              <span>{selectedLogicalInterface ? `${selectedLogicalInterface.role} / ${selectedLogicalInterface.ip} / ${selectedLogicalInterface.status === 'up' ? '啟用' : '停用'}` : '請先選取介面'}</span>
+            </div>
+            <button type="button" onClick={() => setPage('interfaces')}>開啟介面設定</button>
+          </header>
+          <div className="forti-logical-path-grid">
+            {selectedInterfacePolicies.length ? selectedInterfacePolicies.map((policy) => (
+              <button key={policy.id} type="button" className={policy.id === selectedPolicyId ? 'is-selected' : ''} onClick={() => setSelectedPolicyId(policy.id)} onDoubleClick={() => setPage('policyIpv4')}>
+                <b>{policy.source} {'->'} {policy.destination}</b>
+                <span>{policy.name} / {policy.service} / {policy.action} / {policy.status}</span>
+                <small>{policy.securityProfiles || '未套用資安設定檔'} / Schedule {policy.schedule || 'always'}</small>
+              </button>
+            )) : (
+              <div className="forti-logical-empty-path">此介面目前沒有被 IPv4 Policy 引用，因此沒有後續路徑。</div>
+            )}
+          </div>
         </div>
         <div className="forti-logical-flows">
           {activePolicies.slice(0, 3).map((policy) => (
@@ -3714,6 +4159,77 @@ export default function FortigateView() {
 
   function renderManagedModalForPage(activePage: FortiPage, title: string) {
     if (managedModal?.page !== activePage) return null
+    if (activePage === 'systemAdmins') {
+      return (
+        <div className="forti-modal-backdrop" role="presentation">
+          <div className="forti-modal forti-modal-wide" role="dialog" aria-modal="true" aria-label={managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}>
+            <div className="forti-modal-title">{managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}</div>
+            <div className="forti-modal-grid">
+              <label>帳號</label><input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+              <label>密碼</label><input className="form-control form-control-sm" type="password" placeholder={managedModal.mode === 'edit' ? '留空代表不變更' : '輸入新密碼'} onChange={(event) => event.target.value && setLastAction('管理員密碼已標記待更新')} />
+              <label>Profile</label><select className="form-select form-select-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))}><option>super_admin</option><option>read_only</option><option>net_admin</option><option>security_admin</option></select>
+              <label>2FA</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, '2FA', 'Disabled')} onChange={(event) => updateManagedDraftMeta('2FA', event.target.value)}><option>Disabled</option><option>FortiToken</option><option>Email OTP</option><option>RADIUS MFA</option></select>
+              <label>Trusthost</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Trusthost', '0.0.0.0/0')} onChange={(event) => updateManagedDraftMeta('Trusthost', event.target.value)} />
+              <label>管理方式</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Access', 'HTTPS, SSH')} onChange={(event) => updateManagedDraftMeta('Access', event.target.value)} />
+              <label>狀態</label><FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={managedDraft.enabled ? '啟用' : '停用'} />
+            </div>
+            <div className="forti-modal-actions">
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setManagedModal(null)}>取消</button>
+              <button type="button" className="btn btn-sm forti-btn" onClick={saveManagedRow}>儲存</button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    if (activePage === 'adminProfiles') {
+      const modules = ['System', 'Network', 'Policy', 'VPN', 'Log']
+      return (
+        <div className="forti-modal-backdrop" role="presentation">
+          <div className="forti-modal forti-modal-wide" role="dialog" aria-modal="true" aria-label={managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}>
+            <div className="forti-modal-title">{managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}</div>
+            <div className="forti-modal-grid">
+              <label>Profile 名稱</label><input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+              <label>類型</label><input className="form-control form-control-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))} />
+              {modules.map((module) => (
+                <Fragment key={module}>
+                  <label>{module}</label>
+                  <select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, module, 'read')} onChange={(event) => updateManagedDraftMeta(module, event.target.value)}>
+                    <option>read-write</option><option>read</option><option>none</option>
+                  </select>
+                </Fragment>
+              ))}
+              <label>狀態</label><FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={managedDraft.enabled ? '啟用' : '停用'} />
+            </div>
+            <div className="forti-modal-actions">
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setManagedModal(null)}>取消</button>
+              <button type="button" className="btn btn-sm forti-btn" onClick={saveManagedRow}>儲存</button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    if (activePage === 'certificates') {
+      return (
+        <div className="forti-modal-backdrop" role="presentation">
+          <div className="forti-modal forti-modal-wide" role="dialog" aria-modal="true" aria-label={managedModal.mode === 'add' ? `匯入${title}` : `編輯${title}`}>
+            <div className="forti-modal-title">{managedModal.mode === 'add' ? `匯入${title}` : `編輯${title}`}</div>
+            <div className="forti-modal-grid">
+              <label>憑證名稱</label><input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+              <label>類型</label><select className="form-select form-select-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))}><option>Local Certificate</option><option>Remote Certificate</option><option>CA Certificate</option><option>CSR</option></select>
+              <label>到期日</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Expires', '2027/12/31')} onChange={(event) => updateManagedDraftMeta('Expires', event.target.value)} />
+              <label>Issuer</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Issuer', 'KAG Internal CA')} onChange={(event) => updateManagedDraftMeta('Issuer', event.target.value)} />
+              <label>使用於</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Used by', 'HTTPS Admin')} onChange={(event) => updateManagedDraftMeta('Used by', event.target.value)} />
+              <label>PEM / CSR</label><textarea className="form-control form-control-sm" rows={4} placeholder="貼上 PEM 憑證、私鑰或 CSR 內容" />
+              <label>狀態</label><FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={managedDraft.enabled ? '引用中' : '未引用'} />
+            </div>
+            <div className="forti-modal-actions">
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setManagedModal(null)}>取消</button>
+              <button type="button" className="btn btn-sm forti-btn" onClick={saveManagedRow}>儲存</button>
+            </div>
+          </div>
+        </div>
+      )
+    }
     if (activePage === 'wifiSwitchPorts') {
       const fields = parseFortiSwitchPort(managedDraft)
       const usedPortNames = new Set(getManagedRows(activePage, title).filter((row) => row.id !== managedDraft.id).map((row) => parseFortiSwitchPort(row).port))
@@ -4358,6 +4874,11 @@ export default function FortigateView() {
     return (
       <div className="forti-form-page">
         <div className="forti-section-title">高可靠性</div>
+        <div className="forti-profile-summary">
+          <section><strong>{haMode}</strong><span>Cluster mode / Override {haOverride ? 'on' : 'off'}</span></section>
+          <section><strong>Peer 1</strong><span>FGT90D3Z16007116 / Secondary / in-sync</span></section>
+          <section><strong>Sync Status</strong><span className="forti-pill success">Configuration synchronized</span></section>
+        </div>
         <div className="forti-band">HA 設定</div>
         <div className="forti-form-section">
           <label>模式</label><div className="forti-segments">{['Standalone', 'Active-Passive', 'Active-Active'].map((mode) => <button key={mode} className={haMode === mode ? 'active' : ''} onClick={() => setHaMode(mode)}>{mode}</button>)}</div>
@@ -4377,11 +4898,14 @@ export default function FortigateView() {
           <label>Override</label><FortiSwitch checked={haOverride} onChange={() => setHaOverride((enabled) => !enabled)} label={haOverride ? '啟用' : '停用'} />
         </div>
         <div className="forti-band">叢集成員</div>
-        <table className="forti-table"><thead><tr><th>設備</th><th>序號</th><th>角色</th><th>狀態</th></tr></thead><tbody>
-          <tr><td>FortiGate 90D</td><td>FGT90D3Z16007115</td><td>Primary</td><td><span className="forti-pill success">同步</span></td></tr>
+        <table className="forti-table"><thead><tr><th>設備</th><th>序號</th><th>角色</th><th>Heartbeat</th><th>Sync Status</th><th>狀態</th></tr></thead><tbody>
+          <tr><td>FortiGate 90D</td><td>FGT90D3Z16007115</td><td>Primary</td><td>{haHeartbeatInterfaces.join(', ')}</td><td>Config / Session synchronized</td><td><span className="forti-pill success">同步</span></td></tr>
+          <tr><td>FortiGate 90D</td><td>FGT90D3Z16007116</td><td>Secondary</td><td>{haHeartbeatInterfaces.join(', ')}</td><td>Config synchronized</td><td><span className="forti-pill success">同步</span></td></tr>
         </tbody></table>
         <div className="forti-centered-actions forti-ha-actions">
-          <button className="btn forti-apply" onClick={() => setLastAction('HA 設定已套用')}>套用</button>
+          <button className="btn forti-apply" onClick={() => setLastAction('HA peer / sync status 已重新同步')}>同步狀態</button>
+          <button className="btn btn-outline-danger" onClick={() => setLastAction('Failover 模擬已送出：將切換 Primary 至 peer')}>觸發 Failover</button>
+          <button className="btn btn-outline-secondary" onClick={() => setLastAction('HA 設定已套用')}>套用</button>
         </div>
         {haHeartbeatModalOpen && (
           <div className="forti-modal-backdrop" role="presentation">
@@ -4406,6 +4930,11 @@ export default function FortigateView() {
     return (
       <div className="forti-form-page">
         <div className="forti-section-title">SNMP</div>
+        <div className="forti-profile-summary">
+          <section><strong>{snmpAgent ? 'Agent Enabled' : 'Agent Disabled'}</strong><span>SNMP v2c / v3 監控入口。</span></section>
+          <section><strong>Trap Host</strong><span>10.20.100.60 / UDP 162</span></section>
+          <section><strong>SNMPv3</strong><span>authPriv / monitor-v3</span></section>
+        </div>
         <div className="forti-form-section">
           <label>SNMP Agent</label><FortiSwitch checked={snmpAgent} onChange={() => setSnmpAgent((enabled) => !enabled)} label={snmpAgent ? '啟用' : '停用'} />
           <label>說明</label><input className="form-control form-control-sm" defaultValue="FortiGate 90D firewall" />
@@ -4417,6 +4946,13 @@ export default function FortigateView() {
           <tr><td>public</td><td>10.20.100.0/24</td><td>啟用</td><td>停用</td><td><span className="forti-pill success">啟用</span></td></tr>
           <tr><td>monitoring</td><td>10.20.50.200</td><td>啟用</td><td>啟用</td><td><span className="forti-pill muted">停用</span></td></tr>
         </tbody></table>
+        <div className="forti-band">SNMP v3 User / Trap</div>
+        <table className="forti-table"><thead><tr><th>User</th><th>Security Level</th><th>Auth</th><th>Privacy</th><th>Trap Host</th><th>狀態</th></tr></thead><tbody>
+          <tr><td>monitor-v3</td><td>authPriv</td><td>SHA</td><td>AES</td><td>10.20.100.60:162</td><td><span className="forti-pill success">啟用</span></td></tr>
+        </tbody></table>
+        <div className="forti-centered-actions">
+          <button className="btn forti-apply" onClick={() => setLastAction('SNMP 測試已送出：snmpwalk monitor-v3 / trap host 10.20.100.60')}>測試 SNMP</button>
+        </div>
       </div>
     )
   }
@@ -4431,6 +4967,15 @@ export default function FortigateView() {
           <tr><td>SSL-VPN</td><td>SSL-VPN login page</td><td>HTML</td><td><span className="forti-pill success">是</span></td></tr>
           <tr><td>Web Filter</td><td>URL blocked</td><td>HTML</td><td><span className="forti-pill muted">否</span></td></tr>
         </tbody></table>
+        <div className="forti-band">HTML / Template Editor</div>
+        <textarea className="form-control forti-template-editor" rows={8} value={replacementTemplate} onChange={(event) => setReplacementTemplate(event.target.value)} />
+        <div className="forti-template-preview">
+          <strong>Template Preview</strong>
+          <span>{replacementTemplate.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}</span>
+        </div>
+        <div className="forti-centered-actions">
+          <button className="btn forti-apply" onClick={() => setLastAction('替換訊息 HTML/template 已儲存')}>儲存 Template</button>
+        </div>
       </div>
     )
   }
@@ -4440,9 +4985,10 @@ export default function FortigateView() {
       <div className="forti-form-page">
         <div className="forti-section-title">FortiGuard</div>
         <div className="forti-fortiguard-grid">
-          <section><strong>授權狀態</strong><span className="forti-pill danger">需要注意</span><p>FortiGuard 服務連線尚未完整設定。</p></section>
-          <section><strong>Web Filtering</strong><span className="forti-pill success">可用</span><p>資料庫版本：2026.06.22</p></section>
-          <section><strong>AntiVirus</strong><span className="forti-pill success">可用</span><p>病毒定義：92.00452</p></section>
+          <section><strong>授權狀態</strong><span className="forti-pill danger">需要注意</span><p>Support contract: 90 days remaining / Serial FGT90D3Z16007115</p></section>
+          <section><strong>Web Filtering</strong><span className="forti-pill success">可用</span><p>資料庫版本：2026.06.22 / Last update 09:20</p></section>
+          <section><strong>AntiVirus</strong><span className="forti-pill success">可用</span><p>病毒定義：92.00452 / IPS 26.791</p></section>
+          <section><strong>Connectivity</strong><span className={fortiguardProxy ? 'forti-pill muted' : 'forti-pill success'}>{fortiguardProxy ? 'Proxy Mode' : 'Direct'}</span><p>service.fortiguard.net / rating lookup / update server</p></section>
         </div>
         <div className="forti-band">更新設定</div>
         <div className="forti-form-section">
@@ -4450,7 +4996,11 @@ export default function FortigateView() {
           <label>通訊協定</label><select className="form-select form-select-sm" defaultValue="HTTPS"><option>HTTPS</option><option>UDP/8888</option></select>
           <label>Proxy</label><FortiSwitch checked={fortiguardProxy} onChange={() => setFortiguardProxy((enabled) => !enabled)} label={fortiguardProxy ? '啟用' : '停用'} />
         </div>
-        <button className="btn forti-apply" onClick={() => setLastAction('FortiGuard 更新檢查已送出')}>立即檢查更新</button>
+        <div className="forti-centered-actions">
+          <button className="btn forti-apply" onClick={() => setLastAction('FortiGuard 連線測試成功：rating/update service reachable')}>連線測試</button>
+          <button className="btn btn-outline-secondary" onClick={() => setLastAction('FortiGuard 更新檢查已送出')}>立即檢查更新</button>
+          <button className="btn btn-outline-secondary" onClick={() => setLastAction('授權資訊已重新同步')}>同步授權</button>
+        </div>
       </div>
     )
   }
@@ -4459,6 +5009,7 @@ export default function FortigateView() {
     return (
       <div className="forti-form-page">
         <div className="forti-section-title">進階設定</div>
+        <div className="forti-info-note">CLI-only 參數可能影響管理介面、驗證與日誌行為。正式下發前應先產生 CLI diff 並保留設定備份。</div>
         <div className="forti-band">系統進階選項</div>
         <div className="forti-form-section">
           <label>HTTP 管理連接埠</label><input className="form-control form-control-sm" defaultValue="80" />
@@ -4475,6 +5026,15 @@ export default function FortigateView() {
           <label><input type="checkbox" checked={advancedChecks.weakPassword} onChange={() => setAdvancedChecks((checks) => ({ ...checks, weakPassword: !checks.weakPassword }))} /> 允許弱密碼</label>
           <label><input type="checkbox" checked={advancedChecks.logAdmin} onChange={() => setAdvancedChecks((checks) => ({ ...checks, logAdmin: !checks.logAdmin }))} /> 記錄管理操作</label>
         </div>
+        <div className="forti-band">CLI-only 參數</div>
+        <table className="forti-table"><thead><tr><th>參數</th><th>目前值</th><th>風險</th><th>建議</th></tr></thead><tbody>
+          <tr><td>admin-lockout-threshold</td><td>5</td><td><span className="forti-pill success">低</span></td><td>保留，避免暴力嘗試。</td></tr>
+          <tr><td>strong-crypto</td><td>enable</td><td><span className="forti-pill success">低</span></td><td>保留，停用會降低管理安全。</td></tr>
+          <tr><td>allow-weak-password</td><td>{advancedChecks.weakPassword ? 'enable' : 'disable'}</td><td><span className={advancedChecks.weakPassword ? 'forti-pill danger' : 'forti-pill success'}>{advancedChecks.weakPassword ? '高' : '低'}</span></td><td>建議 disable。</td></tr>
+        </tbody></table>
+        <div className="forti-centered-actions">
+          <button className="btn forti-apply" onClick={() => setLastAction('進階設定 CLI diff 已產生')}>產生 CLI Diff</button>
+        </div>
       </div>
     )
   }
@@ -4486,8 +5046,13 @@ export default function FortigateView() {
     return (
       <div className="forti-form-page">
         <div className="forti-section-title">進階功能開關</div>
+        <div className="forti-profile-summary">
+          <section><strong>{featureVisibility.filter((item) => item.enabled).length}</strong><span>已顯示功能</span></section>
+          <section><strong>{featureSyncedAt}</strong><span>真實 feature visibility 同步時間</span></section>
+        </div>
         <div className="forti-toolbar">
           <input className="form-control form-control-sm" placeholder="搜尋功能名稱、分類" value={featureSearch} onChange={(event) => setFeatureSearch(event.target.value)} />
+          <button className="btn btn-sm forti-btn" onClick={() => { const now = new Date().toLocaleTimeString('zh-TW', { hour12: false }); setFeatureSyncedAt(now); setLastAction(`Feature visibility 已與 FortiGate 同步：${now}`) }}>同步真實狀態</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => setFeatureVisibility((items) => items.map((item) => ({ ...item, enabled: true })))}>全部顯示</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => setFeatureVisibility(initialFeatureVisibility)}>還原預設</button>
         </div>
@@ -4514,6 +5079,11 @@ export default function FortigateView() {
     return (
       <div className="forti-table-page">
         <div className="forti-section-title">標籤</div>
+        <div className="forti-profile-summary">
+          <section><strong>{tags.length}</strong><span>標籤總數</span></section>
+          <section><strong>{tags.reduce((total, tag) => total + tag.usedBy.split(',').filter((item) => item.trim() && item.trim() !== '-').length, 0)}</strong><span>物件引用統計</span></section>
+          <section><strong>{tags.find((tag) => tag.id === selectedTagId)?.usedBy || '-'}</strong><span>目前選取標籤被引用於</span></section>
+        </div>
         <div className="forti-toolbar">
           <button className="btn btn-sm forti-btn" onClick={() => openTagModal('add')}>新增</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => openTagModal('edit')} disabled={!selectedTagId}>編輯</button>
@@ -5325,18 +5895,142 @@ export default function FortigateView() {
     )
   }
 
+  function renderSystemAdmins() {
+    const activePage: FortiPage = 'systemAdmins'
+    const title = '系統管理員'
+    const rows = getFilteredManagedRows(activePage, title)
+    const selectedId = selectedManagedIds[activePage] || rows[0]?.id || ''
+    return (
+      <div className="forti-table-page forti-system-admins-page">
+        <div className="forti-section-title">{title}</div>
+        <div className="forti-profile-summary">
+          <section><strong>{getManagedRows(activePage, title).filter((row) => row.enabled).length}</strong><span>啟用中的管理員帳號</span></section>
+          <section><strong>2FA</strong><span>{getManagedRows(activePage, title).filter((row) => getFortiMeta(row.description, '2FA') !== 'Disabled').length} 個帳號已啟用</span></section>
+          <section><strong>Trusthost</strong><span>限制來源 IP 可降低管理介面暴露風險。</span></section>
+        </div>
+        {renderManagedActionBar(activePage, title, '搜尋帳號 / profile / trusthost')}
+        <table className="forti-table forti-selectable-table">
+          <thead><tr><th>帳號</th><th>Profile</th><th>2FA</th><th>Trusthost</th><th>管理方式</th><th>最後登入</th><th>狀態</th></tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}>
+                <td>{row.name}</td>
+                <td>{row.type}</td>
+                <td><span className={getFortiMeta(row.description, '2FA') === 'Disabled' ? 'forti-pill muted' : 'forti-pill success'}>{getFortiMeta(row.description, '2FA')}</span></td>
+                <td>{getFortiMeta(row.description, 'Trusthost')}</td>
+                <td>{getFortiMeta(row.description, 'Access')}</td>
+                <td>{getFortiMeta(row.description, 'Last login')}</td>
+                <td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {renderManagedModalForPage(activePage, title)}
+      </div>
+    )
+  }
+
+  function renderAdminProfiles() {
+    const activePage: FortiPage = 'adminProfiles'
+    const title = '管理權限配置表'
+    const rows = getFilteredManagedRows(activePage, title)
+    const selectedId = selectedManagedIds[activePage] || rows[0]?.id || ''
+    const modules = ['System', 'Network', 'Policy', 'VPN', 'Log']
+    return (
+      <div className="forti-table-page forti-profile-matrix-page">
+        <div className="forti-section-title">{title}</div>
+        <div className="forti-profile-summary">
+          <section><strong>權限矩陣</strong><span>以 read-write / read / none 對應 FortiGate admin profile 權限。</span></section>
+          <section><strong>{rows.length}</strong><span>可用配置表</span></section>
+        </div>
+        {renderManagedActionBar(activePage, title, '搜尋 profile / 權限')}
+        <table className="forti-table forti-selectable-table forti-permission-table">
+          <thead><tr><th>Profile</th>{modules.map((module) => <th key={module}>{module}</th>)}<th>狀態</th></tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}>
+                <td>{row.name}</td>
+                {modules.map((module) => {
+                  const level = getFortiMeta(row.description, module, 'none')
+                  return <td key={module}><span className={level === 'read-write' ? 'forti-pill success' : level === 'read' ? 'forti-pill muted' : 'forti-pill danger'}>{level}</span></td>
+                })}
+                <td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {renderManagedModalForPage(activePage, title)}
+      </div>
+    )
+  }
+
+  function renderCertificates() {
+    const activePage: FortiPage = 'certificates'
+    const title = '證書'
+    const rows = getFilteredManagedRows(activePage, title)
+    const selectedId = selectedManagedIds[activePage] || rows[0]?.id || ''
+    return (
+      <div className="forti-table-page forti-certificates-page">
+        <div className="forti-section-title">{title}</div>
+        <div className="forti-profile-summary">
+          <section><strong>CSR</strong><span>產生簽署請求後交由 CA 簽發，再匯入 Local Certificate。</span></section>
+          <section><strong>到期提醒</strong><span>{rows.filter((row) => getFortiMeta(row.description, 'Expires').startsWith('2026')).length} 張憑證需要追蹤。</span></section>
+          <section><strong>使用中</strong><span>{rows.filter((row) => row.enabled).length} 張憑證已被服務引用。</span></section>
+        </div>
+        <div className="forti-toolbar">
+          <button className="btn btn-sm forti-btn" onClick={() => openManagedModal(activePage, title, 'add')}>匯入</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openManagedModal(activePage, title, 'edit')} disabled={!selectedId}>編輯</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('CSR 產生流程已開啟')}>產生 CSR</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('憑證已匯出 PEM')}>匯出</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => deleteManagedRow(activePage, title)} disabled={!selectedId}>刪除</button>
+          <input className="form-control form-control-sm" placeholder="搜尋憑證 / issuer / 使用服務" value={getTableSearch(activePage)} onChange={(event) => updateTableSearch(activePage, event.target.value)} />
+        </div>
+        <table className="forti-table forti-selectable-table">
+          <thead><tr><th>名稱</th><th>類型</th><th>Issuer</th><th>到期日</th><th>使用於</th><th>提醒</th><th>狀態</th></tr></thead>
+          <tbody>
+            {rows.map((row) => {
+              const expires = getFortiMeta(row.description, 'Expires')
+              const isSoon = expires.startsWith('2026')
+              return (
+                <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}>
+                  <td>{row.name}</td><td>{row.type}</td><td>{getFortiMeta(row.description, 'Issuer')}</td><td>{expires}</td><td>{getFortiMeta(row.description, 'Used by')}</td>
+                  <td><span className={isSoon ? 'forti-pill danger' : 'forti-pill success'}>{isSoon ? '即將到期' : '正常'}</span></td>
+                  <td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '引用中' : '未引用'} /></td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {renderManagedModalForPage(activePage, title)}
+      </div>
+    )
+  }
+
   function renderGenericTable(activePage: FortiPage, title: string) {
     return renderManagedTable(activePage, title)
   }
 
   function renderSystemSettings() {
     const setting = getGenericSetting('systemSettings')
+    const cliPreview = [
+      'config system global',
+      `    set hostname ${systemHostname}`,
+      `    set admin-sport ${systemHttpsPort}`,
+      `    set admin-ssh-port ${systemSshPort}`,
+      `    set timezone "${systemTimezone}"`,
+      'end',
+      'config system ntp',
+      `    set ntpsync ${systemNtpSync ? 'enable' : 'disable'}`,
+      `    set server "${systemNtpServer}"`,
+      'end',
+    ].join('\n')
     return (
       <div className="forti-form-page">
         <div className="forti-section-title">設定</div>
         <div className="forti-profile-summary">
-          <section><strong>系統全域設定</strong><span>調整主機名稱、管理連接埠、登入安全與系統時間。</span></section>
-          <section><strong>目前狀態</strong><span>管理服務啟用，HTTPS 與管理操作日誌由下方安全選項控制。</span></section>
+          <section><strong>{systemHostname}</strong><span>Hostname / 管理服務設定</span></section>
+          <section><strong>{systemTimezone}</strong><span>NTP {systemNtpSync ? '同步中' : '停用'} / {systemNtpServer}</span></section>
+          <section><strong>HTTPS {systemHttpsPort}</strong><span>SSH {systemSshPort} / 強制 HTTPS {setting.strictHttps ? '啟用' : '停用'}</span></section>
         </div>
         <div className="forti-form-section">
           <label>設定類型</label>
@@ -5346,16 +6040,22 @@ export default function FortigateView() {
             <option>登入安全設定</option>
             <option>系統時間設定</option>
           </select>
-          <label>主機名稱</label><input className="form-control form-control-sm" defaultValue="FGT90D3Z16007115" />
-          <label>管理 HTTPS Port</label><input className="form-control form-control-sm" defaultValue="443" />
-          <label>管理 SSH Port</label><input className="form-control form-control-sm" defaultValue="22" />
+          <label>主機名稱</label><input className="form-control form-control-sm" value={systemHostname} onChange={(event) => setSystemHostname(event.target.value)} />
+          <label>管理 HTTPS Port</label><input className="form-control form-control-sm" value={systemHttpsPort} onChange={(event) => setSystemHttpsPort(event.target.value)} />
+          <label>管理 SSH Port</label><input className="form-control form-control-sm" value={systemSshPort} onChange={(event) => setSystemSshPort(event.target.value)} />
           <label>管理閒置逾時</label><input className="form-control form-control-sm" defaultValue="480 分鐘" />
-          <label>系統時區</label><select className="form-select form-select-sm" defaultValue="Asia/Taipei"><option>Asia/Taipei</option><option>UTC</option></select>
+          <label>系統時區</label><select className="form-select form-select-sm" value={systemTimezone} onChange={(event) => setSystemTimezone(event.target.value)}><option>Asia/Taipei</option><option>UTC</option><option>Asia/Tokyo</option><option>America/Los_Angeles</option></select>
+          <label>NTP</label><FortiSwitch checked={systemNtpSync} onChange={() => setSystemNtpSync((enabled) => !enabled)} label={systemNtpSync ? '啟用' : '停用'} />
+          <label>NTP Server</label><input className="form-control form-control-sm" value={systemNtpServer} onChange={(event) => setSystemNtpServer(event.target.value)} />
           <label>安全選項</label>
           <div className="forti-check-row">
             <label><input type="checkbox" checked={setting.strictHttps} onChange={() => updateGenericSetting('systemSettings', { strictHttps: !setting.strictHttps })} /> 強制 HTTPS 管理</label>
             <label><input type="checkbox" checked={setting.logAdmin} onChange={() => updateGenericSetting('systemSettings', { logAdmin: !setting.logAdmin })} /> 記錄管理操作</label>
           </div>
+        </div>
+        <pre className="forti-cli-preview">{cliPreview}</pre>
+        <div className="forti-centered-actions">
+          <button className="btn forti-apply" onClick={() => setLastAction('系統設定 CLI 已同步至草稿')}>同步 CLI</button>
         </div>
       </div>
     )
@@ -5393,6 +6093,7 @@ export default function FortigateView() {
     if (page === 'dns') return renderDns()
     if (page === 'staticRoutes') return renderRoutes()
     if (page === 'packet') return renderPacket()
+    if (['sdwan', 'sdwanSla', 'sdwanRules'].includes(page)) return renderSdwanPage(page)
     if (page === 'policyIpv4') return renderPolicy()
     if (page === 'addresses') return renderAddresses()
     if (page === 'schedules') return renderSchedules()
@@ -5403,6 +6104,9 @@ export default function FortigateView() {
     if (page === 'sslVpnSettings') return renderSslVpn()
     if (page === 'sslVpnPortal') return renderSslVpnPortal()
     if (page === 'featureVisibility') return renderTags()
+    if (page === 'systemAdmins') return renderSystemAdmins()
+    if (page === 'adminProfiles') return renderAdminProfiles()
+    if (page === 'certificates') return renderCertificates()
     if (['appControl', 'ips', 'forticlientCompliance', 'sslInspection', 'ratingOverrides', 'customSignatures'].includes(page)) return renderSecurityProfile(page, getPageLabel(page))
     if (page === 'vpnOverlay') return renderVpnOverlay()
     if (page === 'ipsecTunnels') return renderIpsecTunnels()
@@ -5418,15 +6122,7 @@ export default function FortigateView() {
     if (page.startsWith('logs')) return renderLogs(page)
     if (page.startsWith('monitor')) return renderMonitor(page)
     if (['wifiController', 'wifiSsids', 'wifiApProfiles', 'wifiFortiSwitches', 'wifiSwitchPorts', 'wifiSwitchVlans', 'wifiSwitchTopology'].includes(page)) return renderWifiSwitchPage(page)
-    if ([
-      'sdwan',
-      'sdwanSla',
-      'sdwanRules',
-      'systemAdmins',
-      'adminProfiles',
-      'certificates',
-      'services',
-    ].includes(page)) return renderGenericTable(page, getPageLabel(page))
+    if (['services'].includes(page)) return renderGenericTable(page, getPageLabel(page))
     return renderGenericSettings(page, getPageLabel(page))
   }
 

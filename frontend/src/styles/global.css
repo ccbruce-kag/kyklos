@@ -2832,6 +2832,12 @@
   gap:1rem;
   min-width:0;
 }
+.forti-auth-server-stack {
+  display:grid;
+  grid-template-columns:1fr;
+  gap:1rem;
+  min-width:0;
+}
 .forti-group-card {
   display:flex;
   flex-direction:column;
@@ -2844,6 +2850,26 @@
 .forti-group-card strong {
   color:#333;
   font-weight:800;
+}
+.forti-button-row {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.65rem;
+  align-items:center;
+}
+.forti-readonly-value {
+  min-height:2rem;
+  display:flex;
+  align-items:center;
+  padding:.35rem .55rem;
+  border:1px solid #e2e2e2;
+  background:#f7f8f9;
+  color:#333;
+  font-size:.78rem;
+  overflow-wrap:anywhere;
+}
+.forti-modal-grid select[multiple] {
+  min-height:5.5rem;
 }
 .forti-packet-grid {
   display:grid;
@@ -2970,6 +2996,25 @@
 }
 .forti-template-preview span {
   overflow-wrap:anywhere;
+}
+.forti-cell-note {
+  display:block;
+  margin-top:.18rem;
+  color:#777;
+  font-size:.72rem;
+}
+.forti-drag-handle {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:34px;
+  padding:.12rem .35rem;
+  border:1px solid #d8d8d8;
+  border-radius:3px;
+  background:#f7f7f7;
+  color:#555;
+  font-weight:800;
+  cursor:grab;
 }
 .forti-capture-box {
   display:flex;

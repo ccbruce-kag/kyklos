@@ -127,24 +127,24 @@ FortiView 目前以視覺化與表格模擬為主，適合展示操作流程，�
 
 | 次選單 | 功能 | 是否正常 | 是否需要 | 設計評估 | 尚缺或可加 |
 |---|---|---|---|---|---|
-| IPv4 政策 | Policy 新增/編輯/刪除、NAT、Profile | 部分正常 | 必要 | 核心方向正確 | Policy order、drag reorder、install preview |
-| 位址 | Address object 管理 | 部分正常 | 必要 | 已有 IP/FQDN 欄位 | Address group、GeoIP、Interface binding |
-| 服務 | Service object 管理 | 正常 | 必要 | 基本可用 | TCP/UDP/SCTP、service group |
-| 排程 | Schedule object 管理 | 部分正常 | 必要 | 已包含時間欄位 | Recurring/one-time 詳細 UI |
+| IPv4 政策 | Policy 新增/編輯/刪除、NAT、Profile、Policy order、drag reorder | 前端正常 | 必要 | 已加入 Policy order 與拖拉排序；已移除 Install Preview | 待串接真實 FortiGate policy 讀寫 |
+| 位址 | Address object、Address group、GeoIP、Interface binding | 前端正常 | 必要 | 已支援 Group members、GeoIP country 與介面綁定欄位 | 待串接真實 address/address group CLI/API |
+| 服務 | TCP/UDP/SCTP/ICMP service、service group | 前端正常 | 必要 | 已改為專用服務物件頁，含 port/helper/group members | 待串接真實 service custom/group 設定 |
+| 排程 | Recurring / One-time schedule 詳細 UI | 前端正常 | 必要 | 已加入日期、週期、時區與 one-time 日期範圍 | 待串接真實 schedule 下發 |
 
 ## 資安管理設定
 
 | 次選單 | 功能 | 是否正常 | 是否需要 | 設計評估 | 尚缺或可加 |
 |---|---|---|---|---|---|
-| 防毒 | AV profile 與掃描選項 | 部分正常 | 需要 | 可作為初版 | Profile 保存/載入、Protocol options |
-| 網頁過濾 | URL filter / category | 部分正常 | 需要 | 已具備 URL 欄位 | Category rating、override、quota |
-| DNS 過濾器 | DNS domain filter | 部分正常 | 需要 | 已具備 domain/DNS 欄位 | DNS category、safe search |
-| 應用程式控制 | App control profile | 部分正常 | 視需求 | 初版可用 | App signature category、action |
-| 入侵偵測防禦 | IPS profile | 部分正常 | 需要 | 初版可用 | Signature filter、severity、sensor |
-| FortiClient Compliance | Endpoint compliance | 部分正常 | 視 EMS 是否使用 | 已多次重新設計 | EMS API、posture、quarantine |
-| SSL/SSH 深層檢查 | Inspection profile | 部分正常 | 需要 | 目前可操作 | CA 選擇、exempt list |
-| 網站自定惡意評級 | Rating override | 部分正常 | 可選 | 可保留 | FortiGuard override sync |
-| 自訂特徵值 | Custom signature | 部分正常 | 進階功能 | 可保留 | 語法檢查、測試、版本管理 |
+| 防毒 | AV profile 保存/載入、Protocol options、協定掃描 | 前端正常 | 需要 | 已支援 profile CRUD 與 protocol options 選擇 | 待串接真實 AV profile/protocol-options |
+| 網頁過濾 | URL filter、Category rating、override、quota | 前端正常 | 需要 | 已加入 FortiGuard/Local rating、quota 與 override 欄位 | 待串接真實 webfilter profile 與 FortiGuard rating |
+| DNS 過濾器 | DNS category、safe search、category source | 前端正常 | 需要 | 已加入 Safe Search 與 FortiGuard/Local 分類來源 | 待串接真實 DNS filter profile |
+| 應用程式控制 | App signature category、action | 前端正常 | 視需求 | 已顯示分類、sensor 與 action 選擇 | 待串接真實 application list/signature |
+| 入侵偵測防禦 | Signature filter、severity、sensor | 前端正常 | 需要 | 已加入 severity/sensor 欄位與篩選概念 | 待串接真實 IPS signature database |
+| FortiClient Compliance | EMS API、posture、quarantine | 前端正常 | 視 EMS 是否使用 | 已含 EMS 連線、posture、quarantine VLAN 與端點狀態 | 待串接真實 FortiClient EMS API |
+| SSL/SSH 深層檢查 | CA 選擇、exempt list | 前端正常 | 需要 | 已可切換檢查模式、選 CA、查看例外清單 | 待串接真實 SSL inspection profile |
+| 網站自定惡意評級 | Rating override、FortiGuard override sync | 前端正常 | 可選 | 已加入 override sync 操作入口 | 待串接 FortiGuard/local rating override |
+| 自訂特徵值 | Custom signature、語法檢查、測試、版本管理 | 前端正常 | 進階功能 | 已可檢查語法、測試、加入清單、刪除與記錄版本 | 待串接真實 signature compile/test |
 
 ## VPN
 

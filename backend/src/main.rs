@@ -115,6 +115,10 @@ fn main() {
         if let Err(e) = kyklos_ha.sync_from_db().await {
             warn!("Kyklos HA initialization failed: {}", e);
         }
+        let fortigate_lb = Arc::new(KyklosHaManager::new_fortigate_lb(db.clone()));
+        if let Err(e) = fortigate_lb.sync_from_db().await {
+            warn!("FortiGate LB initialization failed: {}", e);
+        }
 
         match platform {
             Platform::Linux => {
@@ -152,6 +156,7 @@ fn main() {
                     juniper: Arc::new(JuniperClient::new(db.clone())),
                     haproxy: Arc::new(HaproxyClient::from_env()),
                     kyklos_ha: kyklos_ha.clone(),
+                    fortigate_lb: fortigate_lb.clone(),
                     nginx: std::sync::Mutex::new(NginxClient::new(nginx_settings)),
                     cron: cron.clone(),
                 });
@@ -201,6 +206,7 @@ fn main() {
                     juniper: Arc::new(JuniperClient::new(db.clone())),
                     haproxy: Arc::new(HaproxyClient::from_env()),
                     kyklos_ha: kyklos_ha.clone(),
+                    fortigate_lb: fortigate_lb.clone(),
                     nginx: std::sync::Mutex::new(NginxClient::new(nginx_settings)),
                     cron: cron.clone(),
                 });
@@ -249,6 +255,7 @@ fn main() {
                     juniper: Arc::new(JuniperClient::new(db.clone())),
                     haproxy: Arc::new(HaproxyClient::from_env()),
                     kyklos_ha: kyklos_ha.clone(),
+                    fortigate_lb: fortigate_lb.clone(),
                     nginx: std::sync::Mutex::new(NginxClient::new(nginx_settings)),
                     cron: cron.clone(),
                 });

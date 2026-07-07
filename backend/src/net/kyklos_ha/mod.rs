@@ -72,7 +72,14 @@ struct ListenerHandle {
 
 pub struct KyklosHaManager {
     db: AppDb,
+    source: KyklosHaSource,
     listeners: Mutex<HashMap<i64, ListenerHandle>>,
+}
+
+#[derive(Clone, Copy)]
+enum KyklosHaSource {
+    KyklosHa,
+    FortigateLb,
 }
 
 struct ActiveGuard {
@@ -89,12 +96,24 @@ impl KyklosHaManager {
     pub fn new(db: AppDb) -> Self {
         Self {
             db,
+            source: KyklosHaSource::KyklosHa,
+            listeners: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn new_fortigate_lb(db: AppDb) -> Self {
+        Self {
+            db,
+            source: KyklosHaSource::FortigateLb,
             listeners: Mutex::new(HashMap::new()),
         }
     }
 
     pub async fn sync_from_db(&self) -> Result<KyklosHaStatus, String> {
-        let services = self.db.list_kyklos_ha_services()?;
+        let services = match self.source {
+            KyklosHaSource::KyklosHa => self.db.list_kyklos_ha_services()?,
+            KyklosHaSource::FortigateLb => self.db.list_fortigate_lb_services()?,
+        };
         let enabled: HashMap<i64, KyklosHaServiceSettings> = services
             .into_iter()
             .filter(|service| service.enabled)
@@ -113,7 +132,7 @@ impl KyklosHaManager {
         for id in stale_ids {
             if let Some(listener) = listeners.remove(&id) {
                 listener.handle.abort();
-                info!("Kyklos HA listener stopped: {}", id);
+                info!("{} listener stopped: {}", self.label(), id);
             }
         }
 
@@ -132,7 +151,8 @@ impl KyklosHaManager {
             match start_listener(service.clone()).await {
                 Ok(listener) => {
                     info!(
-                        "Kyklos HA listener started: {} {}",
+                        "{} listener started: {} {}",
+                        self.label(),
                         service.name, service.listen_port
                     );
                     listeners.insert(id, listener);
@@ -154,7 +174,7 @@ impl KyklosHaManager {
         let mut listeners = self.listeners.lock().await;
         if let Some(listener) = listeners.remove(&id) {
             listener.handle.abort();
-            info!("Kyklos HA listener stopped: {}", id);
+            info!("{} listener stopped: {}", self.label(), id);
         }
     }
 
@@ -166,6 +186,13 @@ impl KyklosHaManager {
     pub async fn status(&self) -> KyklosHaStatus {
         let listeners = self.listeners.lock().await;
         status_from_listeners(&listeners)
+    }
+
+    fn label(&self) -> &'static str {
+        match self.source {
+            KyklosHaSource::KyklosHa => "Kyklos HA",
+            KyklosHaSource::FortigateLb => "FortiGate LB",
+        }
     }
 }
 

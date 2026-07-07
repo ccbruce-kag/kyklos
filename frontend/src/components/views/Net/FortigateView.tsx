@@ -78,6 +78,10 @@ type FortiPage =
   | 'wifiSwitchPorts'
   | 'wifiSwitchVlans'
   | 'wifiSwitchTopology'
+  | 'loadBalanceVirtualServer'
+  | 'loadBalanceRealServer'
+  | 'loadBalancePersistence'
+  | 'loadBalanceMonitor'
   | 'logsTrafficForward'
   | 'logsTrafficLocal'
   | 'logsSystem'
@@ -111,6 +115,80 @@ type FortiMenuSection = {
   page?: FortiPage
   badge?: string
   children?: FortiMenuChild[]
+}
+
+type FortiKyklosHaBackend = {
+  id?: number
+  service_id?: number
+  name: string
+  ip: string
+  port: number
+  enabled: boolean
+  position?: number
+}
+
+type FortiKyklosHaService = {
+  id: number
+  service_type: string
+  enabled: boolean
+  name: string
+  bind_addr: string
+  listen_port: number
+  mode: string
+  balance_method: string
+  health_check_path?: string | null
+  health_check: boolean
+  servers: FortiKyklosHaBackend[]
+  updated_at?: string
+}
+
+type FortiKyklosHaRuntimeBackend = {
+  id: number
+  name: string
+  address: string
+  active_connections: number
+}
+
+type FortiKyklosHaRuntimeService = {
+  id: number
+  name: string
+  service_type: string
+  mode: string
+  listen: string
+  balance_method: string
+  backend_count: number
+  active_connections: number
+  backends: FortiKyklosHaRuntimeBackend[]
+}
+
+type FortiKyklosHaStatus = {
+  runtime?: {
+    running: boolean
+    listener_count: number
+    services: FortiKyklosHaRuntimeService[]
+  }
+  services?: FortiKyklosHaService[]
+}
+
+type FortiKyklosHaBackendDraft = {
+  id?: number
+  name: string
+  ip: string
+  port: string
+  enabled: boolean
+}
+
+type FortiKyklosHaDraft = {
+  id?: number
+  service_type: 'web' | 'sql'
+  enabled: boolean
+  name: string
+  bind_addr: string
+  listen_port: string
+  balance_method: string
+  health_check_path: string
+  health_check: boolean
+  servers: FortiKyklosHaBackendDraft[]
 }
 
 type FortiInterface = {
@@ -315,6 +393,17 @@ type FortiRoute = {
   priority: string
 }
 
+type FortiSession = {
+  id: string
+  source: string
+  destination: string
+  service: string
+  policy: string
+  nat: 'Yes' | 'No'
+  natDetail: string
+  bytes: string
+}
+
 type FortiFabricNode = {
   id: string
   label: string
@@ -492,6 +581,11 @@ type FortiSwitchPortFields = {
   purpose: string
 }
 
+function readDescriptionMeta(description: string, key: string, fallback = '') {
+  const match = description.match(new RegExp(`${key}:\\s*([^/]+)`, 'i'))
+  return match?.[1]?.trim() || fallback
+}
+
 function parseFortiSwitchPort(row: FortiManagedRow): FortiSwitchPortFields {
   const portMatch = row.name.match(/^port\s*(\d+)$/i) || row.name.match(/^(\d+)$/)
   const portNumber = portMatch ? Number(portMatch[1]) : 1
@@ -511,11 +605,13 @@ function buildFortiSwitchPortRow(row: FortiManagedRow, fields: FortiSwitchPortFi
   const vlanText = fields.mode === 'Trunk' ? `Allowed VLANs ${fields.allowedVlans || fields.nativeVlan}` : `Native VLAN ${fields.nativeVlan || '1'}`
   const poeText = `PoE ${fields.poe ? 'enabled' : 'disabled'}`
   const purpose = fields.purpose || fields.role
+  const status = readDescriptionMeta(row.description, 'Status', row.enabled ? 'Up' : 'Down')
+  const lldp = readDescriptionMeta(row.description, 'LLDP', purpose)
   return {
     ...row,
     name: fields.port,
     type,
-    description: `${vlanText} / ${poeText} / Role ${fields.role} / ${purpose}`,
+    description: `${vlanText} / ${poeText} / Role ${fields.role} / Status: ${status} / LLDP: ${lldp} / ${purpose}`,
   }
 }
 
@@ -666,6 +762,17 @@ const fortiGroups: FortiMenuSection[] = [
     ],
   },
   {
+    id: 'loadBalance',
+    label: '負載平衡',
+    icon: 'bx-git-branch',
+    children: [
+      { id: 'loadBalanceVirtualServer', label: '虛擬伺服器' },
+      { id: 'loadBalanceRealServer', label: '真實伺服器' },
+      { id: 'loadBalancePersistence', label: '持續性' },
+      { id: 'loadBalanceMonitor', label: '監控' },
+    ],
+  },
+  {
     id: 'logsReports',
     label: '日誌與報表',
     icon: 'bx-bar-chart-alt',
@@ -712,6 +819,8 @@ const initialPolicies: FortiPolicy[] = [
   { id: 2, name: 'SSLVPN_to_LAN', source: 'ssl.root', destination: 'VLAN_40', service: 'RDP, HTTPS, SSH', action: 'ACCEPT', nat: false, status: '啟用', schedule: 'work-hours', securityProfiles: 'IPS' },
   { id: 3, name: 'Block_Malware', source: 'all', destination: 'all', service: 'ALL', action: 'DENY', nat: false, status: '啟用', schedule: 'always', securityProfiles: 'AV' },
 ]
+
+const FORTIGATE_FIREWALL_CHAIN_LABEL = 'KYKLOS_FGT_POLICY'
 
 const initialAddresses: FortiAddress[] = [
   { id: 1, name: 'LAN_Subnet', type: 'Subnet', address: '10.20.40.0/24', interfaceName: 'VLAN_40', comment: 'Office LAN subnet' },
@@ -824,6 +933,12 @@ const initialRoutes: FortiRoute[] = [
   { id: 1, enabled: true, destination: '0.0.0.0/0', gateway: '61.219.112.254', interfaceName: 'wan1', distance: '10', priority: '0' },
   { id: 2, enabled: true, destination: '10.20.50.0/24', gateway: '10.20.40.254', interfaceName: 'VLAN_40', distance: '10', priority: '0' },
   { id: 3, enabled: false, destination: '192.168.88.0/24', gateway: '10.20.40.253', interfaceName: 'VLAN_40', distance: '20', priority: '5' },
+]
+
+const initialMonitorSessions: FortiSession[] = [
+  { id: 'sess-ssh', source: '10.20.40.113:54822', destination: '10.20.50.2:22', service: 'SSH', policy: 'SSLVPN_to_LAN', nat: 'No', natDetail: 'No NAT, policy route via VLAN_40', bytes: '48.2 KB' },
+  { id: 'sess-dns', source: '10.20.40.118:62421', destination: '8.8.8.8:53', service: 'DNS', policy: 'LAN_to_WAN', nat: 'Yes', natDetail: 'SNAT 10.20.40.118 -> 61.219.112.31', bytes: '8.7 KB' },
+  { id: 'sess-web', source: '10.20.40.113:53018', destination: 'docs.fortinet.com:443', service: 'HTTPS', policy: 'LAN_to_WAN', nat: 'Yes', natDetail: 'SNAT 10.20.40.113 -> 61.219.112.31', bytes: '689.1 KB' },
 ]
 
 const initialComplianceProfile: FortiComplianceProfile = {
@@ -1144,34 +1259,34 @@ const defaultManagedRows: Partial<Record<FortiPage, FortiManagedRow[]>> = {
     { id: 'token-free', name: 'FTK20000002', type: 'Mobile Token', enabled: false, description: 'Bound user - / Status Available / Ready to activate', boundUser: '-', tokenStatus: 'Available' },
   ],
   wifiController: [
-    { id: 'fap-01', name: 'FAP221E-01', type: 'FortiAP', enabled: true, description: 'Staff-WiFi / 10.20.60.11 / Online' },
-    { id: 'fap-02', name: 'FAP221E-02', type: 'FortiAP', enabled: true, description: 'Guest-WiFi / 10.20.60.12 / Online' },
+    { id: 'fap-01', name: 'FAP221E-01', type: 'FortiAP-221E', enabled: true, description: 'Status: Online / IP: 10.20.60.11 / Channel: 6 / Power: 17 dBm / SSID: Staff-WiFi / Clients: 18 / Profile: Office-AP-Profile' },
+    { id: 'fap-02', name: 'FAP221E-02', type: 'FortiAP-221E', enabled: true, description: 'Status: Online / IP: 10.20.60.12 / Channel: 149 / Power: 20 dBm / SSID: Guest-WiFi / Clients: 10 / Profile: Office-AP-Profile' },
   ],
   wifiSsids: [
-    { id: 'ssid-staff', name: 'Staff-WiFi', type: 'Bridge SSID', enabled: true, description: 'VLAN 60 / WPA2-Enterprise / RADIUS' },
-    { id: 'ssid-guest', name: 'Guest-WiFi', type: 'Tunnel SSID', enabled: true, description: 'Captive Portal / Internet only' },
+    { id: 'ssid-staff', name: 'Staff-WiFi', type: 'Bridge SSID', enabled: true, description: 'Security: WPA2-Enterprise / VLAN: VLAN_60 / Schedule: work-hours / AP: FAP221E-01 / Clients: 18' },
+    { id: 'ssid-guest', name: 'Guest-WiFi', type: 'Tunnel SSID', enabled: true, description: 'Security: Captive Portal / VLAN: VLAN_90 / Schedule: always / AP: FAP221E-02 / Clients: 10' },
   ],
   wifiApProfiles: [
-    { id: 'ap-profile-office', name: 'Office-AP-Profile', type: 'Radio Profile', enabled: true, description: '2.4G channel auto, 5G high density' },
-    { id: 'ap-profile-warehouse', name: 'Warehouse-AP-Profile', type: 'Radio Profile', enabled: false, description: 'Long range coverage / lower power' },
+    { id: 'ap-profile-office', name: 'Office-AP-Profile', type: 'Radio Profile', enabled: true, description: 'Radio: 2.4G auto 20MHz, 5G channel 149 80MHz / Tx Power: Auto / Client Load: High density / Band Steering: Enable' },
+    { id: 'ap-profile-warehouse', name: 'Warehouse-AP-Profile', type: 'Radio Profile', enabled: false, description: 'Radio: 2.4G channel 11 20MHz, 5G disabled / Tx Power: Low / Client Load: Long range / Band Steering: Disable' },
   ],
   wifiFortiSwitches: [
-    { id: 'fsw-01', name: 'FSW124E-01', type: 'FortiSwitch', enabled: true, description: 'Managed by FortiLink / 24 ports online' },
-    { id: 'fsw-02', name: 'FSW108E-Edge', type: 'FortiSwitch', enabled: false, description: 'Pending authorization' },
+    { id: 'fsw-01', name: 'FSW124E-01', type: 'FortiSwitch-124E', enabled: true, description: 'FortiLink: Online / IP: 10.20.50.10 / Ports: 24 online / Firmware: 7.0.12 / Uplink: port24' },
+    { id: 'fsw-02', name: 'FSW108E-Edge', type: 'FortiSwitch-108E', enabled: false, description: 'FortiLink: Pending / IP: 10.20.50.11 / Ports: 0 online / Firmware: 7.0.10 / Uplink: pending' },
   ],
   wifiSwitchPorts: [
-    { id: 'swp-port1', name: 'port1', type: 'Access Port', enabled: true, description: 'Native VLAN 40 / PoE disabled / PC' },
-    { id: 'swp-port8', name: 'port8', type: 'AP Port', enabled: true, description: 'Native VLAN 60 / PoE enabled / FAP221E-01' },
-    { id: 'swp-port24', name: 'port24', type: 'Trunk Port', enabled: true, description: 'Allowed VLANs 40,60,90 / Uplink' },
+    { id: 'swp-port1', name: 'port1', type: 'Access Port', enabled: true, description: 'Native VLAN 40 / PoE disabled / Role Access / Status: Up / LLDP: MacBook-Pro / PC' },
+    { id: 'swp-port8', name: 'port8', type: 'AP Port', enabled: true, description: 'Native VLAN 60 / PoE enabled / Role AP/PoE / Status: Up / LLDP: FAP221E-01 / FAP221E-01' },
+    { id: 'swp-port24', name: 'port24', type: 'Trunk Port', enabled: true, description: 'Allowed VLANs 40,60,90 / PoE disabled / Role Uplink / Status: Up / LLDP: FGT90D fortilink / Uplink' },
   ],
   wifiSwitchVlans: [
-    { id: 'swv-lan', name: 'VLAN_40', type: 'Switch VLAN', enabled: true, description: 'LAN users / 10.20.40.0/24' },
-    { id: 'swv-wifi', name: 'VLAN_60', type: 'Switch VLAN', enabled: true, description: 'Wireless users / 10.20.60.0/24' },
-    { id: 'swv-guest', name: 'VLAN_90', type: 'Switch VLAN', enabled: true, description: 'Guest isolation / Internet only' },
+    { id: 'swv-lan', name: 'VLAN_40', type: 'Switch VLAN', enabled: true, description: 'Purpose: LAN users / Subnet: 10.20.40.0/24 / Gateway: 10.20.40.1 / Ports: port1, port24' },
+    { id: 'swv-wifi', name: 'VLAN_60', type: 'Switch VLAN', enabled: true, description: 'Purpose: Wireless users / Subnet: 10.20.60.0/24 / Gateway: 10.20.60.1 / Ports: port8, port24' },
+    { id: 'swv-guest', name: 'VLAN_90', type: 'Switch VLAN', enabled: true, description: 'Purpose: Guest isolation / Subnet: 10.20.90.0/24 / Gateway: 10.20.90.1 / Ports: port24' },
   ],
   wifiSwitchTopology: [
-    { id: 'topo-fgt-fsw', name: 'FGT90D -> FSW124E-01', type: 'FortiLink', enabled: true, description: 'fortilink interface / LACP disabled' },
-    { id: 'topo-fsw-fap', name: 'FSW124E-01 -> FAP221E-01', type: 'PoE AP Link', enabled: true, description: 'port8 supplies AP and Staff-WiFi' },
+    { id: 'topo-fgt-fsw', name: 'FGT90D -> FSW124E-01', type: 'FortiLink', enabled: true, description: 'Switch: FSW124E-01 / VLAN: VLAN_40,VLAN_60,VLAN_90 / FortiLink: Online / Port: port24' },
+    { id: 'topo-fsw-fap', name: 'FSW124E-01 -> FAP221E-01', type: 'PoE AP Link', enabled: true, description: 'AP: FAP221E-01 / Switch: FSW124E-01 / Port: port8 / VLAN: VLAN_60 / SSID: Staff-WiFi' },
   ],
 }
 
@@ -1460,6 +1575,8 @@ export default function FortigateView() {
   const [selectedPolicyId, setSelectedPolicyId] = useState(initialPolicies[0].id)
   const [policyModalMode, setPolicyModalMode] = useState<'add' | 'edit' | null>(null)
   const [policyDraft, setPolicyDraft] = useState<FortiPolicy>(initialPolicies[0])
+  const [fortiPolicyLoading, setFortiPolicyLoading] = useState(false)
+  const [fortiPolicyPreview, setFortiPolicyPreview] = useState<string[]>([])
   const [addresses, setAddresses] = useState<FortiAddress[]>(() => readFortiStorage('fortigate.addresses', initialAddresses))
   const [selectedAddressId, setSelectedAddressId] = useState(initialAddresses[0].id)
   const [addressModalMode, setAddressModalMode] = useState<'add' | 'edit' | null>(null)
@@ -1474,6 +1591,10 @@ export default function FortigateView() {
   const [scheduleDraft, setScheduleDraft] = useState<FortiSchedule>(initialSchedules[0])
   const [routes, setRoutes] = useState<FortiRoute[]>(() => readFortiStorage('fortigate.routes', initialRoutes))
   const [selectedRouteId, setSelectedRouteId] = useState(initialRoutes[0].id)
+  const [routeQueryDraft, setRouteQueryDraft] = useState('')
+  const [routeQueryApplied, setRouteQueryApplied] = useState('')
+  const [routeLookupResult, setRouteLookupResult] = useState('尚未查詢')
+  const [gatewayCheckedAt, setGatewayCheckedAt] = useState('尚未檢查')
   const [routeModalMode, setRouteModalMode] = useState<'add' | 'edit' | null>(null)
   const [routeDraft, setRouteDraft] = useState<FortiRoute>(initialRoutes[0])
   const [selectedInterface, setSelectedInterface] = useState(() => readFortiStorage('fortigate.selectedInterface', 'VLAN_40'))
@@ -1587,6 +1708,7 @@ export default function FortigateView() {
   const [tagModalMode, setTagModalMode] = useState<'add' | 'edit' | null>(null)
   const [tagDraft, setTagDraft] = useState<FortiTag>(initialTags[0])
   const [tableSearches, setTableSearches] = useState<Partial<Record<FortiPage, string>>>(() => readFortiStorage('fortigate.tableSearches', {}))
+  const [logFilters, setLogFilters] = useState<Partial<Record<FortiPage, string>>>(() => readFortiStorage('fortigate.logFilters', {}))
   const [fortiViewSelections, setFortiViewSelections] = useState<FortiViewSelections>(() => readFortiStorage('fortigate.fortiview.selections', {}))
   const [systemSettingType, setSystemSettingType] = useState(() => readFortiStorage('fortigate.system.settingType', '系統全域設定'))
   const [systemHostname, setSystemHostname] = useState(() => readFortiStorage('fortigate.system.hostname', 'FGT90D3Z16007115'))
@@ -1664,6 +1786,26 @@ export default function FortigateView() {
   const [ipsecWizardEnabled, setIpsecWizardEnabled] = useState(true)
   const [sslBookmarkModalOpen, setSslBookmarkModalOpen] = useState(false)
   const [sslBookmarkDraft, setSslBookmarkDraft] = useState('Intranet-Web')
+  const [monitorSessions, setMonitorSessions] = useState<FortiSession[]>(() => readFortiStorage('fortigate.monitor.sessions', initialMonitorSessions))
+  const [sessionFilterDraft, setSessionFilterDraft] = useState('')
+  const [sessionFilterApplied, setSessionFilterApplied] = useState('')
+  const [selectedSessionId, setSelectedSessionId] = useState('')
+  const [fortiLbStatus, setFortiLbStatus] = useState<FortiKyklosHaStatus>({})
+  const [fortiLbLoading, setFortiLbLoading] = useState(false)
+  const [selectedFortiLbServiceId, setSelectedFortiLbServiceId] = useState<number | null>(null)
+  const [selectedFortiLbBackendId, setSelectedFortiLbBackendId] = useState<number | null>(null)
+  const [fortiLbModalMode, setFortiLbModalMode] = useState<'add' | 'edit' | null>(null)
+  const [fortiLbDraft, setFortiLbDraft] = useState<FortiKyklosHaDraft>({
+    service_type: 'web',
+    enabled: true,
+    name: 'web-ha',
+    bind_addr: '0.0.0.0',
+    listen_port: '18080',
+    balance_method: 'roundrobin',
+    health_check_path: '/',
+    health_check: true,
+    servers: [{ name: 'web1', ip: '127.0.0.1', port: '18081', enabled: true }],
+  })
 
   const currentInterface = useMemo(
     () => interfaces.find((item) => item.name === selectedInterface) || interfaces[0],
@@ -1719,6 +1861,8 @@ export default function FortigateView() {
   useEffect(() => { writeFortiStorage('fortigate.tags', tags) }, [tags])
   useEffect(() => { writeFortiStorage('fortigate.featureVisibility', featureVisibility) }, [featureVisibility])
   useEffect(() => { writeFortiStorage('fortigate.tableSearches', tableSearches) }, [tableSearches])
+  useEffect(() => { writeFortiStorage('fortigate.logFilters', logFilters) }, [logFilters])
+  useEffect(() => { writeFortiStorage('fortigate.monitor.sessions', monitorSessions) }, [monitorSessions])
   useEffect(() => { writeFortiStorage('fortigate.fortiview.selections', fortiViewSelections) }, [fortiViewSelections])
   useEffect(() => { writeFortiStorage('fortigate.system.settingType', systemSettingType) }, [systemSettingType])
   useEffect(() => { writeFortiStorage('fortigate.system.hostname', systemHostname) }, [systemHostname])
@@ -1751,6 +1895,21 @@ export default function FortigateView() {
   useEffect(() => { writeFortiStorage('fortigate.dnsFilter.enabled', dnsFilterProfileEnabled) }, [dnsFilterProfileEnabled])
   useEffect(() => { writeFortiStorage('fortigate.dnsFilter.safeSearch', dnsSafeSearch) }, [dnsSafeSearch])
   useEffect(() => { writeFortiStorage('fortigate.dnsFilter.rules', dnsFilters) }, [dnsFilters])
+  useEffect(() => {
+    if ((page as string) === 'loadBalanceHealthCheck') {
+      setPage('loadBalanceVirtualServer')
+    }
+  }, [page])
+  useEffect(() => {
+    if (page.startsWith('loadBalance')) {
+      void loadFortiKyklosHaStatus(false)
+    }
+  }, [page])
+  useEffect(() => {
+    if (page === 'policyIpv4') {
+      void loadFortiFirewallPolicies(false)
+    }
+  }, [page])
   useEffect(() => { writeFortiStorage('fortigate.sslInspection.mode', sslInspectionMode) }, [sslInspectionMode])
   useEffect(() => { writeFortiStorage('fortigate.sslInspection.ca', sslInspectionCa) }, [sslInspectionCa])
   useEffect(() => { writeFortiStorage('fortigate.compliance.profile', complianceProfile) }, [complianceProfile])
@@ -1904,6 +2063,275 @@ export default function FortigateView() {
     window.setTimeout(() => setRefreshingArea(''), 700)
   }
 
+  async function fortigateLbApi(path: string, init?: RequestInit) {
+    const response = await fetch(path, { credentials: 'same-origin', ...init })
+    const payload = await response.json().catch(() => ({ code: 1, msg: response.statusText || 'Invalid response' }))
+    if (!response.ok || payload.code !== 0) {
+      throw new Error(payload.msg || `HTTP ${response.status}`)
+    }
+    return payload.data
+  }
+
+  async function fortigateFirewallApi(path: string, init?: RequestInit) {
+    const response = await fetch(path, { credentials: 'same-origin', ...init })
+    const payload = await response.json().catch(() => ({ code: 1, msg: response.statusText || 'Invalid response' }))
+    if (!response.ok || payload.code !== 0) {
+      throw new Error(payload.msg || `HTTP ${response.status}`)
+    }
+    return payload.data
+  }
+
+  function apiPolicyToFortiPolicy(item: any): FortiPolicy {
+    return {
+      id: Number(item.id),
+      name: item.name || '',
+      source: item.source || 'all',
+      destination: item.destination || 'all',
+      service: item.service || 'ALL',
+      action: item.action === 'DENY' || item.action === 'DROP' || item.action === 'REJECT' ? 'DENY' : 'ACCEPT',
+      nat: !!item.nat,
+      status: item.status === '停用' ? '停用' : '啟用',
+      schedule: item.schedule || 'always',
+      securityProfiles: item.security_profiles || '',
+    }
+  }
+
+  async function loadFortiFirewallPolicies(showNotice = true) {
+    setFortiPolicyLoading(true)
+    try {
+      const data = await fortigateFirewallApi('/api/fortigate/firewall/policies')
+      const next = Array.isArray(data) ? data.map(apiPolicyToFortiPolicy) : []
+      setPolicies(next)
+      setSelectedPolicyId((current) => next.some((policy) => policy.id === current) ? current : next[0]?.id || 0)
+      if (showNotice) setLastAction('FortiGate IPv4 政策已從資料庫載入')
+    } catch (error) {
+      setLastAction(`FortiGate IPv4 政策載入失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiPolicyLoading(false)
+    }
+  }
+
+  async function loadFortiKyklosHaStatus(showNotice = true) {
+    setFortiLbLoading(true)
+    try {
+      const data = await fortigateLbApi('/api/fortigate/load-balance/status')
+      const nextStatus = (data || {}) as FortiKyklosHaStatus
+      setFortiLbStatus(nextStatus)
+      setSelectedFortiLbServiceId((current) => current ?? nextStatus.services?.[0]?.id ?? null)
+      setSelectedFortiLbBackendId((current) => {
+        if (current) return current
+        const firstBackend = nextStatus.services?.flatMap((service) => service.servers || [])[0]
+        return firstBackend?.id ?? null
+      })
+      if (showNotice) setLastAction('FortiGate 負載平衡狀態已載入')
+    } catch (error) {
+      setLastAction(`FortiGate 負載平衡載入失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiLbLoading(false)
+    }
+  }
+
+  async function syncFortiKyklosHa() {
+    setFortiLbLoading(true)
+    try {
+      await fortigateLbApi('/api/fortigate/load-balance/sync', { method: 'POST' })
+      await loadFortiKyklosHaStatus(false)
+      setLastAction('FortiGate 負載平衡已同步執行狀態')
+    } catch (error) {
+      setLastAction(`FortiGate 負載平衡同步失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiLbLoading(false)
+    }
+  }
+
+  function serviceToLbDraft(service: FortiKyklosHaService): FortiKyklosHaDraft {
+    return {
+      id: service.id,
+      service_type: service.service_type === 'sql' ? 'sql' : 'web',
+      enabled: service.enabled,
+      name: service.name,
+      bind_addr: service.bind_addr,
+      listen_port: String(service.listen_port || ''),
+      balance_method: service.balance_method || (service.service_type === 'sql' ? 'source' : 'roundrobin'),
+      health_check_path: service.health_check_path || '/',
+      health_check: service.health_check,
+      servers: (service.servers || []).map((server) => ({
+        id: server.id,
+        name: server.name,
+        ip: server.ip,
+        port: String(server.port || ''),
+        enabled: server.enabled,
+      })),
+    }
+  }
+
+  function openFortiLbModal(mode: 'add' | 'edit', serviceOverride?: FortiKyklosHaService) {
+    const selected = serviceOverride || (fortiLbStatus.services || []).find((service) => service.id === selectedFortiLbServiceId)
+    if (mode === 'edit' && !selected) {
+      setLastAction('請先選取一筆 Virtual Server')
+      return
+    }
+    setFortiLbDraft(mode === 'edit' && selected ? serviceToLbDraft(selected) : {
+      service_type: 'web',
+      enabled: true,
+      name: 'web-ha',
+      bind_addr: '0.0.0.0',
+      listen_port: '18080',
+      balance_method: 'roundrobin',
+      health_check_path: '/',
+      health_check: true,
+      servers: [{ name: 'web1', ip: '127.0.0.1', port: '18081', enabled: true }],
+    })
+    setFortiLbModalMode(mode)
+  }
+
+  function updateFortiLbDraftServer(index: number, patch: Partial<FortiKyklosHaBackendDraft>) {
+    setFortiLbDraft((draft) => ({
+      ...draft,
+      servers: draft.servers.map((server, serverIndex) => serverIndex === index ? { ...server, ...patch } : server),
+    }))
+  }
+
+  function addFortiLbDraftServer() {
+    setFortiLbDraft((draft) => ({
+      ...draft,
+      servers: [...draft.servers, { name: `server${draft.servers.length + 1}`, ip: '127.0.0.1', port: draft.service_type === 'sql' ? '1433' : '80', enabled: true }],
+    }))
+  }
+
+  function removeFortiLbDraftServer(index: number) {
+    setFortiLbDraft((draft) => ({ ...draft, servers: draft.servers.filter((_, serverIndex) => serverIndex !== index) }))
+  }
+
+  async function saveFortiLbDraft(draftInput?: FortiKyklosHaDraft) {
+    const draft = draftInput || fortiLbDraft
+    const name = draft.name.trim()
+    const bindAddr = draft.bind_addr.trim()
+    const listenPort = Number(draft.listen_port)
+    const servers = draft.servers
+      .map((server) => ({ ...server, name: server.name.trim(), ip: server.ip.trim(), portNumber: Number(server.port) }))
+      .filter((server) => server.name && server.ip && server.port)
+    if (!name || !bindAddr || !Number.isInteger(listenPort) || listenPort < 1 || listenPort > 65535) {
+      setLastAction('請確認 Virtual Server 名稱、Bind Address 與 Listen Port')
+      return
+    }
+    if (!servers.length) {
+      setLastAction('至少需要一筆 Real Server')
+      return
+    }
+    if (servers.some((server) => !Number.isInteger(server.portNumber) || server.portNumber < 1 || server.portNumber > 65535)) {
+      setLastAction('Real Server Port 必須介於 1 到 65535')
+      return
+    }
+    const nameSet = new Set<string>()
+    const addressSet = new Set<string>()
+    for (const server of servers) {
+      const serverName = server.name.toLowerCase()
+      const address = `${server.ip}:${server.portNumber}`
+      if (nameSet.has(serverName) || addressSet.has(address)) {
+        setLastAction('同一個 Virtual Server 內 Real Server 名稱與 IP:Port 不可重複')
+        return
+      }
+      nameSet.add(serverName)
+      addressSet.add(address)
+    }
+    const form = new URLSearchParams()
+    if (draft.id) form.append('id', String(draft.id))
+    form.append('name', name)
+    form.append('bind_addr', bindAddr)
+    form.append('listen_port', String(listenPort))
+    form.append('balance_method', draft.balance_method)
+    form.append('health_check_path', draft.health_check_path || '/')
+    form.append('health_check', String(draft.health_check))
+    form.append('enabled', String(draft.enabled))
+    form.append('servers', JSON.stringify(servers.map((server) => ({
+      name: server.name,
+      ip: server.ip,
+      port: server.portNumber,
+      enabled: server.enabled,
+    }))))
+    setFortiLbLoading(true)
+    try {
+      const data = await fortigateLbApi(`/api/fortigate/load-balance/${draft.service_type === 'sql' ? 'tcp' : 'web'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: form,
+      })
+      await loadFortiKyklosHaStatus(false)
+      setSelectedFortiLbServiceId(data?.saved?.id ?? draft.id ?? null)
+      setFortiLbModalMode(null)
+      setLastAction(`Virtual Server 已${draft.id ? '更新' : '新增'}並同步 FortiGate 負載平衡`)
+    } catch (error) {
+      setLastAction(`FortiGate 負載平衡操作失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiLbLoading(false)
+    }
+  }
+
+  async function toggleFortiLbService(service: FortiKyklosHaService) {
+    const form = new URLSearchParams()
+    form.append('enabled', String(!service.enabled))
+    try {
+      await fortigateLbApi(`/api/fortigate/load-balance/services/${service.id}/enabled`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: form,
+      })
+      await loadFortiKyklosHaStatus(false)
+      setLastAction(`${service.name} 已${service.enabled ? '停用' : '啟用'}`)
+    } catch (error) {
+      setLastAction(`FortiGate 負載平衡操作失敗：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  async function deleteFortiLbService(service: FortiKyklosHaService) {
+    if (!window.confirm(`刪除 Virtual Server「${service.name}」？`)) return
+    try {
+      await fortigateLbApi(`/api/fortigate/load-balance/services/${service.id}/delete`, { method: 'POST' })
+      await loadFortiKyklosHaStatus(false)
+      setSelectedFortiLbServiceId(null)
+      setLastAction(`${service.name} 已刪除`)
+    } catch (error) {
+      setLastAction(`FortiGate 負載平衡刪除失敗：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  async function updateFortiLbServicePatch(service: FortiKyklosHaService, patch: Partial<FortiKyklosHaDraft>) {
+    const nextDraft = { ...serviceToLbDraft(service), ...patch }
+    setFortiLbDraft(nextDraft)
+    await saveFortiLbDraft(nextDraft)
+  }
+
+  async function toggleFortiLbBackend(server: FortiKyklosHaBackend, serviceName: string) {
+    if (!server.id) return
+    const form = new URLSearchParams()
+    form.append('enabled', String(!server.enabled))
+    try {
+      await fortigateLbApi(`/api/fortigate/load-balance/backend-servers/${server.id}/enabled`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: form,
+      })
+      await loadFortiKyklosHaStatus(false)
+      setLastAction(`${serviceName}/${server.name} 已${server.enabled ? '停用' : '啟用'}`)
+    } catch (error) {
+      setLastAction(`FortiGate Real Server 操作失敗：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  async function deleteFortiLbBackend(server: FortiKyklosHaBackend, serviceName: string) {
+    if (!server.id) return
+    if (!window.confirm(`刪除 Real Server「${serviceName}/${server.name}」？`)) return
+    try {
+      await fortigateLbApi(`/api/fortigate/load-balance/backend-servers/${server.id}/delete`, { method: 'POST' })
+      await loadFortiKyklosHaStatus(false)
+      setSelectedFortiLbBackendId(null)
+      setLastAction(`${serviceName}/${server.name} 已刪除`)
+    } catch (error) {
+      setLastAction(`FortiGate Real Server 刪除失敗：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   function syncFortiInterfaces() {
     const now = new Date().toLocaleTimeString('zh-TW', { hour12: false })
     setLastRefreshAt(now)
@@ -1984,9 +2412,25 @@ export default function FortigateView() {
     setLastAction('儀表板已重新整理')
   }
 
-  function togglePolicy(id: number) {
-    setPolicies((items) => items.map((item) => item.id === id ? { ...item, status: item.status === '啟用' ? '停用' : '啟用' } : item))
-    setLastAction(`政策 ${id} 狀態已切換`)
+  async function togglePolicy(id: number) {
+    const selected = policies.find((policy) => policy.id === id)
+    if (!selected) return
+    const form = new URLSearchParams()
+    form.append('enabled', String(selected.status !== '啟用'))
+    setFortiPolicyLoading(true)
+    try {
+      await fortigateFirewallApi(`/api/fortigate/firewall/policies/${id}/enabled`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: form,
+      })
+      await loadFortiFirewallPolicies(false)
+      setLastAction(`政策 ${id} 已${selected.status === '啟用' ? '停用' : '啟用'}並同步 iptables`)
+    } catch (error) {
+      setLastAction(`FortiGate IPv4 政策狀態切換失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiPolicyLoading(false)
+    }
   }
 
   function openPolicyModal(mode: 'add' | 'edit') {
@@ -2006,62 +2450,128 @@ export default function FortigateView() {
     setPolicyModalMode(mode)
   }
 
-  function savePolicy() {
+  async function savePolicy() {
     if (!policyDraft.name.trim()) return
-    if (policyModalMode === 'edit') {
-      setPolicies((items) => items.map((item) => item.id === selectedPolicyId ? policyDraft : item))
-    } else {
-      setPolicies((items) => [...items, policyDraft])
-      setSelectedPolicyId(policyDraft.id)
+    const form = new URLSearchParams()
+    if (policyModalMode === 'edit') form.append('id', String(policyDraft.id))
+    form.append('name', policyDraft.name.trim())
+    form.append('source', policyDraft.source.trim() || 'all')
+    form.append('destination', policyDraft.destination.trim() || 'all')
+    form.append('service', policyDraft.service.trim() || 'ALL')
+    form.append('action', policyDraft.action)
+    form.append('nat', String(policyDraft.nat))
+    form.append('status', policyDraft.status)
+    form.append('schedule', policyDraft.schedule || 'always')
+    form.append('security_profiles', policyDraft.securityProfiles || '')
+    setFortiPolicyLoading(true)
+    try {
+      const data = await fortigateFirewallApi('/api/fortigate/firewall/policies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: form,
+      })
+      await loadFortiFirewallPolicies(false)
+      setSelectedPolicyId(Number(data?.saved?.id || policyDraft.id || 0))
+      setPolicyModalMode(null)
+      setLastAction('IPv4 政策已儲存並同步 iptables')
+    } catch (error) {
+      setLastAction(`FortiGate IPv4 政策儲存失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiPolicyLoading(false)
     }
-    setPolicyModalMode(null)
-    setLastAction('IPv4 政策已儲存')
   }
 
-  function deleteSelectedPolicy() {
-    setPolicies((items) => {
-      const next = items.filter((item) => item.id !== selectedPolicyId)
-      setSelectedPolicyId(next[0]?.id || 0)
-      return next
-    })
-    setLastAction('IPv4 政策已刪除')
+  async function deleteSelectedPolicy() {
+    if (!selectedPolicyId) return
+    if (!window.confirm(`刪除 IPv4 政策 ID ${selectedPolicyId}？`)) return
+    setFortiPolicyLoading(true)
+    try {
+      await fortigateFirewallApi(`/api/fortigate/firewall/policies/${selectedPolicyId}/delete`, { method: 'POST' })
+      await loadFortiFirewallPolicies(false)
+      setLastAction('IPv4 政策已刪除並同步 iptables')
+    } catch (error) {
+      setLastAction(`FortiGate IPv4 政策刪除失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiPolicyLoading(false)
+    }
   }
 
-  function copySelectedPolicy() {
+  async function copySelectedPolicy() {
     const selected = policies.find((policy) => policy.id === selectedPolicyId)
     if (!selected) return
     const copy = { ...selected, id: Math.max(0, ...policies.map((item) => item.id)) + 1, name: `${selected.name}_copy` }
-    setPolicies((items) => [...items, copy])
-    setSelectedPolicyId(copy.id)
-    setLastAction('IPv4 政策已複製')
+    setPolicyDraft(copy)
+    setPolicyModalMode('add')
   }
 
-  function moveSelectedPolicy(direction: 'up' | 'down') {
-    setPolicies((items) => {
-      const index = items.findIndex((item) => item.id === selectedPolicyId)
-      const targetIndex = direction === 'up' ? index - 1 : index + 1
-      if (index < 0 || targetIndex < 0 || targetIndex >= items.length) return items
-      const next = [...items]
-      const [item] = next.splice(index, 1)
-      next.splice(targetIndex, 0, item)
-      return next
-    })
-    setLastAction('IPv4 政策順序已調整')
+  async function moveSelectedPolicy(direction: 'up' | 'down') {
+    const index = policies.findIndex((item) => item.id === selectedPolicyId)
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (index < 0 || targetIndex < 0 || targetIndex >= policies.length) return
+    const next = [...policies]
+    const [item] = next.splice(index, 1)
+    next.splice(targetIndex, 0, item)
+    setPolicies(next)
+    await savePolicyOrder(next)
   }
 
-  function dragPolicy(sourceId: number, targetId: number) {
+  async function dragPolicy(sourceId: number, targetId: number) {
     if (sourceId === targetId) return
-    setPolicies((items) => {
-      const sourceIndex = items.findIndex((item) => item.id === sourceId)
-      const targetIndex = items.findIndex((item) => item.id === targetId)
-      if (sourceIndex < 0 || targetIndex < 0) return items
-      const next = [...items]
-      const [item] = next.splice(sourceIndex, 1)
-      next.splice(targetIndex, 0, item)
-      return next
-    })
+    const sourceIndex = policies.findIndex((item) => item.id === sourceId)
+    const targetIndex = policies.findIndex((item) => item.id === targetId)
+    if (sourceIndex < 0 || targetIndex < 0) return
+    const next = [...policies]
+    const [item] = next.splice(sourceIndex, 1)
+    next.splice(targetIndex, 0, item)
+    setPolicies(next)
     setSelectedPolicyId(sourceId)
-    setLastAction('IPv4 政策順序已拖拉調整')
+    await savePolicyOrder(next)
+  }
+
+  async function savePolicyOrder(next: FortiPolicy[]) {
+    const form = new URLSearchParams()
+    form.append('ids', JSON.stringify(next.map((policy) => policy.id)))
+    setFortiPolicyLoading(true)
+    try {
+      await fortigateFirewallApi('/api/fortigate/firewall/policies/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: form,
+      })
+      await loadFortiFirewallPolicies(false)
+      setLastAction('IPv4 政策順序已調整並同步 iptables')
+    } catch (error) {
+      setLastAction(`FortiGate IPv4 政策排序失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiPolicyLoading(false)
+    }
+  }
+
+  async function syncFortiFirewallPolicies() {
+    setFortiPolicyLoading(true)
+    try {
+      const data = await fortigateFirewallApi('/api/fortigate/firewall/sync', { method: 'POST' })
+      if (Array.isArray(data?.commands)) setFortiPolicyPreview(data.commands)
+      await loadFortiFirewallPolicies(false)
+      setLastAction('FortiGate IPv4 政策已同步至 iptables')
+    } catch (error) {
+      setLastAction(`FortiGate IPv4 政策同步失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiPolicyLoading(false)
+    }
+  }
+
+  async function previewFortiFirewallPolicies() {
+    setFortiPolicyLoading(true)
+    try {
+      const data = await fortigateFirewallApi('/api/fortigate/firewall/preview')
+      setFortiPolicyPreview(Array.isArray(data?.commands) ? data.commands : [])
+      setLastAction('FortiGate IPv4 政策命令預覽已產生')
+    } catch (error) {
+      setLastAction(`FortiGate IPv4 政策預覽失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setFortiPolicyLoading(false)
+    }
   }
 
   function openAddressModal(mode: 'add' | 'edit') {
@@ -2599,14 +3109,49 @@ export default function FortigateView() {
       name: `port${nextPort || 1}`,
       type: 'Access Port',
       enabled: true,
-      description: 'Native VLAN 40 / PoE disabled / New device',
+      description: 'Native VLAN 40 / PoE disabled / Role Access / Status: Up / LLDP: New device / New device',
       selected: false,
     } : activePage === 'wifiSwitchVlans' ? {
       id: `${activePage}-${Date.now()}`,
       name: `VLAN_${100 + rows.length}`,
       type: 'Switch VLAN',
       enabled: true,
-      description: `Custom VLAN / 10.20.${100 + rows.length}.0/24`,
+      description: `Purpose: Custom VLAN / Subnet: 10.20.${100 + rows.length}.0/24 / Gateway: 10.20.${100 + rows.length}.1 / Ports: port24`,
+      selected: false,
+    } : activePage === 'wifiController' ? {
+      id: `${activePage}-${Date.now()}`,
+      name: `FAP221E-${String(rows.length + 1).padStart(2, '0')}`,
+      type: 'FortiAP-221E',
+      enabled: true,
+      description: 'Status: Online / IP: 10.20.60.20 / Channel: auto / Power: Auto / SSID: Staff-WiFi / Clients: 0 / Profile: Office-AP-Profile',
+      selected: false,
+    } : activePage === 'wifiSsids' ? {
+      id: `${activePage}-${Date.now()}`,
+      name: `SSID_${rows.length + 1}`,
+      type: 'Bridge SSID',
+      enabled: true,
+      description: 'Security: WPA2-Enterprise / VLAN: VLAN_60 / Schedule: always / AP: FAP221E-01 / Clients: 0',
+      selected: false,
+    } : activePage === 'wifiApProfiles' ? {
+      id: `${activePage}-${Date.now()}`,
+      name: `AP-Profile-${rows.length + 1}`,
+      type: 'Radio Profile',
+      enabled: true,
+      description: 'Radio: 2.4G auto 20MHz, 5G auto 80MHz / Tx Power: Auto / Client Load: Standard / Band Steering: Enable',
+      selected: false,
+    } : activePage === 'wifiFortiSwitches' ? {
+      id: `${activePage}-${Date.now()}`,
+      name: `FSW-${rows.length + 1}`,
+      type: 'FortiSwitch-124E',
+      enabled: true,
+      description: 'FortiLink: Pending / IP: 10.20.50.20 / Ports: 0 online / Firmware: 7.0.12 / Uplink: pending',
+      selected: false,
+    } : activePage === 'wifiSwitchTopology' ? {
+      id: `${activePage}-${Date.now()}`,
+      name: `WiFi_Link_${rows.length + 1}`,
+      type: 'AP / Switch Relation',
+      enabled: true,
+      description: 'AP: FAP221E-01 / Switch: FSW124E-01 / Port: port8 / VLAN: VLAN_60 / SSID: Staff-WiFi / FortiLink: Online',
       selected: false,
     } : {
       id: `${activePage}-${Date.now()}`,
@@ -2693,7 +3238,14 @@ export default function FortigateView() {
   }
 
   function toggleManagedRow(activePage: FortiPage, title: string, id: string) {
-    setManagedRowsForPage(activePage, (rows) => rows.map((row) => row.id === id ? { ...row, enabled: !row.enabled } : row))
+    setManagedRowsForPage(activePage, (rows) => rows.map((row) => {
+      if (row.id !== id) return row
+      const enabled = !row.enabled
+      if (activePage === 'wifiController') return { ...row, enabled, description: setFortiMeta(row.description, 'Status', enabled ? 'Online' : 'Offline') }
+      if (activePage === 'wifiSwitchPorts') return { ...row, enabled, description: setFortiMeta(row.description, 'Status', enabled ? 'Up' : 'Down') }
+      if (activePage === 'wifiFortiSwitches') return { ...row, enabled, description: setFortiMeta(row.description, 'FortiLink', enabled ? 'Online' : 'Pending') }
+      return { ...row, enabled }
+    }))
     setLastAction(`${title} 狀態已切換`)
   }
 
@@ -2732,6 +3284,30 @@ export default function FortigateView() {
 
   function updateTableSearch(activePage: FortiPage, value: string) {
     setTableSearches((items) => ({ ...items, [activePage]: value }))
+  }
+
+  function getLogFilter(activePage: FortiPage) {
+    return logFilters[activePage] || ''
+  }
+
+  function updateLogFilter(activePage: FortiPage, value: string) {
+    setLogFilters((items) => ({ ...items, [activePage]: value }))
+  }
+
+  function exportFortiLogCsv(title: string, columns: string[], rows: string[][]) {
+    const csv = [columns, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell || '').replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${title}-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+    setLastAction(`${title} 已匯出 ${rows.length} 筆 CSV`)
   }
 
   function getFortiViewSelection(activePage: FortiPage) {
@@ -3547,16 +4123,19 @@ export default function FortigateView() {
         <div className="forti-section-title">IPv4 政策</div>
         <div className="forti-profile-summary">
           <section><strong>{policies.length}</strong><span>Policy count / 順序由上到下比對。</span></section>
-          <section><strong>Drag reorder</strong><span>拖拉表格列可調整 Policy order。</span></section>
-          <section><strong>Policy order</strong><span>上方規則會優先比對，建議把特定規則放在前面。</span></section>
+          <section><strong>{FORTIGATE_FIREWALL_CHAIN_LABEL}</strong><span>實際下發至 Linux iptables filter chain。</span></section>
+          <section><strong>Policy order</strong><span>上方規則優先比對；排序後會同步 iptables。</span></section>
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openPolicyModal('add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openPolicyModal('edit')} disabled={!selectedPolicyId}>編輯</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={copySelectedPolicy} disabled={!selectedPolicyId}>複製</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => moveSelectedPolicy('up')} disabled={!selectedPolicyId}>上移</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => moveSelectedPolicy('down')} disabled={!selectedPolicyId}>下移</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedPolicy} disabled={!selectedPolicyId}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openPolicyModal('add')} disabled={fortiPolicyLoading}>新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openPolicyModal('edit')} disabled={!selectedPolicyId || fortiPolicyLoading}>編輯</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={copySelectedPolicy} disabled={!selectedPolicyId || fortiPolicyLoading}>複製</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => moveSelectedPolicy('up')} disabled={!selectedPolicyId || fortiPolicyLoading}>上移</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => moveSelectedPolicy('down')} disabled={!selectedPolicyId || fortiPolicyLoading}>下移</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => loadFortiFirewallPolicies()} disabled={fortiPolicyLoading}>重新整理</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={previewFortiFirewallPolicies} disabled={fortiPolicyLoading}>預覽命令</button>
+          <button className="btn btn-sm forti-btn" onClick={syncFortiFirewallPolicies} disabled={fortiPolicyLoading}>同步 iptables</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedPolicy} disabled={!selectedPolicyId || fortiPolicyLoading}>刪除</button>
         </div>
         <table className="forti-table forti-selectable-table">
           <thead><tr><th>Order</th><th>ID</th><th>名稱</th><th>來源</th><th>目的地</th><th>服務</th><th>排程</th><th>資安設定檔</th><th>動作</th><th>NAT</th><th>狀態</th></tr></thead>
@@ -3568,27 +4147,34 @@ export default function FortigateView() {
                 draggable
                 onDragStart={(event) => event.dataTransfer.setData('text/plain', String(policy.id))}
                 onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => dragPolicy(Number(event.dataTransfer.getData('text/plain')), policy.id)}
+                onDrop={(event) => { void dragPolicy(Number(event.dataTransfer.getData('text/plain')), policy.id) }}
                 onClick={() => setSelectedPolicyId(policy.id)}
               >
                 <td><span className="forti-drag-handle">#{index + 1}</span></td><td>{policy.id}</td><td>{policy.name}</td><td>{policy.source}</td><td>{policy.destination}</td><td>{policy.service}</td>
                 <td>{policy.schedule || 'always'}</td><td>{policy.securityProfiles || '-'}</td>
                 <td><span className={policy.action === 'ACCEPT' ? 'forti-pill success' : 'forti-pill danger'}>{policy.action}</span></td>
                 <td>{policy.nat ? '啟用' : '停用'}</td>
-                <td><button className="forti-switch-button" onClick={() => togglePolicy(policy.id)}><FortiSwitch checked={policy.status === '啟用'} /> {policy.status}</button></td>
+                <td><button className="forti-switch-button" disabled={fortiPolicyLoading} onClick={(event) => { event.stopPropagation(); void togglePolicy(policy.id) }}><FortiSwitch checked={policy.status === '啟用'} /> {policy.status}</button></td>
               </tr>
             ))}
+            {!policies.length && <tr><td colSpan={11} className="forti-table-empty">尚未建立 FortiGate IPv4 Policy</td></tr>}
           </tbody>
         </table>
+        {fortiPolicyPreview.length > 0 && (
+          <div className="forti-config-preview">
+            <div className="forti-band">iptables Command Preview</div>
+            <pre>{fortiPolicyPreview.join('\n')}</pre>
+          </div>
+        )}
         {policyModalMode && (
           <div className="forti-modal-backdrop" role="presentation">
             <div className="forti-modal forti-modal-wide" role="dialog" aria-modal="true" aria-label={policyModalMode === 'add' ? '新增 IPv4 政策' : '編輯 IPv4 政策'}>
               <div className="forti-modal-title">{policyModalMode === 'add' ? '新增 IPv4 政策' : '編輯 IPv4 政策'}</div>
               <div className="forti-modal-grid">
                 <label>政策名稱</label><input className="form-control form-control-sm" value={policyDraft.name} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, name: event.target.value }))} />
-                <label>來源</label><input className="form-control form-control-sm" value={policyDraft.source} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, source: event.target.value }))} />
-                <label>目的地</label><input className="form-control form-control-sm" value={policyDraft.destination} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, destination: event.target.value }))} />
-                <label>服務</label><input className="form-control form-control-sm" value={policyDraft.service} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, service: event.target.value }))} />
+                <label>來源 CIDR</label><input className="form-control form-control-sm" placeholder="all 或 10.20.100.0/24" value={policyDraft.source} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, source: event.target.value }))} />
+                <label>目的 CIDR</label><input className="form-control form-control-sm" placeholder="all 或 10.20.50.2/32" value={policyDraft.destination} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, destination: event.target.value }))} />
+                <label>服務</label><input className="form-control form-control-sm" placeholder="ALL, HTTPS, SSH, 18088" value={policyDraft.service} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, service: event.target.value }))} />
                 <label>排程</label><select className="form-select form-select-sm" value={policyDraft.schedule || 'always'} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, schedule: event.target.value }))}>{schedules.map((item) => <option key={item.id}>{item.name}</option>)}</select>
                 <label>資安設定檔</label><input className="form-control form-control-sm" value={policyDraft.securityProfiles || ''} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, securityProfiles: event.target.value }))} />
                 <label>動作</label><select className="form-select form-select-sm" value={policyDraft.action} onChange={(event) => setPolicyDraft((draft) => ({ ...draft, action: event.target.value as FortiPolicy['action'] }))}><option>ACCEPT</option><option>DENY</option></select>
@@ -3597,7 +4183,7 @@ export default function FortigateView() {
               </div>
               <div className="forti-modal-actions">
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setPolicyModalMode(null)}>取消</button>
-                <button type="button" className="btn btn-sm forti-btn" onClick={savePolicy}>儲存</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={savePolicy} disabled={fortiPolicyLoading}>儲存並同步</button>
               </div>
             </div>
           </div>
@@ -4138,7 +4724,11 @@ export default function FortigateView() {
         .map((log) => [log.time, log.type, log.level, log.src, log.message]),
     }
     const search = getTableSearch(activePage).toLowerCase()
-    const rows = config.rows.filter((row) => row.join(' ').toLowerCase().includes(search))
+    const logFilter = getLogFilter(activePage).toLowerCase()
+    const quickFilters = Array.from(new Set(config.rows.flatMap((row) => [row[1], row[row.length - 1]]).filter(Boolean))).slice(0, 6)
+    const rows = config.rows
+      .filter((row) => row.join(' ').toLowerCase().includes(search))
+      .filter((row) => !logFilter || row.join(' ').toLowerCase().includes(logFilter))
     return (
       <div className="forti-table-page">
         <div className="forti-section-title">{title}</div>
@@ -4152,8 +4742,12 @@ export default function FortigateView() {
         {renderLogVisual(activePage, config)}
         <div className="forti-toolbar">
           <input className="form-control form-control-sm" placeholder={`搜尋${title}`} value={getTableSearch(activePage)} onChange={(event) => updateTableSearch(activePage, event.target.value)} />
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction(`${title} 已匯出`)}>匯出</button>
-          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(title)}>重新整理</button>
+          <select className="form-select form-select-sm" value={getLogFilter(activePage)} onChange={(event) => updateLogFilter(activePage, event.target.value)}>
+            <option value="">ALL</option>
+            {quickFilters.map((filter) => <option key={filter} value={filter}>{filter}</option>)}
+          </select>
+          <button className="btn btn-sm forti-btn" onClick={() => exportFortiLogCsv(title, config.columns, rows)}>匯出</button>
+          <button className={`btn btn-sm btn-primary ${refreshingArea === title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(title)}>重新整理</button>
         </div>
         <table className="forti-table">
           <thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
@@ -4596,6 +5190,103 @@ export default function FortigateView() {
         </div>
       )
     }
+    if (['wifiController', 'wifiSsids', 'wifiApProfiles', 'wifiFortiSwitches', 'wifiSwitchVlans', 'wifiSwitchTopology'].includes(activePage)) {
+      const apOptions = getManagedRows('wifiController', '受管理的 FortiAP').map((row) => row.name)
+      const ssidOptions = getManagedRows('wifiSsids', 'SSID').map((row) => row.name)
+      const vlanOptions = getManagedRows('wifiSwitchVlans', 'Switch VLANs').map((row) => row.name)
+      const switchOptions = getManagedRows('wifiFortiSwitches', '受管理的 FortiSwitch').map((row) => row.name)
+      const portOptions = getManagedRows('wifiSwitchPorts', 'Switch Ports').map((row) => parseFortiSwitchPort(row).port)
+      const setDraftStatus = (enabled: boolean) => {
+        setManagedDraft((draft) => {
+          const key = activePage === 'wifiController' ? 'Status' : activePage === 'wifiFortiSwitches' || activePage === 'wifiSwitchTopology' ? 'FortiLink' : ''
+          return { ...draft, enabled, description: key ? setFortiMeta(draft.description, key, enabled ? 'Online' : 'Offline') : draft.description }
+        })
+      }
+      return (
+        <div className="forti-modal-backdrop" role="presentation">
+          <div className="forti-modal forti-modal-wide" role="dialog" aria-modal="true" aria-label={managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}>
+            <div className="forti-modal-title">{managedModal.mode === 'add' ? `新增${title}` : `編輯${title}`}</div>
+            <div className="forti-modal-grid">
+              {activePage === 'wifiController' && (
+                <>
+                  <label>AP 名稱</label><input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                  <label>型號</label><select className="form-select form-select-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))}><option>FortiAP-221E</option><option>FortiAP-231F</option><option>FortiAP-431F</option><option>FortiAP-U221EV</option></select>
+                  <label>Online Status</label><FortiSwitch checked={managedDraft.enabled} onChange={() => setDraftStatus(!managedDraft.enabled)} label={managedDraft.enabled ? 'Online' : 'Offline'} />
+                  <label>IP</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'IP', '')} onChange={(event) => updateManagedDraftMeta('IP', event.target.value)} />
+                  <label>Channel</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Channel', 'auto')} onChange={(event) => updateManagedDraftMeta('Channel', event.target.value)} />
+                  <label>Power</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Power', 'Auto')} onChange={(event) => updateManagedDraftMeta('Power', event.target.value)}><option>Auto</option><option>10 dBm</option><option>17 dBm</option><option>20 dBm</option></select>
+                  <label>SSID</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'SSID', ssidOptions[0] || 'Staff-WiFi')} onChange={(event) => updateManagedDraftMeta('SSID', event.target.value)}>{ssidOptions.concat(ssidOptions.length ? [] : ['Staff-WiFi']).map((option) => <option key={option}>{option}</option>)}</select>
+                  <label>Clients</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Clients', '0')} onChange={(event) => updateManagedDraftMeta('Clients', event.target.value)} />
+                  <label>Profile</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Profile', 'Office-AP-Profile')} onChange={(event) => updateManagedDraftMeta('Profile', event.target.value)}><option>Office-AP-Profile</option><option>Warehouse-AP-Profile</option><option>Guest-AP-Profile</option></select>
+                </>
+              )}
+              {activePage === 'wifiSsids' && (
+                <>
+                  <label>SSID</label><input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                  <label>類型</label><select className="form-select form-select-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))}><option>Bridge SSID</option><option>Tunnel SSID</option><option>Captive Portal SSID</option></select>
+                  <label>Security Mode</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Security', 'WPA2-Enterprise')} onChange={(event) => updateManagedDraftMeta('Security', event.target.value)}><option>WPA2-Enterprise</option><option>WPA3-Enterprise</option><option>WPA2-Personal</option><option>Captive Portal</option><option>Open</option></select>
+                  <label>VLAN</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'VLAN', vlanOptions[0] || 'VLAN_60')} onChange={(event) => updateManagedDraftMeta('VLAN', event.target.value)}>{vlanOptions.concat(vlanOptions.length ? [] : ['VLAN_60']).map((option) => <option key={option}>{option}</option>)}</select>
+                  <label>Schedule</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Schedule', 'always')} onChange={(event) => updateManagedDraftMeta('Schedule', event.target.value)}><option>always</option><option>work-hours</option><option>guest-hours</option><option>maintenance</option></select>
+                  <label>AP 關聯</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'AP', apOptions[0] || 'FAP221E-01')} onChange={(event) => updateManagedDraftMeta('AP', event.target.value)}>{apOptions.concat(apOptions.length ? [] : ['FAP221E-01']).map((option) => <option key={option}>{option}</option>)}</select>
+                  <label>Clients</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Clients', '0')} onChange={(event) => updateManagedDraftMeta('Clients', event.target.value)} />
+                  <label>狀態</label><FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={managedDraft.enabled ? 'Broadcast' : 'Hidden'} />
+                </>
+              )}
+              {activePage === 'wifiApProfiles' && (
+                <>
+                  <label>Profile</label><input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                  <label>類型</label><select className="form-select form-select-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))}><option>Radio Profile</option><option>High Density Profile</option><option>Outdoor Profile</option></select>
+                  <label>Radio Profile</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Radio', '')} onChange={(event) => updateManagedDraftMeta('Radio', event.target.value)} />
+                  <label>Tx Power</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Tx Power', 'Auto')} onChange={(event) => updateManagedDraftMeta('Tx Power', event.target.value)}><option>Auto</option><option>Low</option><option>Medium</option><option>High</option></select>
+                  <label>Client Load</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Client Load', 'Standard')} onChange={(event) => updateManagedDraftMeta('Client Load', event.target.value)}><option>Standard</option><option>High density</option><option>Long range</option></select>
+                  <label>Band Steering</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Band Steering', 'Enable')} onChange={(event) => updateManagedDraftMeta('Band Steering', event.target.value)}><option>Enable</option><option>Disable</option><option>Prefer 5G</option></select>
+                  <label>狀態</label><FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={managedDraft.enabled ? '啟用' : '停用'} />
+                </>
+              )}
+              {activePage === 'wifiFortiSwitches' && (
+                <>
+                  <label>Switch</label><input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                  <label>型號</label><select className="form-select form-select-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))}><option>FortiSwitch-108E</option><option>FortiSwitch-124E</option><option>FortiSwitch-248E</option></select>
+                  <label>FortiLink</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'FortiLink', managedDraft.enabled ? 'Online' : 'Pending')} onChange={(event) => updateManagedDraftMeta('FortiLink', event.target.value)}><option>Online</option><option>Pending</option><option>Offline</option><option>Unauthorized</option></select>
+                  <label>IP</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'IP', '')} onChange={(event) => updateManagedDraftMeta('IP', event.target.value)} />
+                  <label>Ports</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Ports', '0 online')} onChange={(event) => updateManagedDraftMeta('Ports', event.target.value)} />
+                  <label>Firmware</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Firmware', '7.0.12')} onChange={(event) => updateManagedDraftMeta('Firmware', event.target.value)} />
+                  <label>Uplink</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Uplink', portOptions[0] || 'pending')} onChange={(event) => updateManagedDraftMeta('Uplink', event.target.value)}>{['pending', ...portOptions].map((option) => <option key={option}>{option}</option>)}</select>
+                  <label>授權狀態</label><FortiSwitch checked={managedDraft.enabled} onChange={() => setDraftStatus(!managedDraft.enabled)} label={managedDraft.enabled ? '授權' : '待授權'} />
+                </>
+              )}
+              {activePage === 'wifiSwitchVlans' && (
+                <>
+                  <label>VLAN</label><input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                  <label>類型</label><select className="form-select form-select-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))}><option>Switch VLAN</option><option>Wireless VLAN</option><option>Guest VLAN</option><option>Voice VLAN</option></select>
+                  <label>Subnet</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Subnet', '')} onChange={(event) => updateManagedDraftMeta('Subnet', event.target.value)} />
+                  <label>Gateway</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Gateway', '')} onChange={(event) => updateManagedDraftMeta('Gateway', event.target.value)} />
+                  <label>Port 關聯</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Ports', '')} onChange={(event) => updateManagedDraftMeta('Ports', event.target.value)} />
+                  <label>用途</label><input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'Purpose', '')} onChange={(event) => updateManagedDraftMeta('Purpose', event.target.value)} />
+                  <label>狀態</label><FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={managedDraft.enabled ? '啟用' : '停用'} />
+                </>
+              )}
+              {activePage === 'wifiSwitchTopology' && (
+                <>
+                  <label>關聯名稱</label><input className="form-control form-control-sm" value={managedDraft.name} onChange={(event) => setManagedDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                  <label>類型</label><select className="form-select form-select-sm" value={managedDraft.type} onChange={(event) => setManagedDraft((draft) => ({ ...draft, type: event.target.value }))}><option>FortiLink</option><option>PoE AP Link</option><option>AP / Switch Relation</option><option>VLAN Mapping</option></select>
+                  <label>Switch</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Switch', switchOptions[0] || 'FSW124E-01')} onChange={(event) => updateManagedDraftMeta('Switch', event.target.value)}>{switchOptions.concat(switchOptions.length ? [] : ['FSW124E-01']).map((option) => <option key={option}>{option}</option>)}</select>
+                  <label>AP</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'AP', apOptions[0] || 'FAP221E-01')} onChange={(event) => updateManagedDraftMeta('AP', event.target.value)}>{['-', ...apOptions].map((option) => <option key={option}>{option}</option>)}</select>
+                  <label>Port</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'Port', portOptions[0] || 'port8')} onChange={(event) => updateManagedDraftMeta('Port', event.target.value)}>{portOptions.concat(portOptions.length ? [] : ['port8']).map((option) => <option key={option}>{option}</option>)}</select>
+                  <label>VLAN</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'VLAN', vlanOptions[0] || 'VLAN_60')} onChange={(event) => updateManagedDraftMeta('VLAN', event.target.value)}>{vlanOptions.concat(vlanOptions.length ? [] : ['VLAN_60']).map((option) => <option key={option}>{option}</option>)}</select>
+                  <label>SSID</label><select className="form-select form-select-sm" value={getFortiMeta(managedDraft.description, 'SSID', ssidOptions[0] || 'Staff-WiFi')} onChange={(event) => updateManagedDraftMeta('SSID', event.target.value)}>{['-', ...ssidOptions].map((option) => <option key={option}>{option}</option>)}</select>
+                  <label>狀態</label><FortiSwitch checked={managedDraft.enabled} onChange={() => setDraftStatus(!managedDraft.enabled)} label={managedDraft.enabled ? 'Online' : 'Offline'} />
+                </>
+              )}
+            </div>
+            <div className="forti-modal-actions">
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setManagedModal(null)}>取消</button>
+              <button type="button" className="btn btn-sm forti-btn" onClick={saveManagedRow}>儲存</button>
+            </div>
+          </div>
+        </div>
+      )
+    }
     if (activePage === 'wifiSwitchPorts') {
       const fields = parseFortiSwitchPort(managedDraft)
       const usedPortNames = new Set(getManagedRows(activePage, title).filter((row) => row.id !== managedDraft.id).map((row) => parseFortiSwitchPort(row).port))
@@ -4659,8 +5350,15 @@ export default function FortigateView() {
                 <FortiSwitch checked={fields.poe} onChange={() => updatePortFields({ poe: !fields.poe })} label={fields.poe ? '啟用' : '停用'} />
               </label>
               <label>
-                <span>狀態</span>
-                <FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={managedDraft.enabled ? '啟用' : '停用'} />
+                <span>Port Status</span>
+                <FortiSwitch checked={managedDraft.enabled} onChange={() => setManagedDraft((draft) => {
+                  const enabled = !draft.enabled
+                  return { ...draft, enabled, description: setFortiMeta(draft.description, 'Status', enabled ? 'Up' : 'Down') }
+                })} label={managedDraft.enabled ? 'Up' : 'Down'} />
+              </label>
+              <label>
+                <span>LLDP</span>
+                <input className="form-control form-control-sm" value={getFortiMeta(managedDraft.description, 'LLDP', fields.purpose)} onChange={(event) => updateManagedDraftMeta('LLDP', event.target.value)} />
               </label>
               <label className="forti-form-grid-wide">
                 <span>用途</span>
@@ -4978,9 +5676,20 @@ export default function FortigateView() {
       return fields.mode === 'Trunk' ? fields.allowedVlans : fields.nativeVlan
     }
     const getPortRole = (row: FortiManagedRow) => parseFortiSwitchPort(row).role
-    const topologyRows = getManagedRows('wifiSwitchTopology', 'WiFi / Switch 拓樸')
     const portRows = getManagedRows('wifiSwitchPorts', 'Switch Ports')
     const vlanRows = getManagedRows('wifiSwitchVlans', 'Switch VLANs')
+    const apRows = getManagedRows('wifiController', '受管理的 FortiAP')
+    const ssidRows = getManagedRows('wifiSsids', 'SSID')
+    const switchRows = getManagedRows('wifiFortiSwitches', '受管理的 FortiSwitch')
+    const meta = (row: FortiManagedRow, key: string, fallback = '-') => getFortiMeta(row.description, key, fallback)
+    const legacyParts = (row: FortiManagedRow) => row.description.split('/').map((part) => part.trim()).filter(Boolean)
+    const apIp = (row: FortiManagedRow) => meta(row, 'IP', legacyParts(row).find((part) => /^\d+\.\d+\.\d+\.\d+/.test(part)) || '-')
+    const apSsid = (row: FortiManagedRow) => meta(row, 'SSID', legacyParts(row)[0] || '-')
+    const apStatus = (row: FortiManagedRow) => meta(row, 'Status', row.enabled ? 'Online' : 'Offline')
+    const ssidSecurity = (row: FortiManagedRow) => meta(row, 'Security', legacyParts(row).find((part) => /WPA|Portal|RADIUS/i.test(part)) || '-')
+    const ssidVlan = (row: FortiManagedRow) => meta(row, 'VLAN', row.description.match(/VLAN[_\s-]*(\d+)/i)?.[1] ? `VLAN_${row.description.match(/VLAN[_\s-]*(\d+)/i)?.[1]}` : '-')
+    const vlanPorts = (row: FortiManagedRow) => meta(row, 'Ports', row.name === 'VLAN_40' ? 'port1, port24' : row.name === 'VLAN_60' ? 'port8, port24' : 'port24')
+    const relationMeta = (row: FortiManagedRow, key: string, fallback = '-') => meta(row, key, fallback)
     const goToRelatedManagedPage = (targetPage: FortiPage, id: string, label: string) => {
       setSelectedManagedId(targetPage, id)
       setPage(targetPage)
@@ -4991,12 +5700,17 @@ export default function FortigateView() {
       return (
         <div className="forti-fabric-page forti-wifi-topology-page">
           <div className="forti-section-title">{title}</div>
+          <div className="forti-profile-summary">
+            <section><strong>{switchRows.filter((row) => row.enabled).length}</strong><span>FortiSwitch FortiLink online</span></section>
+            <section><strong>{apRows.filter((row) => row.enabled).length}</strong><span>FortiAP managed / AP tunnel online</span></section>
+            <section><strong>{vlanRows.filter((row) => row.enabled).length}</strong><span>VLAN 與 Port 關聯已同步</span></section>
+          </div>
           <div className="forti-logical-layout forti-wifi-logical">
             <section className="forti-logical-column">
               <div className="forti-logical-heading">FortiGate / FortiLink</div>
-              {topologyRows.slice(0, 1).map((row) => (
-                <button key={row.id} type="button" className={`forti-logical-card forti-logical-button ${row.id === selectedId ? 'is-selected' : ''}`} onClick={() => setSelectedManagedId(activePage, row.id)}>
-                  <i className="bx bx-shield-quarter"></i><strong>{row.name}</strong><span>{row.description}</span>
+              {switchRows.map((row) => (
+                <button key={row.id} type="button" className={`forti-logical-card forti-logical-button ${row.enabled ? '' : 'is-muted'}`} onClick={() => goToRelatedManagedPage('wifiFortiSwitches', row.id, `受管理的 FortiSwitch / ${row.name}`)}>
+                  <i className="bx bx-transfer"></i><strong>{row.name}</strong><span>{meta(row, 'FortiLink', row.enabled ? 'Online' : 'Pending')} / {meta(row, 'Uplink', '-')}</span>
                 </button>
               ))}
               <div className="forti-logical-card forti-linked-list-card">
@@ -5005,7 +5719,7 @@ export default function FortigateView() {
                 <div className="forti-linked-list">
                   {vlanRows.map((row) => (
                     <button key={row.id} type="button" className={row.enabled ? 'is-active' : 'is-disabled'} onClick={() => goToRelatedManagedPage('wifiSwitchVlans', row.id, `Switch VLANs / ${row.name}`)}>
-                      {row.name}<small>{row.enabled ? '啟用' : '停用'}</small>
+                      {row.name}<small>{vlanPorts(row)}</small>
                     </button>
                   ))}
                 </div>
@@ -5014,8 +5728,8 @@ export default function FortigateView() {
             <section className="forti-logical-core">
               <div className="forti-logical-device">
                 <i className="bx bx-transfer"></i>
-                <strong>{portRows.find((row) => row.description.includes('Uplink'))?.description.split('/').pop()?.trim() || 'Managed FortiSwitch'}</strong>
-                <span>{portRows.filter((row) => row.enabled).length} active switch ports / {vlanRows.filter((row) => row.enabled).length} active VLANs</span>
+                <strong>{switchRows.find((row) => row.enabled)?.name || 'Managed FortiSwitch'}</strong>
+                <span>{portRows.filter((row) => row.enabled).length} active ports / {vlanRows.filter((row) => row.enabled).length} active VLANs</span>
               </div>
               <div className="forti-logical-policy">
                 <span>Port Mapping</span>
@@ -5024,15 +5738,15 @@ export default function FortigateView() {
             </section>
             <section className="forti-logical-column">
               <div className="forti-logical-heading">Wireless Edge</div>
-              {topologyRows.slice(1).map((row) => (
-                <button key={row.id} type="button" className={`forti-logical-card forti-logical-button ${row.id === selectedId ? 'is-selected' : ''}`} onClick={() => setSelectedManagedId(activePage, row.id)}>
-                  <i className={row.type.includes('AP') ? 'bx bx-wifi' : 'bx bx-transfer'}></i><strong>{row.name}</strong><span>{row.description}</span>
+              {apRows.map((row) => (
+                <button key={row.id} type="button" className={`forti-logical-card forti-logical-button ${row.enabled ? '' : 'is-muted'}`} onClick={() => goToRelatedManagedPage('wifiController', row.id, `受管理的 FortiAP / ${row.name}`)}>
+                  <i className="bx bx-wifi"></i><strong>{row.name}</strong><span>{apSsid(row)} / {apIp(row)} / {apStatus(row)}</span>
                 </button>
               ))}
             </section>
           </div>
           {renderManagedActionBar(activePage, title, '搜尋拓樸節點')}
-          <table className="forti-table forti-selectable-table"><thead><tr><th>鏈路</th><th>類型</th><th>狀態</th><th>說明</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{row.type}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? 'Online' : 'Offline'} /></td><td>{row.description}</td></tr>)}</tbody></table>
+          <table className="forti-table forti-selectable-table"><thead><tr><th>關聯</th><th>Switch</th><th>AP / Port</th><th>VLAN</th><th>SSID</th><th>狀態</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{relationMeta(row, 'Switch', row.type === 'FortiLink' ? 'FSW124E-01' : '-')}</td><td>{relationMeta(row, 'AP', relationMeta(row, 'Port', '-'))}</td><td>{relationMeta(row, 'VLAN', '-')}</td><td>{relationMeta(row, 'SSID', '-')}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? 'Online' : 'Offline'} /></td></tr>)}</tbody></table>
           {renderManagedModalForPage(activePage, title)}
         </div>
       )
@@ -5070,9 +5784,10 @@ export default function FortigateView() {
             })}
           </div>
           {renderManagedActionBar(activePage, title, '搜尋 port / VLAN')}
-          <table className="forti-table forti-selectable-table"><thead><tr><th>Port</th><th>Mode</th><th>VLAN</th><th>Role</th><th>PoE</th><th>狀態</th><th>用途</th></tr></thead><tbody>{rows.map((row) => {
+          <table className="forti-table forti-selectable-table"><thead><tr><th>Port</th><th>Port Status</th><th>Mode</th><th>VLAN Members</th><th>Role</th><th>PoE</th><th>LLDP</th></tr></thead><tbody>{rows.map((row) => {
             const fields = parseFortiSwitchPort(row)
-            return <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{fields.port}</td><td>{fields.mode}</td><td>{fields.mode === 'Trunk' ? fields.allowedVlans : fields.nativeVlan}</td><td>{fields.role}</td><td>{fields.poe ? '啟用' : '停用'}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td><td>{fields.purpose}</td></tr>
+            const portStatus = meta(row, 'Status', row.enabled ? 'Up' : 'Down')
+            return <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{fields.port}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={portStatus} /></td><td>{fields.mode}</td><td>{fields.mode === 'Trunk' ? fields.allowedVlans : fields.nativeVlan}</td><td>{fields.role}</td><td>{fields.poe ? '啟用' : '停用'}</td><td>{meta(row, 'LLDP', fields.purpose)}</td></tr>
           })}</tbody></table>
           {renderManagedModalForPage(activePage, title)}
         </div>
@@ -5084,9 +5799,10 @@ export default function FortigateView() {
         <div className="forti-table-page forti-ssid-page">
           <div className="forti-section-title">{title}</div>
           <div className="forti-ssid-layout">
-            {rows.map((row) => <section key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><i className="bx bx-wifi"></i><strong>{row.name}</strong><span>{row.type}</span><p>{row.description}</p><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? 'Broadcast' : 'Hidden'} /></section>)}
+            {rows.map((row) => <section key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><i className="bx bx-wifi"></i><strong>{row.name}</strong><span>{ssidSecurity(row)} / {ssidVlan(row)}</span><p>Schedule {meta(row, 'Schedule', 'always')}，AP {meta(row, 'AP', '-')}，Clients {meta(row, 'Clients', '0')}</p><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? 'Broadcast' : 'Hidden'} /></section>)}
           </div>
           {renderManagedActionBar(activePage, title, '搜尋 SSID')}
+          <table className="forti-table forti-selectable-table"><thead><tr><th>SSID</th><th>Security Mode</th><th>VLAN</th><th>Schedule</th><th>AP 關聯</th><th>Clients</th><th>狀態</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{ssidSecurity(row)}</td><td>{ssidVlan(row)}</td><td>{meta(row, 'Schedule', 'always')}</td><td>{meta(row, 'AP', ssidRows.length ? apRows[0]?.name || '-' : '-')}</td><td>{meta(row, 'Clients', '0')}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td></tr>)}</tbody></table>
           {renderManagedModalForPage(activePage, title)}
         </div>
       )
@@ -5096,12 +5812,17 @@ export default function FortigateView() {
       return (
         <div className="forti-table-page forti-ap-page">
           <div className="forti-section-title">{title}</div>
+          <div className="forti-profile-summary">
+            <section><strong>{rows.filter((row) => row.enabled).length}/{rows.length}</strong><span>AP online status</span></section>
+            <section><strong>{rows.map((row) => meta(row, 'Channel', '-')).filter((value) => value !== '-').join(', ') || 'Auto'}</strong><span>Channel summary</span></section>
+            <section><strong>{rows.map((row) => meta(row, 'Power', '-')).filter((value) => value !== '-').join(', ') || 'Auto'}</strong><span>Tx power summary</span></section>
+          </div>
           <div className="forti-ap-radio">
             <section><strong>2.4 GHz</strong><MiniChart tone="gray" /><span>Channel Auto / 20 MHz</span></section>
             <section><strong>5 GHz</strong><MiniChart /><span>Channel 149 / 80 MHz</span></section>
           </div>
           {renderManagedActionBar(activePage, title, '搜尋 FortiAP')}
-          <table className="forti-table forti-selectable-table"><thead><tr><th>AP 名稱</th><th>型態</th><th>管理狀態</th><th>SSID / IP / 狀態</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{row.type}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '授權' : '未授權'} /></td><td>{row.description}</td></tr>)}</tbody></table>
+          <table className="forti-table forti-selectable-table"><thead><tr><th>AP 名稱</th><th>型號</th><th>Online Status</th><th>IP</th><th>Channel</th><th>Power</th><th>SSID</th><th>Clients</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{row.type}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={apStatus(row)} /></td><td>{apIp(row)}</td><td>{meta(row, 'Channel', row.name.endsWith('02') ? '149' : '6')}</td><td>{meta(row, 'Power', row.name.endsWith('02') ? '20 dBm' : '17 dBm')}</td><td>{apSsid(row)}</td><td>{meta(row, 'Clients', row.name.endsWith('02') ? '10' : '18')}</td></tr>)}</tbody></table>
           {renderManagedModalForPage(activePage, title)}
         </div>
       )
@@ -5115,14 +5836,14 @@ export default function FortigateView() {
             {rows.map((row) => (
               <button key={row.id} type="button" className={`${row.id === selectedId ? 'is-selected' : ''} ${row.enabled ? 'is-active' : 'is-disabled'}`} onClick={() => setSelectedManagedId(activePage, row.id)}>
                 <strong>{row.name}</strong>
-                <span>{row.description}</span>
-                <small>{row.name === 'VLAN_40' ? 'port1, port24' : row.name === 'VLAN_60' ? 'port8, port24' : 'port24'}</small>
+                <span>{meta(row, 'Purpose', row.description)} / {meta(row, 'Subnet', '-')}</span>
+                <small>{vlanPorts(row)}</small>
                 <div className="forti-vlan-bar"></div>
               </button>
             ))}
           </div>
           {renderManagedActionBar(activePage, title, '搜尋 VLAN')}
-          <table className="forti-table forti-selectable-table"><thead><tr><th>VLAN</th><th>類型</th><th>狀態</th><th>網段 / 用途</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{row.type}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td><td>{row.description}</td></tr>)}</tbody></table>
+          <table className="forti-table forti-selectable-table"><thead><tr><th>VLAN</th><th>Subnet</th><th>Gateway</th><th>Port 關聯</th><th>用途</th><th>狀態</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{meta(row, 'Subnet', row.description.match(/\d+\.\d+\.\d+\.\d+\/\d+/)?.[0] || '-')}</td><td>{meta(row, 'Gateway', '-')}</td><td>{vlanPorts(row)}</td><td>{meta(row, 'Purpose', row.description.split('/')[0]?.trim() || '-')}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td></tr>)}</tbody></table>
           {renderManagedModalForPage(activePage, title)}
         </div>
       )
@@ -5134,9 +5855,14 @@ export default function FortigateView() {
         <div className="forti-profile-summary">
           <section><strong>{activePage === 'wifiApProfiles' ? 'Radio Profile' : 'FortiSwitch Authorization'}</strong><span>{activePage === 'wifiApProfiles' ? '集中設定射頻、頻寬、功率與用戶密度。' : '管理 FortiLink Switch 授權、韌體與成員狀態。'}</span></section>
           <section><strong>啟用項目</strong><span>{rows.filter((row) => row.enabled).length}</span></section>
+          <section><strong>{activePage === 'wifiApProfiles' ? 'Profile Binding' : 'FortiLink Status'}</strong><span>{activePage === 'wifiApProfiles' ? `${apRows.length} AP 引用 Radio profile` : `${rows.filter((row) => meta(row, 'FortiLink', '').includes('Online')).length} online`}</span></section>
         </div>
         {renderManagedActionBar(activePage, title, '搜尋設定檔或 Switch')}
-        <table className="forti-table forti-selectable-table"><thead><tr><th>名稱</th><th>類型</th><th>狀態</th><th>設定摘要</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{row.type}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td><td>{row.description}</td></tr>)}</tbody></table>
+        {activePage === 'wifiApProfiles' ? (
+          <table className="forti-table forti-selectable-table"><thead><tr><th>Profile</th><th>Radio Profile</th><th>Tx Power</th><th>Client Load</th><th>Band Steering</th><th>狀態</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{meta(row, 'Radio', row.description)}</td><td>{meta(row, 'Tx Power', '-')}</td><td>{meta(row, 'Client Load', '-')}</td><td>{meta(row, 'Band Steering', '-')}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '啟用' : '停用'} /></td></tr>)}</tbody></table>
+        ) : (
+          <table className="forti-table forti-selectable-table"><thead><tr><th>Switch</th><th>型號</th><th>FortiLink</th><th>IP</th><th>Ports</th><th>Firmware</th><th>Uplink</th><th>狀態</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className={row.id === selectedId ? 'is-selected' : ''} onClick={() => setSelectedManagedId(activePage, row.id)}><td>{row.name}</td><td>{row.type}</td><td>{meta(row, 'FortiLink', row.enabled ? 'Online' : 'Pending')}</td><td>{meta(row, 'IP', '-')}</td><td>{meta(row, 'Ports', row.enabled ? '24 online' : '0 online')}</td><td>{meta(row, 'Firmware', '-')}</td><td>{meta(row, 'Uplink', '-')}</td><td><FortiSwitch checked={row.enabled} onChange={() => toggleManagedRow(activePage, title, row.id)} label={row.enabled ? '授權' : '待授權'} /></td></tr>)}</tbody></table>
+        )}
         {renderManagedModalForPage(activePage, title)}
       </div>
     )
@@ -6528,12 +7254,243 @@ export default function FortigateView() {
     )
   }
 
+  function renderLoadBalance(activePage: FortiPage) {
+    const lbServices = fortiLbStatus.services || []
+    const lbRuntime = fortiLbStatus.runtime
+    const runtimeById = new Map((lbRuntime?.services || []).map((service) => [service.id, service]))
+    const selectedService = lbServices.find((service) => service.id === selectedFortiLbServiceId) || lbServices[0]
+    const lbBackends = lbServices.flatMap((service) => (service.servers || []).map((server) => ({
+      ...server,
+      serviceId: service.id,
+      serviceName: service.name,
+      serviceEnabled: service.enabled,
+      serviceRunning: runtimeById.has(service.id),
+    })))
+    const selectedBackend = lbBackends.find((server) => server.id === selectedFortiLbBackendId) || lbBackends[0]
+    const formatBalanceMethod = (method?: string) => {
+      if (method === 'source') return '來源固定'
+      if (method === 'leastconn') return '最少連線'
+      if (method === 'roundrobin') return '輪詢'
+      return method || '-'
+    }
+    const persistenceText = (method?: string) => method === 'source' ? '來源固定' : '關閉'
+    const renderSummary = () => (
+      <div className="forti-profile-summary">
+        <section><span>Engine</span><strong>FortiGate LB</strong><small>獨立內建 HTTP/TCP 負載平衡</small></section>
+        <section><span>Runtime</span><strong>{lbRuntime?.running ? 'Running' : 'Stopped'}</strong><small>{lbRuntime?.listener_count ?? 0} listeners</small></section>
+        <section><span>Virtual Server</span><strong>{lbServices.length}</strong><small>{lbServices.filter((service) => service.enabled).length} enabled</small></section>
+        <section><span>Real Server</span><strong>{lbBackends.length}</strong><small>{lbBackends.filter((server) => server.enabled).length} enabled</small></section>
+      </div>
+    )
+    const renderLbModal = () => fortiLbModalMode && (
+      <div className="forti-modal-backdrop" role="presentation">
+        <div className="forti-modal forti-modal-wide forti-lb-modal" role="dialog" aria-modal="true" aria-label={fortiLbModalMode === 'add' ? '新增 Virtual Server' : '編輯 Virtual Server'}>
+          <div className="forti-modal-title">{fortiLbModalMode === 'add' ? '新增 Virtual Server' : '編輯 Virtual Server'}</div>
+          <div className="forti-modal-grid">
+            <label>Service Type</label>
+            <select className="form-select form-select-sm" value={fortiLbDraft.service_type} onChange={(event) => setFortiLbDraft((draft) => ({
+              ...draft,
+              service_type: event.target.value as FortiKyklosHaDraft['service_type'],
+              listen_port: event.target.value === 'sql' ? '1433' : '18080',
+              balance_method: event.target.value === 'sql' ? 'source' : 'roundrobin',
+            }))}>
+              <option value="web">Web / HTTP</option>
+              <option value="sql">SQL / TCP</option>
+            </select>
+            <label>Virtual Server</label><input className="form-control form-control-sm" value={fortiLbDraft.name} onChange={(event) => setFortiLbDraft((draft) => ({ ...draft, name: event.target.value }))} />
+            <label>Bind Address</label><input className="form-control form-control-sm" value={fortiLbDraft.bind_addr} onChange={(event) => setFortiLbDraft((draft) => ({ ...draft, bind_addr: event.target.value }))} />
+            <label>Listen Port</label><input className="form-control form-control-sm" value={fortiLbDraft.listen_port} onChange={(event) => setFortiLbDraft((draft) => ({ ...draft, listen_port: event.target.value }))} />
+            <label>Balance Method</label>
+            <select className="form-select form-select-sm" value={fortiLbDraft.balance_method} onChange={(event) => setFortiLbDraft((draft) => ({ ...draft, balance_method: event.target.value }))}>
+              <option value="roundrobin">roundrobin</option>
+              <option value="leastconn">leastconn</option>
+              <option value="source">source</option>
+            </select>
+            <label>Status</label><FortiSwitch checked={fortiLbDraft.enabled} onChange={() => setFortiLbDraft((draft) => ({ ...draft, enabled: !draft.enabled }))} label={fortiLbDraft.enabled ? '啟用' : '停用'} />
+            <label>Health Check</label><FortiSwitch checked={fortiLbDraft.health_check} onChange={() => setFortiLbDraft((draft) => ({ ...draft, health_check: !draft.health_check }))} label={fortiLbDraft.health_check ? '啟用' : '停用'} />
+            {fortiLbDraft.service_type === 'web' && <><label>Health Check Path</label><input className="form-control form-control-sm" value={fortiLbDraft.health_check_path} onChange={(event) => setFortiLbDraft((draft) => ({ ...draft, health_check_path: event.target.value }))} /></>}
+            <label>Real Servers</label>
+            <div className="forti-lb-backend-editor">
+              {fortiLbDraft.servers.map((server, index) => (
+                <div className="forti-lb-backend-row" key={`${server.id || 'new'}-${index}`}>
+                  <input className="form-control form-control-sm" placeholder="Name" value={server.name} onChange={(event) => updateFortiLbDraftServer(index, { name: event.target.value })} />
+                  <input className="form-control form-control-sm" placeholder="IP" value={server.ip} onChange={(event) => updateFortiLbDraftServer(index, { ip: event.target.value })} />
+                  <input className="form-control form-control-sm" placeholder="Port" value={server.port} onChange={(event) => updateFortiLbDraftServer(index, { port: event.target.value })} />
+                  <FortiSwitch checked={server.enabled} onChange={() => updateFortiLbDraftServer(index, { enabled: !server.enabled })} label={server.enabled ? '啟用' : '停用'} />
+                  <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeFortiLbDraftServer(index)} disabled={fortiLbDraft.servers.length <= 1}>刪除</button>
+                </div>
+              ))}
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={addFortiLbDraftServer}><i className="bx bx-plus"></i> 新增 Real Server</button>
+            </div>
+          </div>
+          <div className="forti-modal-actions">
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setFortiLbModalMode(null)}>取消</button>
+            <button type="button" className="btn btn-sm forti-btn" onClick={() => saveFortiLbDraft()} disabled={fortiLbLoading}>儲存並同步</button>
+          </div>
+        </div>
+      </div>
+    )
+
+    if (activePage === 'loadBalanceRealServer') {
+      return (
+        <div className="forti-table-page forti-lb-page">
+          {renderSummary()}
+          <div className="forti-toolbar">
+            <button className="btn btn-sm forti-btn" onClick={() => openFortiLbModal('add')}><i className="bx bx-plus"></i> 新增 Virtual Server</button>
+            <button className="btn btn-sm btn-outline-secondary" onClick={() => loadFortiKyklosHaStatus()} disabled={fortiLbLoading}><i className="bx bx-refresh"></i> 重新整理</button>
+            <span className="forti-muted">Service Running 時需先停用 Service 才能修改 Real Server。</span>
+          </div>
+          <table className="forti-table forti-selectable-table">
+            <thead><tr><th>Virtual Server</th><th>Real Server</th><th>IP</th><th>Port</th><th>Status</th><th>Service Running</th><th>操作</th></tr></thead>
+            <tbody>
+              {lbBackends.map((server) => (
+                <tr key={`${server.serviceId}-${server.id}`} className={server.id === selectedFortiLbBackendId ? 'is-selected' : ''} onClick={() => setSelectedFortiLbBackendId(server.id || null)}>
+                  <td>{server.serviceName}</td><td>{server.name}</td><td>{server.ip}</td><td>{server.port}</td>
+                  <td><span className={server.enabled ? 'forti-pill success' : 'forti-pill muted'}>{server.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                  <td><span className={server.serviceRunning ? 'forti-pill success' : 'forti-pill muted'}>{server.serviceRunning ? 'Running' : 'Stopped'}</span></td>
+                  <td className="forti-row-actions">
+                    <button className="btn btn-sm btn-outline-secondary" disabled={server.serviceRunning} onClick={(event) => { event.stopPropagation(); toggleFortiLbBackend(server, server.serviceName) }}>{server.enabled ? '停用' : '啟用'}</button>
+                    <button className="btn btn-sm btn-outline-danger" disabled={server.serviceRunning} onClick={(event) => { event.stopPropagation(); deleteFortiLbBackend(server, server.serviceName) }}>刪除</button>
+                  </td>
+                </tr>
+              ))}
+              {!lbBackends.length && <tr><td colSpan={7} className="forti-table-empty">尚未建立 Real Server</td></tr>}
+            </tbody>
+          </table>
+          {selectedBackend && <div className="forti-lb-note">目前選取：{selectedBackend.serviceName} / {selectedBackend.name} / {selectedBackend.ip}:{selectedBackend.port}</div>}
+          {renderLbModal()}
+        </div>
+      )
+    }
+
+    if (activePage === 'loadBalancePersistence') {
+      return (
+        <div className="forti-table-page forti-lb-page">
+          {renderSummary()}
+          <div className="forti-toolbar">
+            <button className="btn btn-sm btn-outline-secondary" onClick={() => loadFortiKyklosHaStatus()} disabled={fortiLbLoading}><i className="bx bx-refresh"></i> 重新整理</button>
+            <button className="btn btn-sm forti-btn" onClick={syncFortiKyklosHa} disabled={fortiLbLoading}><i className="bx bx-sync"></i> 同步負載平衡</button>
+            <span className="forti-muted">執行中的 Service 需先停用，才能變更持續性設定。</span>
+          </div>
+          <div className="forti-lb-note">FortiGate 負載平衡以 Balance Method 管理持續性；選擇「來源固定」會讓相同來源較穩定落到同一個 Backend。狀態欄以 Runtime 實際執行值為準。</div>
+          <table className="forti-table forti-selectable-table">
+            <thead><tr><th>虛擬伺服器</th><th>監聽位址</th><th>儲存模式</th><th>執行模式</th><th>持續性狀態</th><th>服務狀態</th><th>操作</th></tr></thead>
+            <tbody>
+              {lbServices.map((service) => {
+                const runtime = runtimeById.get(service.id)
+                const effectiveMethod = runtime?.balance_method || service.balance_method
+                const isRunning = !!runtime
+                const isOutOfSync = !!runtime && runtime.balance_method !== service.balance_method
+                return (
+                  <tr key={service.id} className={service.id === selectedFortiLbServiceId ? 'is-selected' : ''} onClick={() => setSelectedFortiLbServiceId(service.id)}>
+                    <td>{service.name}</td><td>{service.bind_addr}:{service.listen_port}</td>
+                    <td>{formatBalanceMethod(service.balance_method)}</td>
+                    <td>{runtime ? formatBalanceMethod(runtime.balance_method) : '未執行'}</td>
+                    <td><span className={effectiveMethod === 'source' ? 'forti-pill success' : 'forti-pill muted'}>{persistenceText(effectiveMethod)}</span></td>
+                    <td><span className={isOutOfSync ? 'forti-pill warning' : isRunning ? 'forti-pill success' : service.enabled ? 'forti-pill muted' : 'forti-pill danger'}>{isOutOfSync ? '需同步' : isRunning ? 'Running' : service.enabled ? 'Stopped' : 'Disabled'}</span></td>
+                    <td className="forti-row-actions">
+                      <button className="btn btn-sm btn-outline-secondary" disabled={isRunning || fortiLbLoading} onClick={(event) => { event.stopPropagation(); updateFortiLbServicePatch(service, { balance_method: 'source' }) }}>來源固定</button>
+                      <button className="btn btn-sm btn-outline-secondary" disabled={isRunning || fortiLbLoading} onClick={(event) => { event.stopPropagation(); updateFortiLbServicePatch(service, { balance_method: 'roundrobin' }) }}>輪詢</button>
+                      <button className="btn btn-sm btn-outline-secondary" disabled={isRunning || fortiLbLoading} onClick={(event) => { event.stopPropagation(); updateFortiLbServicePatch(service, { balance_method: 'leastconn' }) }}>最少連線</button>
+                    </td>
+                  </tr>
+                )
+              })}
+              {!lbServices.length && <tr><td colSpan={7} className="forti-table-empty">尚未建立 Virtual Server</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
+
+    if (activePage === 'loadBalanceMonitor') {
+      return (
+        <div className="forti-table-page forti-lb-page">
+          {renderSummary()}
+          <div className="forti-toolbar">
+            <button className="btn btn-sm btn-outline-secondary" onClick={() => loadFortiKyklosHaStatus()} disabled={fortiLbLoading}><i className="bx bx-refresh"></i> 重新整理</button>
+            <button className="btn btn-sm forti-btn" onClick={syncFortiKyklosHa} disabled={fortiLbLoading}><i className="bx bx-sync"></i> 同步負載平衡</button>
+          </div>
+          <table className="forti-table">
+            <thead><tr><th>Service</th><th>Listen</th><th>Mode</th><th>Balance</th><th>Active Connections</th><th>Runtime Backends</th></tr></thead>
+            <tbody>
+              {(lbRuntime?.services || []).map((service) => (
+                <tr key={service.id}>
+                  <td>{service.name}</td><td>{service.listen}</td><td>{service.mode}</td><td>{service.balance_method}</td><td>{service.active_connections}</td>
+                  <td>{service.backends.map((backend) => `${backend.name} (${backend.address}) ${backend.active_connections}`).join(' / ') || '-'}</td>
+                </tr>
+              ))}
+              {!(lbRuntime?.services || []).length && <tr><td colSpan={6} className="forti-table-empty">目前沒有正在執行的 FortiGate 負載平衡 listener</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )
+    }
+
+    return (
+      <div className="forti-table-page forti-lb-page">
+        {renderSummary()}
+        <div className="forti-toolbar">
+          <button className="btn btn-sm forti-btn" onClick={() => openFortiLbModal('add')}><i className="bx bx-plus"></i> 新增 Virtual Server</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openFortiLbModal('edit')} disabled={!selectedService}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => selectedService && toggleFortiLbService(selectedService)} disabled={!selectedService}>{selectedService?.enabled ? '停用' : '啟用'}</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => selectedService && deleteFortiLbService(selectedService)} disabled={!selectedService}>刪除</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => loadFortiKyklosHaStatus()} disabled={fortiLbLoading}><i className="bx bx-refresh"></i> 重新整理</button>
+        </div>
+        <table className="forti-table forti-selectable-table">
+          <thead><tr><th>Virtual Server</th><th>Type</th><th>Listen</th><th>Balance</th><th>Health Check</th><th>Real Servers</th><th>Runtime</th><th>Status</th></tr></thead>
+          <tbody>
+            {lbServices.map((service) => {
+              const runtime = runtimeById.get(service.id)
+              return (
+                <tr key={service.id} className={service.id === selectedFortiLbServiceId ? 'is-selected' : ''} onClick={() => setSelectedFortiLbServiceId(service.id)}>
+                  <td>{service.name}</td><td>{service.service_type === 'sql' ? 'SQL/TCP' : 'Web/HTTP'}</td><td>{service.bind_addr}:{service.listen_port}</td><td>{service.balance_method}</td>
+                  <td>{service.health_check ? (service.service_type === 'sql' ? 'TCP connect' : service.health_check_path || '/') : 'Disabled'}</td>
+                  <td>{service.servers?.filter((server) => server.enabled).length || 0} / {service.servers?.length || 0}</td>
+                  <td><span className={runtime ? 'forti-pill success' : 'forti-pill muted'}>{runtime ? `${runtime.active_connections} conn` : 'Stopped'}</span></td>
+                  <td><span className={service.enabled ? 'forti-pill success' : 'forti-pill muted'}>{service.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                </tr>
+              )
+            })}
+            {!lbServices.length && <tr><td colSpan={8} className="forti-table-empty">尚未建立 FortiGate Virtual Server</td></tr>}
+          </tbody>
+        </table>
+        {renderLbModal()}
+      </div>
+    )
+  }
+
   function renderMonitor(activePage: FortiPage) {
     if (activePage === 'monitorRouting') {
       const selectedRoute = routes.find((route) => route.id === selectedRouteId) || routes[0]
+      const gatewayState = (route: FortiRoute) => route.enabled ? 'Reachable' : 'Unreachable'
+      const routeQuery = routeQueryApplied.trim().toLowerCase()
+      const visibleRoutes = routes.filter((route) => !routeQuery || `${route.destination} ${route.gateway} ${route.interfaceName}`.toLowerCase().includes(routeQuery))
+      const queryRoute = () => {
+        const query = routeQueryDraft.trim()
+        setRouteQueryApplied(query)
+        const matched = routes.find((route) => query && `${route.destination} ${route.gateway} ${route.interfaceName}`.toLowerCase().includes(query.toLowerCase())) || routes.find((route) => route.destination === '0.0.0.0/0') || routes[0]
+        if (matched) {
+          setSelectedRouteId(matched.id)
+          setRouteLookupResult(`${query || 'default'} -> ${matched.interfaceName} / GW ${matched.gateway}`)
+        } else {
+          setRouteLookupResult(`${query || '查詢'} 無符合路由`)
+        }
+        setLastAction(`路由查詢已套用：${query || '全部'}`)
+      }
+      const runGatewayCheck = () => {
+        const now = new Date().toLocaleTimeString('zh-TW', { hour12: false })
+        setGatewayCheckedAt(now)
+        setLastAction(`Gateway Check 已完成：${routes.filter((route) => route.enabled).length}/${routes.length} reachable`)
+      }
       return (
         <div className="forti-table-page forti-monitor-routing">
           <div className="forti-section-title">路由監測</div>
+          <div className="forti-profile-summary">
+            <section><strong>{routes.length}</strong><span>Routing table entries</span></section>
+            <section><strong>{routes.filter((route) => route.enabled).length}</strong><span>Gateway check reachable / {gatewayCheckedAt}</span></section>
+            <section><strong>{selectedRoute?.interfaceName || '-'}</strong><span>{routeLookupResult}</span></section>
+          </div>
           <div className="forti-route-health">
             {routes.map((route) => (
               <button
@@ -6544,55 +7501,83 @@ export default function FortigateView() {
               >
                 <strong>{route.interfaceName}</strong>
                 <span className={route.enabled ? 'forti-pill success' : 'forti-pill muted'}>{route.enabled ? 'Active' : 'Inactive'}</span>
-                <small><b>{route.destination}</b><em>GW {route.gateway}</em><em>Distance {route.distance} / Priority {route.priority}</em></small>
+                <small><b>{route.destination}</b><em>GW {route.gateway}</em><em>{gatewayState(route)}</em><em>Distance {route.distance} / Priority {route.priority}</em></small>
               </button>
             ))}
           </div>
           <div className="forti-toolbar">
-            <input className="form-control form-control-sm" placeholder="查詢目的 IP，例如 10.20.50.2" />
-            <button className="btn btn-sm forti-btn" onClick={() => setLastAction('路由查詢已送出')}>查詢路由</button>
+            <input className="form-control form-control-sm" placeholder="查詢目的 IP / Gateway / Interface，例如 10.20.50.2" value={routeQueryDraft} onChange={(event) => setRouteQueryDraft(event.target.value)} />
+            <button className="btn btn-sm forti-btn" onClick={queryRoute}>查詢路由</button>
+            <button className="btn btn-sm btn-outline-secondary" onClick={runGatewayCheck}>Gateway Check</button>
+            {routeQueryApplied && <button className="btn btn-sm btn-outline-secondary" onClick={() => { setRouteQueryDraft(''); setRouteQueryApplied(''); setRouteLookupResult('已清除查詢條件') }}>清除查詢</button>}
           </div>
-          <table className="forti-table forti-selectable-table"><thead><tr><th>Destination</th><th>Gateway</th><th>Interface</th><th>Distance</th><th>Priority</th><th>狀態</th></tr></thead><tbody>
-            {routes.map((route) => <tr key={route.id} className={route.id === selectedRouteId ? 'is-selected' : ''} onClick={() => setSelectedRouteId(route.id)}><td>{route.destination}</td><td>{route.gateway}</td><td>{route.interfaceName}</td><td>{route.distance}</td><td>{route.priority}</td><td><span className={route.enabled ? 'forti-pill success' : 'forti-pill muted'}>{route.enabled ? 'Active' : 'Inactive'}</span></td></tr>)}
+          <table className="forti-table forti-selectable-table"><thead><tr><th>Destination</th><th>Gateway</th><th>Interface</th><th>Distance</th><th>Priority</th><th>Gateway Check</th><th>Lookup Source</th><th>狀態</th></tr></thead><tbody>
+            {visibleRoutes.map((route) => <tr key={route.id} className={route.id === selectedRouteId ? 'is-selected' : ''} onClick={() => setSelectedRouteId(route.id)}><td>{route.destination}</td><td>{route.gateway}</td><td>{route.interfaceName}</td><td>{route.distance}</td><td>{route.priority}</td><td><span className={route.enabled ? 'forti-pill success' : 'forti-pill danger'}>{gatewayState(route)}</span></td><td>{route.interfaceName}</td><td><span className={route.enabled ? 'forti-pill success' : 'forti-pill muted'}>{route.enabled ? 'Active' : 'Inactive'}</span></td></tr>)}
+            {!visibleRoutes.length && <tr><td colSpan={8} className="forti-table-empty">查無符合路由</td></tr>}
           </tbody></table>
         </div>
       )
     }
     if (activePage === 'monitorVpn') {
+      const sslVpnSessions = [
+        { id: 'ssl-vpn-1', name: 'SSL-VPN ssl.root', type: 'SSL-VPN', remoteGateway: '203.0.113.71', localSubnet: 'ssl.root', remoteSubnet: '10.20.40.0/24', phase: 'Web+Tunnel', status: 'Up' as const, rx: '84.2 MB', tx: '18.6 MB', monitor: 'vpn_user authenticated' },
+      ]
+      const vpnRows = [...ipsecTunnels, ...sslVpnSessions]
       return (
         <div className="forti-table-page forti-monitor-vpn">
           <div className="forti-section-title">VPN 監測</div>
+          <div className="forti-profile-summary">
+            <section><strong>{vpnRows.filter((tunnel) => tunnel.status === 'Up').length}</strong><span>真實 tunnel/session up</span></section>
+            <section><strong>{ipsecTunnels.length}</strong><span>IPsec tunnel monitored</span></section>
+            <section><strong>{sslVpnSessions.length}</strong><span>SSL-VPN active sessions</span></section>
+          </div>
           <div className="forti-vpn-monitor-map">
-            {ipsecTunnels.map((tunnel) => (
-              <button key={tunnel.id} type="button" className={tunnel.id === selectedIpsecTunnelId ? 'is-selected' : ''} onClick={() => setSelectedIpsecTunnelId(tunnel.id)}>
+            {vpnRows.map((tunnel) => (
+              <button key={tunnel.id} type="button" className={String(tunnel.id) === String(selectedIpsecTunnelId) ? 'is-selected' : ''} onClick={() => typeof tunnel.id === 'number' ? setSelectedIpsecTunnelId(tunnel.id) : setLastAction(`${tunnel.name} session 已選取`)}>
                 <i className="bx bx-lock-open-alt"></i><strong>{tunnel.name}</strong><span>{tunnel.remoteGateway}</span><b className={tunnel.status === 'Up' ? 'is-up' : ''}>{tunnel.status}</b>
               </button>
             ))}
           </div>
-          <table className="forti-table forti-selectable-table"><thead><tr><th>VPN</th><th>Remote Gateway</th><th>Local Subnet</th><th>Remote Subnet</th><th>Phase</th><th>狀態</th></tr></thead><tbody>
-            {ipsecTunnels.map((tunnel) => <tr key={tunnel.id} className={tunnel.id === selectedIpsecTunnelId ? 'is-selected' : ''} onClick={() => setSelectedIpsecTunnelId(tunnel.id)}><td>{tunnel.name}</td><td>{tunnel.remoteGateway}</td><td>{tunnel.localSubnet}</td><td>{tunnel.remoteSubnet}</td><td>{tunnel.phase}</td><td><span className={tunnel.status === 'Up' ? 'forti-pill success' : 'forti-pill muted'}>{tunnel.status}</span></td></tr>)}
+          <table className="forti-table forti-selectable-table"><thead><tr><th>VPN</th><th>類型</th><th>Remote Gateway / User</th><th>Local / Remote</th><th>Phase / Portal</th><th>RX / TX</th><th>Session / Auth</th><th>狀態</th></tr></thead><tbody>
+            {vpnRows.map((tunnel) => <tr key={tunnel.id} className={String(tunnel.id) === String(selectedIpsecTunnelId) ? 'is-selected' : ''} onClick={() => typeof tunnel.id === 'number' ? setSelectedIpsecTunnelId(tunnel.id) : setLastAction(`${tunnel.name} session 已選取`)}><td>{tunnel.name}</td><td>{tunnel.type || 'Site to Site'}</td><td>{tunnel.remoteGateway}</td><td>{tunnel.localSubnet} / {tunnel.remoteSubnet}</td><td>{tunnel.phase}</td><td>{tunnel.rx || '0 KB'} / {tunnel.tx || '0 KB'}</td><td>{tunnel.monitor || ('lastUp' in tunnel ? tunnel.lastUp : '-') || '-'}</td><td><span className={tunnel.status === 'Up' ? 'forti-pill success' : 'forti-pill muted'}>{tunnel.status}</span></td></tr>)}
           </tbody></table>
         </div>
       )
     }
+    const sessionQuery = sessionFilterApplied.trim().toLowerCase()
+    const visibleSessions = monitorSessions.filter((session) => !sessionQuery || `${session.source} ${session.destination} ${session.service} ${session.policy} ${session.natDetail}`.toLowerCase().includes(sessionQuery))
+    const killSession = (id: string, confirmed = false) => {
+      const session = monitorSessions.find((item) => item.id === id)
+      if (!session) {
+        setLastAction('找不到選取的 Session，請重新選取')
+        setSelectedSessionId('')
+        return
+      }
+      if (!confirmed && !window.confirm(`確定要清除 Session？\n${session.source} -> ${session.destination}`)) return
+      setMonitorSessions((items) => items.filter((item) => item.id !== id))
+      setSelectedSessionId((current) => current === id ? '' : current)
+      setLastAction(`Session 已清除：${session.source} -> ${session.destination}`)
+    }
+    const selectedSessionVisible = visibleSessions.some((session) => session.id === selectedSessionId)
     return (
       <div className="forti-table-page forti-monitor-session">
         <div className="forti-section-title">Session Monitor</div>
         <div className="forti-session-dashboard">
-          <section><strong>423</strong><span>Current Sessions</span></section>
+          <section><strong>{monitorSessions.length}</strong><span>Current Sessions</span></section>
           <section><strong>52.7%</strong><span>SPU Usage</span></section>
-          <section><strong>18</strong><span>NAT Sessions</span></section>
+          <section><strong>{monitorSessions.filter((session) => session.nat === 'Yes').length}</strong><span>NAT Sessions</span></section>
           <section><strong>0</strong><span>Dropped</span></section>
         </div>
         <div className="forti-toolbar">
-          <input className="form-control form-control-sm" placeholder="Filter: source, destination, service" />
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('Session filter 已套用')}>套用過濾</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={() => setLastAction('選取 session 已清除')}>清除 Session</button>
+          <input className="form-control form-control-sm" placeholder="Filter: source, destination, service" value={sessionFilterDraft} onChange={(event) => setSessionFilterDraft(event.target.value)} />
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => { setSessionFilterApplied(sessionFilterDraft.trim()); setLastAction(`Session filter 已套用：${sessionFilterDraft.trim() || '全部'}`) }}>套用過濾</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => { setSessionFilterDraft(''); setSessionFilterApplied(''); setLastAction('Session filter 已清除') }}>清除過濾</button>
+          <button className="btn btn-sm btn-outline-danger" disabled={!selectedSessionVisible} onClick={() => selectedSessionVisible ? killSession(selectedSessionId) : setLastAction('請先點選一筆 Session')}>清除 Session</button>
+          {monitorSessions.length < initialMonitorSessions.length && <button className="btn btn-sm btn-outline-secondary" onClick={() => { setMonitorSessions(initialMonitorSessions); setSelectedSessionId(''); setLastAction('Session 範例資料已還原') }}>還原 Session 範例</button>}
         </div>
-        <table className="forti-table"><thead><tr><th>Source</th><th>Destination</th><th>Service</th><th>Policy</th><th>NAT</th><th>Bytes</th></tr></thead><tbody>
-          <tr><td>10.20.40.113:54822</td><td>10.20.50.2:22</td><td>SSH</td><td>SSLVPN_to_LAN</td><td>No</td><td>48.2 KB</td></tr>
-          <tr><td>10.20.40.118:62421</td><td>8.8.8.8:53</td><td>DNS</td><td>LAN_to_WAN</td><td>Yes</td><td>8.7 KB</td></tr>
-          <tr><td>10.20.40.113:53018</td><td>docs.fortinet.com:443</td><td>HTTPS</td><td>LAN_to_WAN</td><td>Yes</td><td>689.1 KB</td></tr>
+        <table className="forti-table forti-selectable-table"><thead><tr><th>Source</th><th>Destination</th><th>Service</th><th>Policy</th><th>NAT</th><th>NAT Detail</th><th>Bytes</th><th>操作</th></tr></thead><tbody>
+          {visibleSessions.map((session) => <tr key={session.id} className={session.id === selectedSessionId ? 'is-selected' : ''} onClick={() => setSelectedSessionId(session.id)}><td>{session.source}</td><td>{session.destination}</td><td>{session.service}</td><td>{session.policy}</td><td>{session.nat}</td><td>{session.natDetail}</td><td>{session.bytes}</td><td><button className="btn btn-sm btn-outline-danger" onClick={(event) => { event.stopPropagation(); killSession(session.id) }}>Kill</button></td></tr>)}
+          {!visibleSessions.length && <tr><td colSpan={8} className="forti-table-empty">無符合條件的 Session</td></tr>}
         </tbody></table>
       </div>
     )
@@ -6819,6 +7804,7 @@ export default function FortigateView() {
     if (page === 'fortiguard') return renderFortiGuard()
     if (page === 'advancedSettings') return renderAdvancedSettings()
     if (page === 'systemSettings') return renderSystemSettings()
+    if (page.startsWith('loadBalance')) return renderLoadBalance(page)
     if (page.startsWith('logs')) return renderLogs(page)
     if (page.startsWith('monitor')) return renderMonitor(page)
     if (['wifiController', 'wifiSsids', 'wifiApProfiles', 'wifiFortiSwitches', 'wifiSwitchPorts', 'wifiSwitchVlans', 'wifiSwitchTopology'].includes(page)) return renderWifiSwitchPage(page)

@@ -159,6 +159,36 @@ pub struct KyklosHaBackendServerUpdate {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct FortigateFirewallPolicy {
+    pub id: i64,
+    pub name: String,
+    pub source: String,
+    pub destination: String,
+    pub service: String,
+    pub action: String,
+    pub nat: bool,
+    pub status: String,
+    pub schedule: String,
+    pub security_profiles: String,
+    pub position: i64,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct FortigateFirewallPolicyUpdate {
+    pub id: Option<i64>,
+    pub name: String,
+    pub source: String,
+    pub destination: String,
+    pub service: String,
+    pub action: String,
+    pub nat: bool,
+    pub status: String,
+    pub schedule: String,
+    pub security_profiles: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CronJob {
     pub id: i64,
     pub name: String,
@@ -938,6 +968,225 @@ impl AppDb {
         Ok(affected > 0)
     }
 
+    pub fn list_fortigate_lb_services(&self) -> Result<Vec<KyklosHaServiceSettings>, String> {
+        self.list_lb_services(
+            "fortigate_lb_services",
+            "fortigate_lb_backend_servers",
+            "FortiGate LB",
+        )
+    }
+
+    pub fn save_fortigate_lb_service(
+        &self,
+        update: KyklosHaServiceUpdate,
+    ) -> Result<KyklosHaServiceSettings, String> {
+        self.save_lb_service(
+            update,
+            "fortigate_lb_services",
+            "fortigate_lb_backend_servers",
+            "FortiGate LB",
+        )
+    }
+
+    pub fn set_fortigate_lb_service_enabled(
+        &self,
+        id: i64,
+        enabled: bool,
+    ) -> Result<bool, String> {
+        self.set_lb_service_enabled(id, enabled, "fortigate_lb_services", "FortiGate LB")
+    }
+
+    pub fn update_fortigate_lb_backend_server(
+        &self,
+        id: i64,
+        update: KyklosHaBackendServerUpdate,
+    ) -> Result<bool, String> {
+        self.update_lb_backend_server(
+            id,
+            update,
+            "fortigate_lb_services",
+            "fortigate_lb_backend_servers",
+            "FortiGate LB",
+        )
+    }
+
+    pub fn set_fortigate_lb_backend_server_enabled(
+        &self,
+        id: i64,
+        enabled: bool,
+    ) -> Result<bool, String> {
+        self.set_lb_backend_server_enabled(
+            id,
+            enabled,
+            "fortigate_lb_services",
+            "fortigate_lb_backend_servers",
+            "FortiGate LB",
+        )
+    }
+
+    pub fn delete_fortigate_lb_backend_server(&self, id: i64) -> Result<bool, String> {
+        self.delete_lb_backend_server(
+            id,
+            "fortigate_lb_services",
+            "fortigate_lb_backend_servers",
+            "FortiGate LB",
+        )
+    }
+
+    pub fn delete_fortigate_lb_service(&self, id: i64) -> Result<bool, String> {
+        self.delete_lb_service(
+            id,
+            "fortigate_lb_services",
+            "fortigate_lb_backend_servers",
+            "FortiGate LB",
+        )
+    }
+
+    pub fn list_fortigate_firewall_policies(
+        &self,
+    ) -> Result<Vec<FortigateFirewallPolicy>, String> {
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, source, destination, service, action, nat, status,
+                        schedule, security_profiles, position, updated_at
+                 FROM fortigate_firewall_policies
+                 ORDER BY position, id",
+            )
+            .map_err(|e| format!("prepare FortiGate firewall policy query failed: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(FortigateFirewallPolicy {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    source: row.get(2)?,
+                    destination: row.get(3)?,
+                    service: row.get(4)?,
+                    action: row.get(5)?,
+                    nat: row.get::<_, i64>(6)? != 0,
+                    status: row.get(7)?,
+                    schedule: row.get(8)?,
+                    security_profiles: row.get(9)?,
+                    position: row.get(10)?,
+                    updated_at: row.get(11)?,
+                })
+            })
+            .map_err(|e| format!("query FortiGate firewall policies failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("read FortiGate firewall policy failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn save_fortigate_firewall_policy(
+        &self,
+        update: FortigateFirewallPolicyUpdate,
+    ) -> Result<FortigateFirewallPolicy, String> {
+        validate_fortigate_firewall_policy(&update)?;
+        let conn = self.connect()?;
+        let id = if let Some(id) = update.id {
+            let affected = conn
+                .execute(
+                    "UPDATE fortigate_firewall_policies
+                     SET name = ?1, source = ?2, destination = ?3, service = ?4,
+                         action = ?5, nat = ?6, status = ?7, schedule = ?8,
+                         security_profiles = ?9,
+                         updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                     WHERE id = ?10",
+                    params![
+                        update.name,
+                        update.source,
+                        update.destination,
+                        update.service,
+                        update.action,
+                        if update.nat { 1 } else { 0 },
+                        update.status,
+                        update.schedule,
+                        update.security_profiles,
+                        id
+                    ],
+                )
+                .map_err(|e| format!("update FortiGate firewall policy failed: {e}"))?;
+            if affected == 0 {
+                return Err("FortiGate firewall policy not found".to_string());
+            }
+            id
+        } else {
+            let position: i64 = conn
+                .query_row(
+                    "SELECT COALESCE(MAX(position), 0) + 1 FROM fortigate_firewall_policies",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|e| format!("compute FortiGate firewall policy position failed: {e}"))?;
+            conn.execute(
+                "INSERT INTO fortigate_firewall_policies
+                 (name, source, destination, service, action, nat, status, schedule, security_profiles, position)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    update.name,
+                    update.source,
+                    update.destination,
+                    update.service,
+                    update.action,
+                    if update.nat { 1 } else { 0 },
+                    update.status,
+                    update.schedule,
+                    update.security_profiles,
+                    position
+                ],
+            )
+            .map_err(|e| format!("insert FortiGate firewall policy failed: {e}"))?;
+            conn.last_insert_rowid()
+        };
+        self.fortigate_firewall_policy(id)
+    }
+
+    pub fn set_fortigate_firewall_policy_status(
+        &self,
+        id: i64,
+        enabled: bool,
+    ) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE fortigate_firewall_policies
+                 SET status = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = ?2",
+                params![if enabled { "啟用" } else { "停用" }, id],
+            )
+            .map_err(|e| format!("update FortiGate firewall policy status failed: {e}"))?;
+        Ok(affected > 0)
+    }
+
+    pub fn reorder_fortigate_firewall_policies(&self, ids: &[i64]) -> Result<(), String> {
+        let mut conn = self.connect()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("start FortiGate firewall policy reorder failed: {e}"))?;
+        for (idx, id) in ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE fortigate_firewall_policies SET position = ?1 WHERE id = ?2",
+                params![(idx + 1) as i64, id],
+            )
+            .map_err(|e| format!("reorder FortiGate firewall policy failed: {e}"))?;
+        }
+        tx.commit()
+            .map_err(|e| format!("commit FortiGate firewall policy reorder failed: {e}"))
+    }
+
+    pub fn delete_fortigate_firewall_policy(&self, id: i64) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "DELETE FROM fortigate_firewall_policies WHERE id = ?1",
+                params![id],
+            )
+            .map_err(|e| format!("delete FortiGate firewall policy failed: {e}"))?;
+        Ok(affected > 0)
+    }
+
     fn init(&self) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -1005,6 +1254,45 @@ impl AppDb {
                 port INTEGER NOT NULL,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 position INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS fortigate_lb_services (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_type TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                name TEXT NOT NULL,
+                bind_addr TEXT NOT NULL DEFAULT '0.0.0.0',
+                listen_port INTEGER NOT NULL,
+                mode TEXT NOT NULL,
+                balance_method TEXT NOT NULL,
+                health_check_path TEXT NULL,
+                health_check INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                UNIQUE(service_type, name)
+            );
+            CREATE TABLE IF NOT EXISTS fortigate_lb_backend_servers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                ip TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                position INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS fortigate_firewall_policies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'all',
+                destination TEXT NOT NULL DEFAULT 'all',
+                service TEXT NOT NULL DEFAULT 'ALL',
+                action TEXT NOT NULL DEFAULT 'ACCEPT',
+                nat INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT '啟用',
+                schedule TEXT NOT NULL DEFAULT 'always',
+                security_profiles TEXT NOT NULL DEFAULT '',
+                position INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             );
             CREATE TABLE IF NOT EXISTS nginx_settings (
                 id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -1450,6 +1738,448 @@ impl AppDb {
             servers.push(row.map_err(|e| format!("read Kyklos HA backend server failed: {e}"))?);
         }
         Ok(servers)
+    }
+
+    fn list_lb_services(
+        &self,
+        service_table: &str,
+        backend_table: &str,
+        label: &str,
+    ) -> Result<Vec<KyklosHaServiceSettings>, String> {
+        let conn = self.connect()?;
+        let sql = format!(
+            "SELECT id, service_type, enabled, name, bind_addr, listen_port, mode,
+                    balance_method, health_check_path, health_check, updated_at
+             FROM {service_table}
+             ORDER BY service_type, name"
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| format!("prepare {label} service query failed: {e}"))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)? != 0,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, i64>(9)? != 0,
+                    row.get::<_, String>(10)?,
+                ))
+            })
+            .map_err(|e| format!("query {label} services failed: {e}"))?;
+
+        let mut items = Vec::new();
+        for row in rows {
+            let (
+                id,
+                service_type,
+                enabled,
+                name,
+                bind_addr,
+                listen_port,
+                mode,
+                balance_method,
+                health_check_path,
+                health_check,
+                updated_at,
+            ) = row.map_err(|e| format!("read {label} service row failed: {e}"))?;
+            items.push(KyklosHaServiceSettings {
+                id,
+                service_type,
+                enabled,
+                name,
+                bind_addr,
+                listen_port: listen_port as u16,
+                mode,
+                balance_method,
+                health_check_path,
+                health_check,
+                servers: self.lb_servers(backend_table, id, label)?,
+                updated_at,
+            });
+        }
+        Ok(items)
+    }
+
+    fn save_lb_service(
+        &self,
+        update: KyklosHaServiceUpdate,
+        service_table: &str,
+        backend_table: &str,
+        label: &str,
+    ) -> Result<KyklosHaServiceSettings, String> {
+        validate_kyklos_ha_update(&update).map_err(|e| e.replace("Kyklos HA", label))?;
+        let mut conn = self.connect()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("start {label} settings transaction failed: {e}"))?;
+        let existing_sql =
+            format!("SELECT id FROM {service_table} WHERE service_type = ?1 AND name = ?2");
+        let existing_id: Option<i64> = tx
+            .query_row(&existing_sql, params![update.service_type, update.name], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(|e| format!("lookup {label} service failed: {e}"))?;
+        if let Some(existing_id) = existing_id {
+            if Some(existing_id) != update.id {
+                return Err(format!("{label} service name already exists: {}", update.name));
+            }
+        }
+        if update.enabled {
+            let conflict_sql = format!(
+                "SELECT id, name, bind_addr, listen_port
+                 FROM {service_table}
+                 WHERE enabled = 1 AND listen_port = ?1 AND id != ?2"
+            );
+            let mut stmt = tx
+                .prepare(&conflict_sql)
+                .map_err(|e| format!("prepare {label} listen conflict query failed: {e}"))?;
+            let rows = stmt
+                .query_map(
+                    params![i64::from(update.listen_port), update.id.unwrap_or(0)],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, i64>(3)?,
+                        ))
+                    },
+                )
+                .map_err(|e| format!("query {label} listen conflicts failed: {e}"))?;
+            for row in rows {
+                let (_, name, bind_addr, listen_port) =
+                    row.map_err(|e| format!("read {label} listen conflict failed: {e}"))?;
+                if kyklos_ha_bind_conflicts(&update.bind_addr, &bind_addr) {
+                    return Err(format!(
+                        "{label} listen port already in use: {} uses {}:{}",
+                        name, bind_addr, listen_port
+                    ));
+                }
+            }
+        }
+
+        let id = if let Some(id) = update.id {
+            let update_sql = format!(
+                "UPDATE {service_table}
+                 SET enabled = ?1, name = ?2, bind_addr = ?3, listen_port = ?4,
+                     mode = ?5, balance_method = ?6, health_check_path = ?7,
+                     health_check = ?8, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = ?9 AND service_type = ?10"
+            );
+            let affected = tx
+                .execute(
+                    &update_sql,
+                    params![
+                        if update.enabled { 1 } else { 0 },
+                        update.name,
+                        update.bind_addr,
+                        i64::from(update.listen_port),
+                        update.mode,
+                        update.balance_method,
+                        update.health_check_path,
+                        if update.health_check { 1 } else { 0 },
+                        id,
+                        update.service_type,
+                    ],
+                )
+                .map_err(|e| format!("update {label} service failed: {e}"))?;
+            if affected == 0 {
+                return Err(format!("{label} service not found"));
+            }
+            id
+        } else {
+            let insert_sql = format!(
+                "INSERT INTO {service_table}
+                 (service_type, enabled, name, bind_addr, listen_port, mode, balance_method, health_check_path, health_check)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+            );
+            tx.execute(
+                &insert_sql,
+                params![
+                    update.service_type,
+                    if update.enabled { 1 } else { 0 },
+                    update.name,
+                    update.bind_addr,
+                    i64::from(update.listen_port),
+                    update.mode,
+                    update.balance_method,
+                    update.health_check_path,
+                    if update.health_check { 1 } else { 0 }
+                ],
+            )
+            .map_err(|e| format!("insert {label} service failed: {e}"))?;
+            tx.last_insert_rowid()
+        };
+
+        let clear_sql = format!("DELETE FROM {backend_table} WHERE service_id = ?1");
+        tx.execute(&clear_sql, params![id])
+            .map_err(|e| format!("clear {label} backend servers failed: {e}"))?;
+
+        let insert_backend_sql = format!(
+            "INSERT INTO {backend_table}
+             (service_id, name, ip, port, enabled, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+        );
+        for (idx, server) in update.servers.iter().enumerate() {
+            tx.execute(
+                &insert_backend_sql,
+                params![
+                    id,
+                    server.name,
+                    server.ip,
+                    i64::from(server.port),
+                    if server.enabled.unwrap_or(true) { 1 } else { 0 },
+                    idx as i64
+                ],
+            )
+            .map_err(|e| format!("insert {label} backend server failed: {e}"))?;
+        }
+
+        tx.commit()
+            .map_err(|e| format!("commit {label} settings failed: {e}"))?;
+        self.lb_service(service_table, backend_table, id, label)
+    }
+
+    fn set_lb_service_enabled(
+        &self,
+        id: i64,
+        enabled: bool,
+        service_table: &str,
+        label: &str,
+    ) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let sql = format!(
+            "UPDATE {service_table}
+             SET enabled = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE id = ?2"
+        );
+        let affected = conn
+            .execute(&sql, params![if enabled { 1 } else { 0 }, id])
+            .map_err(|e| format!("update {label} service enabled state failed: {e}"))?;
+        Ok(affected > 0)
+    }
+
+    fn update_lb_backend_server(
+        &self,
+        id: i64,
+        update: KyklosHaBackendServerUpdate,
+        service_table: &str,
+        backend_table: &str,
+        label: &str,
+    ) -> Result<bool, String> {
+        validate_kyklos_ha_backend_update(&update).map_err(|e| e.replace("Kyklos HA", label))?;
+        let conn = self.connect()?;
+        let sql = format!(
+            "UPDATE {backend_table}
+             SET name = ?1, ip = ?2, port = ?3, enabled = ?4
+             WHERE id = ?5"
+        );
+        let affected = conn
+            .execute(
+                &sql,
+                params![
+                    update.name,
+                    update.ip,
+                    i64::from(update.port),
+                    if update.enabled.unwrap_or(true) { 1 } else { 0 },
+                    id
+                ],
+            )
+            .map_err(|e| format!("update {label} backend server failed: {e}"))?;
+        if affected > 0 {
+            let touch_sql = format!(
+                "UPDATE {service_table}
+                 SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = (SELECT service_id FROM {backend_table} WHERE id = ?1)"
+            );
+            let _ = conn.execute(&touch_sql, params![id]);
+        }
+        Ok(affected > 0)
+    }
+
+    fn set_lb_backend_server_enabled(
+        &self,
+        id: i64,
+        enabled: bool,
+        service_table: &str,
+        backend_table: &str,
+        label: &str,
+    ) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let sql = format!("UPDATE {backend_table} SET enabled = ?1 WHERE id = ?2");
+        let affected = conn
+            .execute(&sql, params![if enabled { 1 } else { 0 }, id])
+            .map_err(|e| format!("update {label} backend server state failed: {e}"))?;
+        if affected > 0 {
+            let touch_sql = format!(
+                "UPDATE {service_table}
+                 SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = (SELECT service_id FROM {backend_table} WHERE id = ?1)"
+            );
+            let _ = conn.execute(&touch_sql, params![id]);
+        }
+        Ok(affected > 0)
+    }
+
+    fn delete_lb_backend_server(
+        &self,
+        id: i64,
+        service_table: &str,
+        backend_table: &str,
+        label: &str,
+    ) -> Result<bool, String> {
+        let mut conn = self.connect()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("start {label} backend delete transaction failed: {e}"))?;
+        let lookup_sql = format!("SELECT service_id FROM {backend_table} WHERE id = ?1");
+        let service_id: Option<i64> = tx
+            .query_row(&lookup_sql, params![id], |row| row.get(0))
+            .optional()
+            .map_err(|e| format!("lookup {label} backend server failed: {e}"))?;
+        let Some(service_id) = service_id else {
+            return Ok(false);
+        };
+
+        let delete_sql = format!("DELETE FROM {backend_table} WHERE id = ?1");
+        tx.execute(&delete_sql, params![id])
+            .map_err(|e| format!("delete {label} backend server failed: {e}"))?;
+        let touch_sql = format!(
+            "UPDATE {service_table}
+             SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE id = ?1"
+        );
+        tx.execute(&touch_sql, params![service_id])
+            .map_err(|e| format!("touch {label} service failed: {e}"))?;
+        tx.commit()
+            .map_err(|e| format!("commit {label} backend delete failed: {e}"))?;
+        Ok(true)
+    }
+
+    fn delete_lb_service(
+        &self,
+        id: i64,
+        service_table: &str,
+        backend_table: &str,
+        label: &str,
+    ) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let delete_backends_sql = format!("DELETE FROM {backend_table} WHERE service_id = ?1");
+        conn.execute(&delete_backends_sql, params![id])
+            .map_err(|e| format!("delete {label} backend servers failed: {e}"))?;
+        let delete_service_sql = format!("DELETE FROM {service_table} WHERE id = ?1");
+        let affected = conn
+            .execute(&delete_service_sql, params![id])
+            .map_err(|e| format!("delete {label} service failed: {e}"))?;
+        Ok(affected > 0)
+    }
+
+    fn lb_service(
+        &self,
+        service_table: &str,
+        backend_table: &str,
+        id: i64,
+        label: &str,
+    ) -> Result<KyklosHaServiceSettings, String> {
+        let conn = self.connect()?;
+        let sql = format!(
+            "SELECT id, service_type, enabled, name, bind_addr, listen_port, mode,
+                    balance_method, health_check_path, health_check, updated_at
+             FROM {service_table} WHERE id = ?1"
+        );
+        let mut item = conn
+            .query_row(&sql, params![id], |row| {
+                Ok(KyklosHaServiceSettings {
+                    id: row.get(0)?,
+                    service_type: row.get(1)?,
+                    enabled: row.get::<_, i64>(2)? != 0,
+                    name: row.get(3)?,
+                    bind_addr: row.get(4)?,
+                    listen_port: row.get::<_, i64>(5)? as u16,
+                    mode: row.get(6)?,
+                    balance_method: row.get(7)?,
+                    health_check_path: row.get(8)?,
+                    health_check: row.get::<_, i64>(9)? != 0,
+                    servers: Vec::new(),
+                    updated_at: row.get(10)?,
+                })
+            })
+            .map_err(|e| format!("load {label} service failed: {e}"))?;
+        item.servers = self.lb_servers(backend_table, id, label)?;
+        Ok(item)
+    }
+
+    fn lb_servers(
+        &self,
+        backend_table: &str,
+        service_id: i64,
+        label: &str,
+    ) -> Result<Vec<KyklosHaBackendServerSettings>, String> {
+        let conn = self.connect()?;
+        let sql = format!(
+            "SELECT id, name, ip, port, enabled, position
+             FROM {backend_table}
+             WHERE service_id = ?1
+             ORDER BY position, id"
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| format!("prepare {label} backend server query failed: {e}"))?;
+        let rows = stmt
+            .query_map(params![service_id], |row| {
+                Ok(KyklosHaBackendServerSettings {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    ip: row.get(2)?,
+                    port: row.get::<_, i64>(3)? as u16,
+                    enabled: row.get::<_, i64>(4)? != 0,
+                    position: row.get(5)?,
+                })
+            })
+            .map_err(|e| format!("query {label} backend servers failed: {e}"))?;
+
+        let mut servers = Vec::new();
+        for row in rows {
+            servers.push(row.map_err(|e| format!("read {label} backend server failed: {e}"))?);
+        }
+        Ok(servers)
+    }
+
+    fn fortigate_firewall_policy(&self, id: i64) -> Result<FortigateFirewallPolicy, String> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT id, name, source, destination, service, action, nat, status,
+                    schedule, security_profiles, position, updated_at
+             FROM fortigate_firewall_policies
+             WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(FortigateFirewallPolicy {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    source: row.get(2)?,
+                    destination: row.get(3)?,
+                    service: row.get(4)?,
+                    action: row.get(5)?,
+                    nat: row.get::<_, i64>(6)? != 0,
+                    status: row.get(7)?,
+                    schedule: row.get(8)?,
+                    security_profiles: row.get(9)?,
+                    position: row.get(10)?,
+                    updated_at: row.get(11)?,
+                })
+            },
+        )
+        .map_err(|e| format!("load FortiGate firewall policy failed: {e}"))
     }
 
     pub fn nginx_settings(&self) -> Result<NginxSettings, String> {
@@ -3071,6 +3801,36 @@ fn validate_kyklos_ha_backend_update(update: &KyklosHaBackendServerUpdate) -> Re
     }
     if update.port == 0 {
         return Err("invalid Kyklos HA backend server port".to_string());
+    }
+    Ok(())
+}
+
+fn validate_fortigate_firewall_policy(update: &FortigateFirewallPolicyUpdate) -> Result<(), String> {
+    let valid_name = !update.name.trim().is_empty()
+        && update.name.len() <= 64
+        && update
+            .name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'));
+    if !valid_name {
+        return Err("invalid FortiGate firewall policy name".to_string());
+    }
+    for (label, value) in [
+        ("source", update.source.as_str()),
+        ("destination", update.destination.as_str()),
+        ("service", update.service.as_str()),
+        ("schedule", update.schedule.as_str()),
+        ("security profile", update.security_profiles.as_str()),
+    ] {
+        if value.len() > 255 || value.chars().any(|ch| ch.is_control()) {
+            return Err(format!("invalid FortiGate firewall policy {label}"));
+        }
+    }
+    if !matches!(update.action.as_str(), "ACCEPT" | "DENY" | "DROP" | "REJECT") {
+        return Err("invalid FortiGate firewall policy action".to_string());
+    }
+    if !matches!(update.status.as_str(), "啟用" | "停用") {
+        return Err("invalid FortiGate firewall policy status".to_string());
     }
     Ok(())
 }

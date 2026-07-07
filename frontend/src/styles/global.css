@@ -1687,6 +1687,49 @@
 .forti-selectable-table tbody tr.is-selected td {
   background:#f6fff7;
 }
+.forti-row-actions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.35rem;
+}
+.forti-muted {
+  color:#6d7478;
+  font-size:.78rem;
+  font-weight:700;
+}
+.forti-lb-page .forti-profile-summary {
+  margin-bottom:.75rem;
+}
+.forti-lb-note {
+  margin:.65rem 0;
+  padding:.55rem .7rem;
+  border:1px solid #cbdad0;
+  background:#f4faf5;
+  color:#37523b;
+  font-size:.8rem;
+  font-weight:700;
+}
+.forti-lb-modal {
+  width:min(920px, calc(100vw - 2rem));
+}
+.forti-lb-backend-editor {
+  display:grid;
+  gap:.5rem;
+  min-width:0;
+}
+.forti-lb-backend-row {
+  display:grid;
+  grid-template-columns:minmax(110px, 1fr) minmax(130px, 1.1fr) 90px auto auto;
+  gap:.45rem;
+  align-items:center;
+  min-width:0;
+  padding:.45rem;
+  border:1px solid #d7d7d7;
+  background:#fbfbfb;
+}
+.forti-lb-backend-row .forti-switch {
+  justify-content:flex-start;
+}
 .forti-pill {
   display:inline-flex;
   align-items:center;
@@ -1698,6 +1741,7 @@
   font-size:.68rem;
 }
 .forti-pill.success { background:#e5f6e8; color:#11711d; border:1px solid #b8dfbf; }
+.forti-pill.warning { background:#fff6d8; color:#8a5a00; border:1px solid #e7cc78; }
 .forti-pill.danger { background:#ffe8e6; color:#a3261b; border:1px solid #efb6b0; }
 .forti-pill.muted { background:#eee; color:#777; border:1px solid #d0d0d0; }
 .forti-empty-chart {
@@ -3995,6 +4039,7 @@
     padding-right:0;
   }
   .forti-modal-grid > label { align-self:auto; }
+  .forti-lb-backend-row { grid-template-columns:1fr; }
   .forti-modal-actions { flex-wrap:wrap; }
   .forti-modal-actions .btn { flex:1 1 auto; }
   .forti-threat-page { padding:.55rem; }

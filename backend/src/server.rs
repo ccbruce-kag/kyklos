@@ -11,8 +11,9 @@ use crate::apps::settings::{
 use crate::apps::workflow::{WorkflowInput, WorkflowStatusInput};
 use crate::bapi_log;
 use crate::db::{
-    AppDb, CronJobInput, HaproxyBackendServerUpdate, HaproxyLoadBalancerUpdate,
-    JuniperDeviceUpdate, KyklosHaBackendServerUpdate, KyklosHaServiceUpdate,
+    AppDb, CronJobInput, FortigateFirewallPolicy, FortigateFirewallPolicyUpdate,
+    HaproxyBackendServerUpdate, HaproxyLoadBalancerUpdate, JuniperDeviceUpdate,
+    KyklosHaBackendServerUpdate, KyklosHaServiceUpdate,
 };
 use crate::net::firewall::FirewallCmd;
 use crate::net::haproxy::{BackendServer, HaproxyClient};
@@ -62,6 +63,7 @@ pub struct AppState {
     pub juniper: Arc<JuniperClient>,
     pub haproxy: Arc<HaproxyClient>,
     pub kyklos_ha: Arc<KyklosHaManager>,
+    pub fortigate_lb: Arc<KyklosHaManager>,
     pub nginx: std::sync::Mutex<NginxClient>,
     pub cron: Arc<CronService>,
 }
@@ -188,6 +190,30 @@ pub struct KyklosHaBackendServerForm {
     pub ip: Option<String>,
     pub port: Option<String>,
     pub enabled: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct FortigateFirewallPolicyForm {
+    pub id: Option<i64>,
+    pub name: Option<String>,
+    pub source: Option<String>,
+    pub destination: Option<String>,
+    pub service: Option<String>,
+    pub action: Option<String>,
+    pub nat: Option<String>,
+    pub status: Option<String>,
+    pub schedule: Option<String>,
+    pub security_profiles: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct FortigateFirewallPolicyEnabledForm {
+    pub enabled: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct FortigateFirewallPolicyOrderForm {
+    pub ids: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1316,6 +1342,581 @@ async fn save_and_sync_kyklos_ha(state: &AppState, update: KyklosHaServiceUpdate
             utils::output(Some(&e), None)
         }
     }
+}
+
+// ---- FortiGate Load Balance Handlers ----
+
+async fn handle_fortigate_lb_status(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let runtime = state.fortigate_lb.status().await;
+    let services = match state.db.list_fortigate_lb_services() {
+        Ok(services) => services,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    utils::output(
+        None,
+        Some(json!({
+            "runtime": runtime,
+            "services": services
+        })),
+    )
+}
+
+async fn handle_fortigate_lb_sync(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.fortigate_lb.sync_from_db().await {
+        Ok(status) => utils::output(None, Some(serde_json::to_value(status).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_lb_services(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.list_fortigate_lb_services() {
+        Ok(items) => utils::output(None, Some(serde_json::to_value(items).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_lb_web(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<KyklosHaServiceForm>,
+) -> Json<Value> {
+    let listen_port = match parse_u16_text(form.listen_port.as_deref(), 80, "listen port") {
+        Ok(port) => port,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let servers = match parse_kyklos_ha_servers(form.servers) {
+        Ok(servers) => servers,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let update = KyklosHaServiceUpdate {
+        id: form.id,
+        service_type: "web".to_string(),
+        enabled: form
+            .enabled
+            .as_deref()
+            .map(|value| parse_form_bool(Some(value)))
+            .unwrap_or(true),
+        name: form.name.unwrap_or_else(|| "web".to_string()),
+        bind_addr: form.bind_addr.unwrap_or_else(|| "0.0.0.0".to_string()),
+        listen_port,
+        mode: "http".to_string(),
+        balance_method: form
+            .balance_method
+            .unwrap_or_else(|| "roundrobin".to_string()),
+        health_check_path: Some(form.health_check_path.unwrap_or_else(|| "/".to_string())),
+        health_check: parse_form_bool(form.health_check.as_deref()),
+        servers,
+    };
+    save_and_sync_fortigate_lb(&state, update).await
+}
+
+async fn handle_fortigate_lb_tcp(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<KyklosHaServiceForm>,
+) -> Json<Value> {
+    let listen_port = match parse_u16_text(form.listen_port.as_deref(), 1433, "listen port") {
+        Ok(port) => port,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let servers = match parse_kyklos_ha_servers(form.servers) {
+        Ok(servers) => servers,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let update = KyklosHaServiceUpdate {
+        id: form.id,
+        service_type: "sql".to_string(),
+        enabled: form
+            .enabled
+            .as_deref()
+            .map(|value| parse_form_bool(Some(value)))
+            .unwrap_or(true),
+        name: form.name.unwrap_or_else(|| "sql".to_string()),
+        bind_addr: form.bind_addr.unwrap_or_else(|| "0.0.0.0".to_string()),
+        listen_port,
+        mode: "tcp".to_string(),
+        balance_method: form.balance_method.unwrap_or_else(|| "source".to_string()),
+        health_check_path: None,
+        health_check: parse_form_bool(form.health_check.as_deref()),
+        servers,
+    };
+    save_and_sync_fortigate_lb(&state, update).await
+}
+
+async fn handle_fortigate_lb_set_enabled(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<KyklosHaEnabledForm>,
+) -> Json<Value> {
+    let enabled = parse_form_bool(form.enabled.as_deref());
+    match state.db.set_fortigate_lb_service_enabled(id, enabled) {
+        Ok(true) => match state.fortigate_lb.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("FortiGate LB service not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_lb_delete_service(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    state.fortigate_lb.stop_service(id).await;
+    match state.db.delete_fortigate_lb_service(id) {
+        Ok(true) => match state.fortigate_lb.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("FortiGate LB service not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_lb_update_backend_server(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<KyklosHaBackendServerForm>,
+) -> Json<Value> {
+    if let Some(message) = fortigate_lb_running_backend_guard(&state, id).await {
+        return utils::output(Some(&message), None);
+    }
+    let port = match parse_u16_text(form.port.as_deref(), 0, "backend server port") {
+        Ok(port) => port,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let update = KyklosHaBackendServerUpdate {
+        name: form.name.unwrap_or_default(),
+        ip: form.ip.unwrap_or_default(),
+        port,
+        enabled: Some(
+            form.enabled
+                .as_deref()
+                .map(|value| parse_form_bool(Some(value)))
+                .unwrap_or(true),
+        ),
+    };
+    match state.db.update_fortigate_lb_backend_server(id, update) {
+        Ok(true) => match state.fortigate_lb.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("FortiGate LB backend server not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_lb_set_backend_server_enabled(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<KyklosHaEnabledForm>,
+) -> Json<Value> {
+    if let Some(message) = fortigate_lb_running_backend_guard(&state, id).await {
+        return utils::output(Some(&message), None);
+    }
+    let enabled = parse_form_bool(form.enabled.as_deref());
+    match state.db.set_fortigate_lb_backend_server_enabled(id, enabled) {
+        Ok(true) => match state.fortigate_lb.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("FortiGate LB backend server not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_lb_delete_backend_server(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    if let Some(message) = fortigate_lb_running_backend_guard(&state, id).await {
+        return utils::output(Some(&message), None);
+    }
+    match state.db.delete_fortigate_lb_backend_server(id) {
+        Ok(true) => match state.fortigate_lb.sync_from_db().await {
+            Ok(status) => {
+                utils::output(None, Some(serde_json::to_value(status).unwrap_or_default()))
+            }
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("FortiGate LB backend server not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn fortigate_lb_running_backend_guard(state: &AppState, backend_id: i64) -> Option<String> {
+    let services = match state.db.list_fortigate_lb_services() {
+        Ok(services) => services,
+        Err(e) => return Some(e),
+    };
+    let service = services
+        .iter()
+        .find(|service| service.servers.iter().any(|server| server.id == backend_id))?;
+    if state.fortigate_lb.is_service_running(service.id).await {
+        Some(format!(
+            "Service '{}' 正在執行中。請先停用 Service，再修改 Real Server 設定，避免 Listener 中斷。",
+            service.name
+        ))
+    } else {
+        None
+    }
+}
+
+async fn save_and_sync_fortigate_lb(
+    state: &AppState,
+    update: KyklosHaServiceUpdate,
+) -> Json<Value> {
+    let is_new = update.id.is_none();
+    if let Some(id) = update.id {
+        if update.enabled && state.fortigate_lb.is_service_running(id).await {
+            return utils::output(
+                Some("Service 正在執行中。請先停用 Service，再修改 FortiGate 負載平衡設定。"),
+                None,
+            );
+        }
+    }
+    let saved = match state.db.save_fortigate_lb_service(update) {
+        Ok(saved) => saved,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    match state.fortigate_lb.sync_from_db().await {
+        Ok(status) => utils::output(
+            None,
+            Some(json!({
+                "saved": saved,
+                "runtime": status
+            })),
+        ),
+        Err(e) => {
+            if is_new {
+                let _ = state.db.delete_fortigate_lb_service(saved.id);
+            } else {
+                let _ = state.db.set_fortigate_lb_service_enabled(saved.id, false);
+            }
+            state.fortigate_lb.stop_service(saved.id).await;
+            utils::output(Some(&e), None)
+        }
+    }
+}
+
+// ---- FortiGate Firewall Policy Handlers ----
+
+const FORTIGATE_FIREWALL_CHAIN: &str = "KYKLOS_FGT_POLICY";
+
+async fn handle_fortigate_firewall_policies(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.list_fortigate_firewall_policies() {
+        Ok(items) => utils::output(None, Some(serde_json::to_value(items).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_firewall_save_policy(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<FortigateFirewallPolicyForm>,
+) -> Json<Value> {
+    let update = FortigateFirewallPolicyUpdate {
+        id: form.id,
+        name: form.name.unwrap_or_default(),
+        source: form.source.unwrap_or_else(|| "all".to_string()),
+        destination: form.destination.unwrap_or_else(|| "all".to_string()),
+        service: form.service.unwrap_or_else(|| "ALL".to_string()),
+        action: form.action.unwrap_or_else(|| "ACCEPT".to_string()),
+        nat: parse_form_bool(form.nat.as_deref()),
+        status: form.status.unwrap_or_else(|| "啟用".to_string()),
+        schedule: form.schedule.unwrap_or_else(|| "always".to_string()),
+        security_profiles: form.security_profiles.unwrap_or_default(),
+    };
+    let saved = match state.db.save_fortigate_firewall_policy(update) {
+        Ok(saved) => saved,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    match sync_fortigate_firewall_policies(&state).await {
+        Ok(value) => utils::output(
+            None,
+            Some(json!({
+                "saved": saved,
+                "sync": value
+            })),
+        ),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_firewall_set_policy_enabled(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Form(form): Form<FortigateFirewallPolicyEnabledForm>,
+) -> Json<Value> {
+    let enabled = parse_form_bool(form.enabled.as_deref());
+    match state.db.set_fortigate_firewall_policy_status(id, enabled) {
+        Ok(true) => match sync_fortigate_firewall_policies(&state).await {
+            Ok(value) => utils::output(None, Some(value)),
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("FortiGate firewall policy not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_firewall_delete_policy(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    match state.db.delete_fortigate_firewall_policy(id) {
+        Ok(true) => match sync_fortigate_firewall_policies(&state).await {
+            Ok(value) => utils::output(None, Some(value)),
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Ok(false) => utils::output(Some("FortiGate firewall policy not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_firewall_reorder_policies(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<FortigateFirewallPolicyOrderForm>,
+) -> Json<Value> {
+    let ids: Vec<i64> = match serde_json::from_str(&form.ids.unwrap_or_default()) {
+        Ok(ids) => ids,
+        Err(e) => return utils::output(Some(&format!("invalid FortiGate policy order JSON: {e}")), None),
+    };
+    match state.db.reorder_fortigate_firewall_policies(&ids) {
+        Ok(_) => match sync_fortigate_firewall_policies(&state).await {
+            Ok(value) => utils::output(None, Some(value)),
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_firewall_sync(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match sync_fortigate_firewall_policies(&state).await {
+        Ok(value) => utils::output(None, Some(value)),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_fortigate_firewall_preview(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.list_fortigate_firewall_policies() {
+        Ok(policies) => match fortigate_firewall_commands(&policies) {
+            Ok(commands) => utils::output(None, Some(json!({ "commands": commands }))),
+            Err(e) => utils::output(Some(&e), None),
+        },
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn sync_fortigate_firewall_policies(state: &AppState) -> Result<Value, String> {
+    let policies = state.db.list_fortigate_firewall_policies()?;
+    let commands = fortigate_firewall_commands(&policies)?;
+    let ipc = pick_firewall(state, Some("ipv4"))?;
+
+    let _ = ipc
+        .exec(&vec![
+            "-t".to_string(),
+            "filter".to_string(),
+            "-N".to_string(),
+            FORTIGATE_FIREWALL_CHAIN.to_string(),
+        ])
+        .await;
+    if ipc
+        .exec(&vec![
+            "-t".to_string(),
+            "filter".to_string(),
+            "-C".to_string(),
+            "FORWARD".to_string(),
+            "-j".to_string(),
+            FORTIGATE_FIREWALL_CHAIN.to_string(),
+        ])
+        .await
+        .is_err()
+    {
+        ipc.exec(&vec![
+            "-t".to_string(),
+            "filter".to_string(),
+            "-I".to_string(),
+            "FORWARD".to_string(),
+            "1".to_string(),
+            "-j".to_string(),
+            FORTIGATE_FIREWALL_CHAIN.to_string(),
+        ])
+        .await?;
+    }
+    ipc.exec(&vec![
+        "-t".to_string(),
+        "filter".to_string(),
+        "-F".to_string(),
+        FORTIGATE_FIREWALL_CHAIN.to_string(),
+    ])
+    .await?;
+
+    for args in fortigate_firewall_rule_args(&policies)? {
+        ipc.exec(&args).await?;
+    }
+
+    let runtime = ipc
+        .list_rule("filter", FORTIGATE_FIREWALL_CHAIN)
+        .await
+        .ok()
+        .and_then(|data| serde_json::to_value(data).ok())
+        .unwrap_or(Value::Null);
+    Ok(json!({
+        "chain": FORTIGATE_FIREWALL_CHAIN,
+        "commands": commands,
+        "runtime": runtime,
+        "policies": policies
+    }))
+}
+
+fn fortigate_firewall_commands(policies: &[FortigateFirewallPolicy]) -> Result<Vec<String>, String> {
+    fortigate_firewall_rule_args(policies).map(|rules| {
+        let mut commands = vec![
+            format!("iptables -t filter -N {FORTIGATE_FIREWALL_CHAIN}"),
+            format!("iptables -t filter -C FORWARD -j {FORTIGATE_FIREWALL_CHAIN} || iptables -t filter -I FORWARD 1 -j {FORTIGATE_FIREWALL_CHAIN}"),
+            format!("iptables -t filter -F {FORTIGATE_FIREWALL_CHAIN}"),
+        ];
+        commands.extend(
+            rules
+                .into_iter()
+                .map(|args| format!("iptables {}", args.join(" "))),
+        );
+        commands
+    })
+}
+
+fn fortigate_firewall_rule_args(
+    policies: &[FortigateFirewallPolicy],
+) -> Result<Vec<Vec<String>>, String> {
+    let mut rules = Vec::new();
+    for policy in policies {
+        if policy.status != "啟用" {
+            continue;
+        }
+        let target = match policy.action.as_str() {
+            "ACCEPT" => "ACCEPT",
+            "DENY" | "DROP" => "DROP",
+            "REJECT" => "REJECT",
+            other => return Err(format!("unsupported FortiGate firewall action: {other}")),
+        };
+        for service in fortigate_service_specs(&policy.service)? {
+            let mut args = vec![
+                "-t".to_string(),
+                "filter".to_string(),
+                "-A".to_string(),
+                FORTIGATE_FIREWALL_CHAIN.to_string(),
+            ];
+            append_fortigate_addr_match(&mut args, "-s", &policy.source)?;
+            append_fortigate_addr_match(&mut args, "-d", &policy.destination)?;
+            if let Some(protocol) = service.protocol {
+                args.push("-p".to_string());
+                args.push(protocol.to_string());
+            }
+            if !service.ports.is_empty() {
+                args.push("-m".to_string());
+                args.push(if service.ports.len() > 1 {
+                    "multiport".to_string()
+                } else {
+                    service.protocol.unwrap_or("tcp").to_string()
+                });
+                args.push(if service.ports.len() > 1 {
+                    "--dports".to_string()
+                } else {
+                    "--dport".to_string()
+                });
+                args.push(service.ports.join(","));
+            }
+            args.push("-m".to_string());
+            args.push("comment".to_string());
+            args.push("--comment".to_string());
+            args.push(format!("fortigate-policy:{}:{}", policy.id, policy.name));
+            args.push("-j".to_string());
+            args.push(target.to_string());
+            rules.push(args);
+        }
+    }
+    Ok(rules)
+}
+
+struct FortigateServiceSpec {
+    protocol: Option<&'static str>,
+    ports: Vec<String>,
+}
+
+fn fortigate_service_specs(raw: &str) -> Result<Vec<FortigateServiceSpec>, String> {
+    let mut specs = Vec::new();
+    for token in raw.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+        match token.to_ascii_uppercase().as_str() {
+            "ALL" | "ANY" => specs.push(FortigateServiceSpec {
+                protocol: None,
+                ports: Vec::new(),
+            }),
+            "HTTP" => specs.push(FortigateServiceSpec {
+                protocol: Some("tcp"),
+                ports: vec!["80".to_string()],
+            }),
+            "HTTPS" => specs.push(FortigateServiceSpec {
+                protocol: Some("tcp"),
+                ports: vec!["443".to_string()],
+            }),
+            "SSH" => specs.push(FortigateServiceSpec {
+                protocol: Some("tcp"),
+                ports: vec!["22".to_string()],
+            }),
+            "RDP" => specs.push(FortigateServiceSpec {
+                protocol: Some("tcp"),
+                ports: vec!["3389".to_string()],
+            }),
+            "MSSQL" | "SQL" => specs.push(FortigateServiceSpec {
+                protocol: Some("tcp"),
+                ports: vec!["1433".to_string()],
+            }),
+            "DNS" | "DNS_UDP" => specs.push(FortigateServiceSpec {
+                protocol: Some("udp"),
+                ports: vec!["53".to_string()],
+            }),
+            "WEB_SERVICES" => specs.push(FortigateServiceSpec {
+                protocol: Some("tcp"),
+                ports: vec!["80".to_string(), "443".to_string()],
+            }),
+            value if value.chars().all(|ch| ch.is_ascii_digit() || ch == '-' || ch == ':') => {
+                specs.push(FortigateServiceSpec {
+                    protocol: Some("tcp"),
+                    ports: vec![value.replace(':', "-")],
+                });
+            }
+            value => return Err(format!("unsupported FortiGate firewall service: {value}")),
+        }
+    }
+    if specs.is_empty() {
+        specs.push(FortigateServiceSpec {
+            protocol: None,
+            ports: Vec::new(),
+        });
+    }
+    Ok(specs)
+}
+
+fn append_fortigate_addr_match(args: &mut Vec<String>, flag: &str, value: &str) -> Result<(), String> {
+    let value = value.trim();
+    if value.is_empty() || matches!(value.to_ascii_lowercase().as_str(), "all" | "any") {
+        return Ok(());
+    }
+    let allowed = value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | ':' | '/' | '-' | '_'));
+    if !allowed || value.contains(' ') {
+        return Err(format!("invalid FortiGate firewall address match: {value}"));
+    }
+    args.push(flag.to_string());
+    args.push(value.to_string());
+    Ok(())
 }
 
 // ---- Nginx Handlers ----
@@ -4835,6 +5436,64 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/kyklos-ha/backend-servers/:id/delete",
             post(handle_kyklos_ha_delete_backend_server),
         )
+        .route(
+            "/fortigate/load-balance/status",
+            get(handle_fortigate_lb_status),
+        )
+        .route(
+            "/fortigate/load-balance/sync",
+            post(handle_fortigate_lb_sync),
+        )
+        .route(
+            "/fortigate/load-balance/services",
+            get(handle_fortigate_lb_services),
+        )
+        .route("/fortigate/load-balance/web", post(handle_fortigate_lb_web))
+        .route("/fortigate/load-balance/tcp", post(handle_fortigate_lb_tcp))
+        .route(
+            "/fortigate/load-balance/services/:id/enabled",
+            post(handle_fortigate_lb_set_enabled),
+        )
+        .route(
+            "/fortigate/load-balance/services/:id/delete",
+            post(handle_fortigate_lb_delete_service),
+        )
+        .route(
+            "/fortigate/load-balance/backend-servers/:id",
+            post(handle_fortigate_lb_update_backend_server),
+        )
+        .route(
+            "/fortigate/load-balance/backend-servers/:id/enabled",
+            post(handle_fortigate_lb_set_backend_server_enabled),
+        )
+        .route(
+            "/fortigate/load-balance/backend-servers/:id/delete",
+            post(handle_fortigate_lb_delete_backend_server),
+        )
+        .route(
+            "/fortigate/firewall/policies",
+            get(handle_fortigate_firewall_policies).post(handle_fortigate_firewall_save_policy),
+        )
+        .route(
+            "/fortigate/firewall/policies/:id/enabled",
+            post(handle_fortigate_firewall_set_policy_enabled),
+        )
+        .route(
+            "/fortigate/firewall/policies/:id/delete",
+            post(handle_fortigate_firewall_delete_policy),
+        )
+        .route(
+            "/fortigate/firewall/policies/reorder",
+            post(handle_fortigate_firewall_reorder_policies),
+        )
+        .route(
+            "/fortigate/firewall/sync",
+            post(handle_fortigate_firewall_sync),
+        )
+        .route(
+            "/fortigate/firewall/preview",
+            get(handle_fortigate_firewall_preview),
+        )
         .route("/api/haproxy/status", get(handle_haproxy_status))
         .route("/api/haproxy/reload", post(handle_haproxy_reload))
         .route("/api/haproxy/restart", post(handle_haproxy_restart))
@@ -4893,6 +5552,70 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/kyklos-ha/backend-servers/:id/delete",
             post(handle_kyklos_ha_delete_backend_server),
+        )
+        .route(
+            "/api/fortigate/load-balance/status",
+            get(handle_fortigate_lb_status),
+        )
+        .route(
+            "/api/fortigate/load-balance/sync",
+            post(handle_fortigate_lb_sync),
+        )
+        .route(
+            "/api/fortigate/load-balance/services",
+            get(handle_fortigate_lb_services),
+        )
+        .route(
+            "/api/fortigate/load-balance/web",
+            post(handle_fortigate_lb_web),
+        )
+        .route(
+            "/api/fortigate/load-balance/tcp",
+            post(handle_fortigate_lb_tcp),
+        )
+        .route(
+            "/api/fortigate/load-balance/services/:id/enabled",
+            post(handle_fortigate_lb_set_enabled),
+        )
+        .route(
+            "/api/fortigate/load-balance/services/:id/delete",
+            post(handle_fortigate_lb_delete_service),
+        )
+        .route(
+            "/api/fortigate/load-balance/backend-servers/:id",
+            post(handle_fortigate_lb_update_backend_server),
+        )
+        .route(
+            "/api/fortigate/load-balance/backend-servers/:id/enabled",
+            post(handle_fortigate_lb_set_backend_server_enabled),
+        )
+        .route(
+            "/api/fortigate/load-balance/backend-servers/:id/delete",
+            post(handle_fortigate_lb_delete_backend_server),
+        )
+        .route(
+            "/api/fortigate/firewall/policies",
+            get(handle_fortigate_firewall_policies).post(handle_fortigate_firewall_save_policy),
+        )
+        .route(
+            "/api/fortigate/firewall/policies/:id/enabled",
+            post(handle_fortigate_firewall_set_policy_enabled),
+        )
+        .route(
+            "/api/fortigate/firewall/policies/:id/delete",
+            post(handle_fortigate_firewall_delete_policy),
+        )
+        .route(
+            "/api/fortigate/firewall/policies/reorder",
+            post(handle_fortigate_firewall_reorder_policies),
+        )
+        .route(
+            "/api/fortigate/firewall/sync",
+            post(handle_fortigate_firewall_sync),
+        )
+        .route(
+            "/api/fortigate/firewall/preview",
+            get(handle_fortigate_firewall_preview),
         )
         .route("/juniper/info", get(handle_juniper_info))
         .route(

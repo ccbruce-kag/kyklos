@@ -34,3 +34,13 @@ interface Window {
   setLanguage?: (lang: string, persist?: boolean) => void;
   loadIptables?: () => void;
 }
+
+declare module 'reportbro-designer' {
+  export class ReportBro {
+    constructor(element: HTMLElement, properties?: Record<string, unknown>);
+    getReport(): Record<string, unknown>;
+    load(report: Record<string, unknown>): void;
+    save(): void;
+    destroy?: () => void;
+  }
+}

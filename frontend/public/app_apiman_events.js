@@ -1,13 +1,30 @@
     $(function () {
       // ─── ApiMan event handlers ───
-      $(document).on('click', '#apimanCreateFirstWs', function () {
+      $(document).on('click', '#apimanCreateFirstWs,#apimanCreateWsBtn', function () {
         openApiManWorkspaceDialog();
       });
-      $(document).on('click', '.apiman-del-ws', function () {
+      $(document).on('click', '.apiman-del-ws', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
         var id = $(this).data('id');
+        var wsId = $(this).closest('.apiman-ws-item').data('ws-id');
         if (!confirm('確認刪除此工作區及所有內容？')) return;
         $.ajax({ url: apimanUrl('/workspaces/' + id), type: 'DELETE', dataType: 'json' })
-          .done(function (res) { if (res.code === 0) { refreshApiManWorkspaceLists(); layer.msg('已刪除', { icon: 1 }); } });
+          .done(function (res) {
+            if (res.code === 0) {
+              if (String(apimanCurrentWsId || '') === String(wsId || id)) {
+                apimanCurrentWsId = null;
+                apimanCurrentNodeId = null;
+                apimanSelectedFolderId = null;
+                $('#apimanRequestCard').hide();
+                $('#apimanEmptyState').show();
+              }
+              refreshApiManWorkspaceLists();
+              showApiManNotice('工作區已刪除', '已回到工作區清單。', 'success');
+            } else {
+              showApiManNotice('ApiMan 刪除失敗', res.msg || 'Unknown error', 'danger');
+            }
+          });
       });
       $(document).on('click', '.apiman-ws-item', function () {
         var wsId = $(this).data('ws-id');
@@ -15,7 +32,13 @@
         $('#apimanCurrentWsLabel').text(name);
         renderApiManTreeForWs(wsId);
       });
-      $(document).on('click', '.apiman-back-ws', function () { apimanCurrentWsId = null; renderApiManTree(); });
+      $(document).on('click', '.apiman-back-ws', function () {
+        apimanCurrentWsId = null;
+        apimanCurrentNodeId = null;
+        apimanSelectedFolderId = null;
+        renderApiManTree();
+        showApiManNotice('已返回工作區清單', '可按 + 建立新工作區，或選擇既有工作區。', 'success');
+      });
       $(document).on('click', '.apiman-menu-ws-link', function (e) {
         e.preventDefault();
         var wsId = $(this).data('ws-id');
@@ -51,7 +74,7 @@
           reader.onload = function (ev) {
             var data = ev.target.result;
             $.post('/apiman/workspaces/import', { data: data }, function (res) {
-              if (res.code === 0) { layer.msg('工作區已匯入', { icon: 1 }); refreshApiManWorkspaceLists(); }
+              if (res.code === 0) { refreshApiManWorkspaceLists(); showApiManNotice('工作區已匯入', '已更新工作區清單。', 'success'); }
               else { layer.alert(res.msg); }
             });
           };
@@ -122,7 +145,7 @@
         input.setSelectionRange(pos, pos);
       });
       // ─── ApiMan inline rename (double-click to rename folders) ───
-      $(document).on('dblclick', '.apiman-folder-header > span', function () {
+      $(document).on('dblclick', '.apiman-folder-header .apiman-node-name', function () {
         var $item = $(this).closest('[data-node-id]');
         var nodeId = $item.data('node-id');
         var currentText = $(this).text().trim();
@@ -170,9 +193,13 @@
         $('.apiman-drop-zone').css({'background':'','outline':''});
         var draggedId = apimanDragNodeId;
         if (!draggedId) return;
-        // Determine target parent
-        var $zone = $(this).closest('.apiman-drop-zone');
-        var newParentId = $zone.data('parent-id') || null;
+        var newParentId = null;
+        if ($(this).hasClass('apiman-folder-header')) {
+          newParentId = $(this).data('node-id');
+        } else {
+          var $zone = $(this).closest('.apiman-drop-zone');
+          newParentId = $zone.data('parent-id') || null;
+        }
         if (newParentId && newParentId == draggedId) return; // Can't drop on self
         // Get workspace id from the add-req button
         var wsId = $('.apiman-add-req').data('ws');
@@ -188,6 +215,11 @@
         if ($(e.target).closest('button,input,textarea,.apiman-del-node,.apiman-copy-node').length) return;
         var nodeId = $(this).data('node-id');
         if (!nodeId) return;
+        apimanSelectedFolderId = nodeId;
+        $('.apiman-folder-header').removeClass('is-selected');
+        $(this).addClass('is-selected');
+        var folderName = $(this).data('node-name') || $(this).find('.apiman-node-name').text().trim();
+        $('#apimanFolderHint').html('<strong>目前位置：</strong>' + escHtml(folderName) + '。新增資料夾或 Request 會放在此資料夾底下。');
         apimanExpanded[nodeId] = !(apimanExpanded[nodeId] !== false);
         var $parent = $(this).closest('.apiman-folder-item');
         $parent.find('.apiman-children').toggleClass('d-none');
@@ -199,9 +231,15 @@
         var wsId = $(this).data('ws');
         var name = window.prompt('資料夾名稱:');
         if (name && name.trim()) {
-          $.post(apimanUrl('/nodes'), { workspace_id: wsId, name: name.trim(), node_type: 'folder' }, function (res) {
-            if (res.code === 0) { renderApiManTreeForWs(wsId); }
-            else { layer.alert(res.msg); }
+          var payload = { workspace_id: wsId, name: name.trim(), node_type: 'folder' };
+          if (apimanSelectedFolderId) payload.parent_id = apimanSelectedFolderId;
+          $.post(apimanUrl('/nodes'), payload, function (res) {
+            if (res.code === 0) {
+              if (apimanSelectedFolderId) apimanExpanded[apimanSelectedFolderId] = true;
+              renderApiManTreeForWs(wsId);
+              showApiManNotice('資料夾已新增', name.trim(), 'success');
+            }
+            else { showApiManNotice('新增資料夾失敗', res.msg || 'Unknown error', 'danger'); }
           });
         }
       });
@@ -209,14 +247,39 @@
         var wsId = $(this).data('ws');
         var name = window.prompt('Request 名稱:');
         if (name && name.trim()) {
-          $.post(apimanUrl('/nodes'), { workspace_id: wsId, name: name.trim(), node_type: 'request' }, function (res) {
-            if (res.code === 0) { renderApiManTreeForWs(wsId); }
-            else { layer.alert(res.msg); }
+          var payload = { workspace_id: wsId, name: name.trim(), node_type: 'request' };
+          if (apimanSelectedFolderId) payload.parent_id = apimanSelectedFolderId;
+          $.post(apimanUrl('/nodes'), payload, function (res) {
+            if (res.code === 0) {
+              if (apimanSelectedFolderId) apimanExpanded[apimanSelectedFolderId] = true;
+              renderApiManTreeForWs(wsId);
+              showApiManNotice('Request 已新增', name.trim(), 'success');
+            }
+            else { showApiManNotice('新增 Request 失敗', res.msg || 'Unknown error', 'danger'); }
           });
         }
       });
+      $(document).on('click', '#apimanNewFolder', function (e) {
+        e.preventDefault();
+        if (!apimanCurrentWsId) {
+          showApiManNotice('請先進入工作區', '資料夾必須建立在某個工作區內。', 'warning');
+          return;
+        }
+        $('.apiman-add-folder').first().trigger('click');
+      });
+      $(document).on('click', '#apimanNewRequest', function (e) {
+        e.preventDefault();
+        if (!apimanCurrentWsId) {
+          showApiManNotice('請先進入工作區', 'Request 必須建立在某個工作區內。', 'warning');
+          return;
+        }
+        $('.apiman-add-req').first().trigger('click');
+      });
       $(document).on('click', '.apiman-req-item', function () {
         var nodeId = $(this).data('node-id');
+        apimanCurrentNodeId = nodeId;
+        $('.apiman-req-item').removeClass('is-active');
+        $(this).addClass('is-active');
         loadApiManRequest(nodeId);
       });
       $(document).on('click', '.apiman-copy-node', function (e) {
@@ -226,16 +289,31 @@
           if (res.code === 0) {
             var wsId = $('.apiman-add-req').data('ws');
             if (wsId) renderApiManTreeForWs(wsId);
-            layer.msg('已複製', { icon: 1 });
-          } else { layer.alert(res.msg); }
+            showApiManNotice('ApiMan 節點已複製', '已新增一份副本。', 'success');
+          } else { showApiManNotice('複製失敗', res.msg || 'Unknown error', 'danger'); }
         });
       });
       $(document).on('click', '.apiman-del-node', function (e) {
         e.stopPropagation();
         var id = $(this).data('id');
+        var isFolder = $(this).closest('.apiman-folder-item').length > 0 && $(this).closest('.apiman-folder-header').length === 0
+          ? false
+          : $(this).closest('.apiman-folder-header').length > 0 || $(this).closest('.apiman-folder-item').children('.apiman-folder-header').find('.apiman-del-node[data-id="' + id + '"]').length > 0;
+        var label = isFolder ? '資料夾' : 'Request';
         if (!confirm('確認刪除？')) return;
         $.ajax({ url: apimanUrl('/nodes/' + id), type: 'DELETE', dataType: 'json' })
-          .done(function (res) { if (res.code === 0) { if (apimanCurrentNodeId === id) { $('#apimanRequestCard').hide(); $('#apimanEmptyState').show(); } renderApiManTreeForWs($('.apiman-add-req').data('ws')); } });
+          .done(function (res) {
+            if (res.code === 0) {
+              apimanCurrentNodeId = null;
+              if (String(apimanSelectedFolderId || '') === String(id)) apimanSelectedFolderId = null;
+              $('#apimanRequestCard').hide();
+              $('#apimanEmptyState').show();
+              renderApiManTreeForWs($('.apiman-add-req').data('ws'));
+              showApiManNotice(label + '已刪除', '已清除目前選取狀態。', 'success');
+            } else {
+              showApiManNotice('刪除失敗', res.msg || 'Unknown error', 'danger');
+            }
+          });
       });
       $(document).on('click', '#apimanAddParam', function () { addApiManKvRow('#apimanParamsList', 'apimanParam'); });
       $(document).on('click', '#apimanAddHeader', function () { addApiManKvRow('#apimanHeadersList', 'apimanHeader'); });
@@ -249,15 +327,29 @@
         );
       }
       $(document).on('click', '.apiman-kv-del', function () { $(this).closest('.apiman-kv-row').remove(); });
-      $('#apimanHistoryBtn').on('click', function () { if (apimanCurrentNodeId) loadApiManHistory(apimanCurrentNodeId); });
+      $('#apimanHistoryBtn').on('click', function () {
+        if (apimanCurrentNodeId) loadApiManHistory(apimanCurrentNodeId);
+        else showApiManNotice('請先選擇 Request', '選取 Request 後才能查看歷史紀錄。', 'warning');
+      });
       $(document).on('click', '.apiman-view-history', function () {
         try {
-          var data = JSON.parse($(this).data('body'));
+          var raw = $(this).attr('data-body');
+          var cached = $(this).data('body');
+          var data = null;
+          if (raw) {
+            data = JSON.parse(decodeURIComponent(raw));
+          } else if (typeof cached === 'string') {
+            data = JSON.parse(cached);
+          } else {
+            data = cached;
+          }
+          if (!data || typeof data !== 'object') throw new Error('history response payload is empty');
           var html = '<div class="mb-1"><strong>Status:</strong> ' + data.status + '</div>' +
             (data.headers ? '<div class="mb-1"><strong>Headers:</strong><pre style="font-size:.7rem;max-height:150px;overflow:auto">' + escHtml(data.headers) + '</pre></div>' : '') +
             (data.body ? '<div><strong>Body:</strong><pre style="font-size:.7rem;max-height:300px;overflow:auto">' + escHtml(data.body) + '</pre></div>' : '');
+          showApiManNotice('Response 已開啟', 'Status: ' + (data.status || '?'), 'success');
           layer.open({ title: 'Response #' + data.id, content: html, area: ['700px', '70vh'], btn: ['OK'] });
-        } catch(e) { layer.msg('Error loading response'); }
+        } catch(e) { showApiManNotice('Response 載入失敗', String(e), 'danger'); }
       });
       $('#apimanSaveReqBtn').on('click', function () {
         var nodeId = apimanCurrentNodeId;
@@ -273,7 +365,14 @@
         };
         logger.info('儲存 ApiMan Request', data.method + ' ' + data.url);
         $.ajax({ url: apimanUrl('/requests/' + nodeId), type: 'PUT', data: data, dataType: 'json' })
-          .done(function (res) { if (res.code === 0) { layer.msg('已儲存', { icon: 1 }); } else { layer.alert(res.msg); } });
+          .done(function (res) {
+            if (res.code === 0) {
+              updateApiManRequestTreeItem(nodeId, data.method, data.url);
+              showApiManNotice('Request 已儲存', data.method + ' ' + (data.url || '尚未設定 URL'), 'success');
+            } else {
+              showApiManNotice('Request 儲存失敗', res.msg || 'Unknown error', 'danger');
+            }
+          });
       });
       $('#apimanSendBtn').on('click', function () {
         var nodeId = apimanCurrentNodeId;
@@ -289,11 +388,20 @@
         };
         // Save first, then send
         $.ajax({ url: apimanUrl('/requests/' + nodeId), type: 'PUT', data: data, dataType: 'json' })
-          .done(function () {
+          .done(function (saveRes) {
+            if (saveRes && saveRes.code !== 0) {
+              showApiManNotice('Request 儲存失敗', saveRes.msg || 'Unknown error', 'danger');
+              return;
+            }
+            updateApiManRequestTreeItem(nodeId, data.method, data.url);
             logger.info('送出 ApiMan Request', data.method + ' ' + data.url);
             $('#apimanResponse').html('<div class="text-muted">發送中...</div>');
             $.post(apimanUrl('/requests/' + nodeId + '/send'), {}, function (res) {
-              if (res.code !== 0) { $('#apimanResponse').html('<pre class="text-danger p-2" style="font-size:.75rem">' + escHtml(res.msg) + '</pre>'); return; }
+              if (res.code !== 0) {
+                $('#apimanResponse').html('<pre class="text-danger p-2" style="font-size:.75rem">' + escHtml(res.msg) + '</pre>');
+                showApiManNotice('Request 測試失敗', res.msg || 'Unknown error', 'danger');
+                return;
+              }
               var r = res.data;
               var statusCls = r.status >= 200 && r.status < 300 ? 'text-success' : r.status >= 400 ? 'text-danger' : 'text-warning';
               var html = '<div class="border rounded p-2 mt-2" style="font-size:.75rem;background:var(--bs-tertiary-bg)">' +
@@ -302,6 +410,7 @@
                 (r.body ? '<div><strong>Body:</strong><pre style="font-size:.6875rem;max-height:300px;overflow:auto">' + escHtml(r.body) + '</pre></div>' : '') +
                 '</div>';
               $('#apimanResponse').html(html);
+              showApiManNotice('Request 測試完成', 'Status: ' + (r.status || '?'), r.status >= 200 && r.status < 400 ? 'success' : 'warning');
               logger.debug('ApiMan Response', 'Status=' + r.status);
             });
           });

@@ -2427,6 +2427,7 @@ export default function FortigateView() {
       await loadFortiFirewallPolicies(false)
       setLastAction(`政策 ${id} 已${selected.status === '啟用' ? '停用' : '啟用'}並同步 iptables`)
     } catch (error) {
+      await loadFortiFirewallPolicies(false)
       setLastAction(`FortiGate IPv4 政策狀態切換失敗：${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setFortiPolicyLoading(false)
@@ -2475,6 +2476,7 @@ export default function FortigateView() {
       setPolicyModalMode(null)
       setLastAction('IPv4 政策已儲存並同步 iptables')
     } catch (error) {
+      await loadFortiFirewallPolicies(false)
       setLastAction(`FortiGate IPv4 政策儲存失敗：${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setFortiPolicyLoading(false)
@@ -2490,6 +2492,7 @@ export default function FortigateView() {
       await loadFortiFirewallPolicies(false)
       setLastAction('IPv4 政策已刪除並同步 iptables')
     } catch (error) {
+      await loadFortiFirewallPolicies(false)
       setLastAction(`FortiGate IPv4 政策刪除失敗：${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setFortiPolicyLoading(false)
@@ -2541,6 +2544,7 @@ export default function FortigateView() {
       await loadFortiFirewallPolicies(false)
       setLastAction('IPv4 政策順序已調整並同步 iptables')
     } catch (error) {
+      await loadFortiFirewallPolicies(false)
       setLastAction(`FortiGate IPv4 政策排序失敗：${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setFortiPolicyLoading(false)
@@ -2555,6 +2559,7 @@ export default function FortigateView() {
       await loadFortiFirewallPolicies(false)
       setLastAction('FortiGate IPv4 政策已同步至 iptables')
     } catch (error) {
+      await loadFortiFirewallPolicies(false)
       setLastAction(`FortiGate IPv4 政策同步失敗：${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setFortiPolicyLoading(false)
@@ -3941,12 +3946,12 @@ export default function FortigateView() {
             {interfaces.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
           </select>
           <button className="btn btn-sm btn-outline-secondary" onClick={syncFortiInterfaces}>讀取真實介面</button>
-          <button className="btn btn-sm forti-btn" onClick={() => openInterfaceModal('add')}>新增</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openInterfaceModal('add')}><i className="bx bx-plus"></i> 新增</button>
           <button className="btn btn-sm forti-btn" onClick={createVlanInterfaceDraft}>建立 VLAN</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openInterfaceModal('edit')}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteCurrentInterface}>刪除</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openInterfaceModal('edit')}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteCurrentInterface}><i className="bx bx-trash"></i> 刪除</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={pushInterfaceNetworkSettings}>下發 IP/DHCP</button>
-          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '網路介面' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('網路介面')}><i className="bx bx-refresh"></i></button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '網路介面' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('網路介面')}><i className="bx bx-refresh"></i> 重新整理</button>
         </div>
         <div className="forti-network-summary">
           <article><span>真實介面讀取</span><strong>{interfaces.length}</strong><small>目前為 UI 草稿，待 API/CLI 串接</small></article>
@@ -4000,7 +4005,7 @@ export default function FortigateView() {
               </select>
               <div className="forti-modal-actions">
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setInterfaceMemberModalOpen(false)}>取消</button>
-                <button type="button" className="btn btn-sm forti-btn" onClick={addInterfaceMember}>新增</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={addInterfaceMember}><i className="bx bx-plus"></i> 新增</button>
               </div>
             </div>
           </div>
@@ -4061,12 +4066,12 @@ export default function FortigateView() {
       <div className="forti-table-page">
         <div className="forti-section-title">靜態路由</div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openRouteModal('add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openRouteModal('edit')} disabled={!selectedRouteId}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedRoute} disabled={!selectedRouteId}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openRouteModal('add')}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openRouteModal('edit')} disabled={!selectedRouteId}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedRoute} disabled={!selectedRouteId}><i className="bx bx-trash"></i> 刪除</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction(`已讀取 routing table：${routes.length} 筆路由，distance/priority 已同步至表格草稿`)}>讀取 routing table</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('靜態路由下發預覽已產生，包含 destination/gateway/interface/distance/priority')}>下發 distance/priority</button>
-          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '靜態路由' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('靜態路由')}><i className="bx bx-refresh"></i></button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '靜態路由' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('靜態路由')}><i className="bx bx-refresh"></i> 重新整理</button>
         </div>
         <div className="forti-route-health">
           {routes.map((route) => (
@@ -4127,15 +4132,15 @@ export default function FortigateView() {
           <section><strong>Policy order</strong><span>上方規則優先比對；排序後會同步 iptables。</span></section>
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openPolicyModal('add')} disabled={fortiPolicyLoading}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openPolicyModal('edit')} disabled={!selectedPolicyId || fortiPolicyLoading}>編輯</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openPolicyModal('add')} disabled={fortiPolicyLoading}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openPolicyModal('edit')} disabled={!selectedPolicyId || fortiPolicyLoading}><i className="bx bx-edit"></i> 編輯</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={copySelectedPolicy} disabled={!selectedPolicyId || fortiPolicyLoading}>複製</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => moveSelectedPolicy('up')} disabled={!selectedPolicyId || fortiPolicyLoading}>上移</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => moveSelectedPolicy('down')} disabled={!selectedPolicyId || fortiPolicyLoading}>下移</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => loadFortiFirewallPolicies()} disabled={fortiPolicyLoading}>重新整理</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => loadFortiFirewallPolicies()} disabled={fortiPolicyLoading}><i className="bx bx-refresh"></i> 重新整理</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={previewFortiFirewallPolicies} disabled={fortiPolicyLoading}>預覽命令</button>
           <button className="btn btn-sm forti-btn" onClick={syncFortiFirewallPolicies} disabled={fortiPolicyLoading}>同步 iptables</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedPolicy} disabled={!selectedPolicyId || fortiPolicyLoading}>刪除</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedPolicy} disabled={!selectedPolicyId || fortiPolicyLoading}><i className="bx bx-trash"></i> 刪除</button>
         </div>
         <table className="forti-table forti-selectable-table">
           <thead><tr><th>Order</th><th>ID</th><th>名稱</th><th>來源</th><th>目的地</th><th>服務</th><th>排程</th><th>資安設定檔</th><th>動作</th><th>NAT</th><th>狀態</th></tr></thead>
@@ -4199,10 +4204,10 @@ export default function FortigateView() {
       <div className="forti-table-page">
         <div className="forti-section-title">位址</div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openAddressModal('add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openAddressModal('edit')} disabled={!selectedAddressId}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedAddress} disabled={!selectedAddressId}>刪除</button>
-          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '位址' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('位址')}><i className="bx bx-refresh"></i></button>
+          <button className="btn btn-sm forti-btn" onClick={() => openAddressModal('add')}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openAddressModal('edit')} disabled={!selectedAddressId}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedAddress} disabled={!selectedAddressId}><i className="bx bx-trash"></i> 刪除</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '位址' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('位址')}><i className="bx bx-refresh"></i> 重新整理</button>
           <input className="form-control form-control-sm" placeholder="搜尋名稱、IP、FQDN" value={search} onChange={(event) => updateTableSearch('addresses', event.target.value)} />
         </div>
         <table className="forti-table forti-selectable-table">
@@ -4250,9 +4255,9 @@ export default function FortigateView() {
           <section><strong>Policy linkage</strong><span>{policies.map((policy) => policy.service).join(', ')}</span></section>
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openServiceModal('add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openServiceModal('edit')} disabled={!selectedServiceId}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedService} disabled={!selectedServiceId}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openServiceModal('add')}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openServiceModal('edit')} disabled={!selectedServiceId}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedService} disabled={!selectedServiceId}><i className="bx bx-trash"></i> 刪除</button>
           <input className="form-control form-control-sm" placeholder="搜尋服務、port、group" value={search} onChange={(event) => updateTableSearch('services', event.target.value)} />
         </div>
         <table className="forti-table forti-selectable-table">
@@ -4296,10 +4301,10 @@ export default function FortigateView() {
       <div className="forti-table-page">
         <div className="forti-section-title">排程</div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openScheduleModal('add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openScheduleModal('edit')} disabled={!selectedScheduleId}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedSchedule} disabled={!selectedScheduleId}>刪除</button>
-          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '排程' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('排程')}><i className="bx bx-refresh"></i></button>
+          <button className="btn btn-sm forti-btn" onClick={() => openScheduleModal('add')}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openScheduleModal('edit')} disabled={!selectedScheduleId}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedSchedule} disabled={!selectedScheduleId}><i className="bx bx-trash"></i> 刪除</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === '排程' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('排程')}><i className="bx bx-refresh"></i> 重新整理</button>
         </div>
         <table className="forti-table forti-selectable-table">
           <thead><tr><th>名稱</th><th>類型</th><th>日期 / 週期</th><th>開始時間</th><th>結束時間</th><th>時區</th><th>狀態</th></tr></thead>
@@ -4427,7 +4432,7 @@ export default function FortigateView() {
               </select>
               <div className="forti-modal-actions">
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setSslListenInterfaceModalOpen(false)}>取消</button>
-                <button type="button" className="btn btn-sm forti-btn" onClick={() => addUniqueChip(sslListenInterfaceDraft, sslListenInterfaces, setSslListenInterfaces, () => setSslListenInterfaceModalOpen(false), '監聽介面')}>新增</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={() => addUniqueChip(sslListenInterfaceDraft, sslListenInterfaces, setSslListenInterfaces, () => setSslListenInterfaceModalOpen(false), '監聽介面')}><i className="bx bx-plus"></i> 新增</button>
               </div>
             </div>
           </div>
@@ -4442,7 +4447,7 @@ export default function FortigateView() {
               </select>
               <div className="forti-modal-actions">
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setSslHostModalOpen(false)}>取消</button>
-                <button type="button" className="btn btn-sm forti-btn" onClick={() => addUniqueChip(sslHostDraft, sslHosts, setSslHosts, () => setSslHostModalOpen(false), '限制主機')}>新增</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={() => addUniqueChip(sslHostDraft, sslHosts, setSslHosts, () => setSslHostModalOpen(false), '限制主機')}><i className="bx bx-plus"></i> 新增</button>
               </div>
             </div>
           </div>
@@ -4549,7 +4554,7 @@ export default function FortigateView() {
             <select value={threatMapTimeRange} onChange={(event) => setThreatMapTimeRange(event.target.value)} aria-label="時間範圍">
               <option>現在</option><option>5 分鐘</option><option>1 小時</option><option>24 小時</option>
             </select>
-            <button type="button" className={`forti-threat-icon-button ${refreshingArea === '資安威脅地圖' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('資安威脅地圖')} title="重新整理"><i className="bx bx-refresh"></i></button>
+            <button type="button" className={`btn btn-sm btn-outline-secondary ${refreshingArea === '資安威脅地圖' ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea('資安威脅地圖')}><i className="bx bx-refresh"></i> 重新整理</button>
           </div>
         </div>
 
@@ -4631,8 +4636,8 @@ export default function FortigateView() {
       <div className="forti-table-page forti-fortiview">
         <div className="forti-section-title">{config.title}</div>
         <div className="forti-toolbar forti-viewbar">
-          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === config.title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(config.title)}><i className="bx bx-refresh"></i></button>
-          <button className="btn btn-sm forti-btn" onClick={() => setLastAction(`${config.title} 過濾條件視窗已開啟`)}>新增過濾條件</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === config.title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(config.title)}><i className="bx bx-refresh"></i> 重新整理</button>
+          <button className="btn btn-sm forti-btn" onClick={() => setLastAction(`${config.title} 過濾條件視窗已開啟`)}><i className="bx bx-plus"></i> 新增過濾條件</button>
           <input className="form-control form-control-sm" value={search} onChange={(event) => updateTableSearch(activePage, event.target.value)} placeholder={config.searchPlaceholder || '搜尋來源、目的、應用程式'} />
           {config.topN && <select className="form-select form-select-sm forti-view-small-select" value={selection.topN || config.topN[0]} onChange={(event) => updateFortiViewTopN(activePage, event.target.value)}>{config.topN.map((option) => <option key={option}>{option}</option>)}</select>}
           {config.filters?.map((filter) => (
@@ -4747,7 +4752,7 @@ export default function FortigateView() {
             {quickFilters.map((filter) => <option key={filter} value={filter}>{filter}</option>)}
           </select>
           <button className="btn btn-sm forti-btn" onClick={() => exportFortiLogCsv(title, config.columns, rows)}>匯出</button>
-          <button className={`btn btn-sm btn-primary ${refreshingArea === title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(title)}>重新整理</button>
+          <button className={`btn btn-sm btn-outline-secondary ${refreshingArea === title ? 'is-refreshing' : ''}`} onClick={() => refreshFortiArea(title)}><i className="bx bx-refresh"></i> 重新整理</button>
         </div>
         <table className="forti-table">
           <thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
@@ -4841,9 +4846,9 @@ export default function FortigateView() {
           </>}
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openManagedModal(activePage, title, 'add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openManagedModal(activePage, title, 'edit')}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={() => deleteManagedRow(activePage, title)}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openManagedModal(activePage, title, 'add')}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openManagedModal(activePage, title, 'edit')}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => deleteManagedRow(activePage, title)}><i className="bx bx-trash"></i> 刪除</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => refreshFortiArea(title)}>{isSla ? '執行實測' : '同步狀態'}</button>
           {isRule && <button className="btn btn-sm btn-outline-secondary" onClick={() => setPage('policyIpv4')}>開啟 Policy</button>}
         </div>
@@ -4869,9 +4874,9 @@ export default function FortigateView() {
       <div className="forti-form-page">
         <div className="forti-section-title">防毒設定檔</div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={addAntivirusProfile}>新增設定檔</button>
+          <button className="btn btn-sm forti-btn" onClick={addAntivirusProfile}><i className="bx bx-plus"></i> 新增設定檔</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={saveAntivirusProfile}>儲存設定檔</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteAntivirusProfile} disabled={!antivirusProfiles.length}>刪除設定檔</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteAntivirusProfile} disabled={!antivirusProfiles.length}><i className="bx bx-trash"></i> 刪除設定檔</button>
         </div>
         <div className="forti-profile-summary">
           <section><strong>檢查模式</strong><span>依政策啟用 flow-based 防毒掃描，針對 Web、FTP、SMB 等流量檢查檔案。</span></section>
@@ -4989,8 +4994,8 @@ export default function FortigateView() {
             {!fabricLinks.length && <span className="forti-table-empty">尚未建立連線關係</span>}
           </div>
           <div className="forti-modal-actions">
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => selectedFabricLinkIndex !== null && openFabricLinkModal(selectedFabricLinkIndex)} disabled={selectedFabricLinkIndex === null}>編輯關係</button>
-            <button type="button" className="btn btn-sm btn-outline-danger" onClick={deleteSelectedFabricLink} disabled={selectedFabricLinkIndex === null}>刪除關係</button>
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => selectedFabricLinkIndex !== null && openFabricLinkModal(selectedFabricLinkIndex)} disabled={selectedFabricLinkIndex === null}><i className="bx bx-edit"></i> 編輯關係</button>
+            <button type="button" className="btn btn-sm btn-outline-danger" onClick={deleteSelectedFabricLink} disabled={selectedFabricLinkIndex === null}><i className="bx bx-trash"></i> 刪除關係</button>
           </div>
         </div>
         {fabricLinkModalOpen && (
@@ -5109,9 +5114,9 @@ export default function FortigateView() {
     const selectedId = selectedManagedIds[activePage] || rows[0]?.id || ''
     return (
       <div className="forti-toolbar">
-        <button className="btn btn-sm forti-btn" onClick={() => openManagedModal(activePage, title, 'add')}>新增</button>
-        <button className="btn btn-sm btn-outline-secondary" onClick={() => openManagedModal(activePage, title, 'edit')} disabled={!selectedId}>編輯</button>
-        <button className="btn btn-sm btn-outline-danger" onClick={() => deleteManagedRow(activePage, title)} disabled={!selectedId}>刪除</button>
+        <button className="btn btn-sm forti-btn" onClick={() => openManagedModal(activePage, title, 'add')}><i className="bx bx-plus"></i> 新增</button>
+        <button className="btn btn-sm btn-outline-secondary" onClick={() => openManagedModal(activePage, title, 'edit')} disabled={!selectedId}><i className="bx bx-edit"></i> 編輯</button>
+        <button className="btn btn-sm btn-outline-danger" onClick={() => deleteManagedRow(activePage, title)} disabled={!selectedId}><i className="bx bx-trash"></i> 刪除</button>
         <input className="form-control form-control-sm" placeholder={searchPlaceholder} value={getTableSearch(activePage)} onChange={(event) => updateTableSearch(activePage, event.target.value)} />
       </div>
     )
@@ -5879,9 +5884,9 @@ export default function FortigateView() {
           <section><strong>通知管道</strong><span>Email、Webhook、Syslog、FortiAnalyzer Event Handler。</span></section>
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openAutomationModal('add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openAutomationModal('edit')} disabled={!selectedAutomationId}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedAutomation} disabled={!selectedAutomationId}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openAutomationModal('add')}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openAutomationModal('edit')} disabled={!selectedAutomationId}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedAutomation} disabled={!selectedAutomationId}><i className="bx bx-trash"></i> 刪除</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => selectedAutomation && setLastAction(`已模擬執行 ${selectedAutomation.name}`)} disabled={!selectedAutomation}>執行測試</button>
           <input className="form-control form-control-sm" placeholder="搜尋" value={getTableSearch('fabricAutomation')} onChange={(event) => updateTableSearch('fabricAutomation', event.target.value)} />
         </div>
@@ -6009,7 +6014,7 @@ export default function FortigateView() {
               </select>
               <div className="forti-modal-actions">
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setFabricInterfaceModalOpen(false)}>取消</button>
-                <button type="button" className="btn btn-sm forti-btn" onClick={addFabricManagementInterface}>新增</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={addFabricManagementInterface}><i className="bx bx-plus"></i> 新增</button>
               </div>
             </div>
           </div>
@@ -6034,9 +6039,9 @@ export default function FortigateView() {
           ))}
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openFabricConnectorModal('add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openFabricConnectorModal('edit')} disabled={!selectedConnector}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedFabricConnector} disabled={!selectedConnector}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openFabricConnectorModal('add')}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openFabricConnectorModal('edit')} disabled={!selectedConnector}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedFabricConnector} disabled={!selectedConnector}><i className="bx bx-trash"></i> 刪除</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => selectedConnector && testFabricConnector(selectedConnector.id)} disabled={!selectedConnector}>連線測試</button>
           <input className="form-control form-control-sm" placeholder="搜尋 Connector / Provider / Endpoint" value={getTableSearch('fabricConnectors')} onChange={(event) => updateTableSearch('fabricConnectors', event.target.value)} />
         </div>
@@ -6141,7 +6146,7 @@ export default function FortigateView() {
               </select>
               <div className="forti-modal-actions">
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setHaHeartbeatModalOpen(false)}>取消</button>
-                <button type="button" className="btn btn-sm forti-btn" onClick={addHaHeartbeatInterface}>新增</button>
+                <button type="button" className="btn btn-sm forti-btn" onClick={addHaHeartbeatInterface}><i className="bx bx-plus"></i> 新增</button>
               </div>
             </div>
           </div>
@@ -6309,9 +6314,9 @@ export default function FortigateView() {
           <section><strong>{tags.find((tag) => tag.id === selectedTagId)?.usedBy || '-'}</strong><span>目前選取標籤被引用於</span></section>
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openTagModal('add')}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openTagModal('edit')} disabled={!selectedTagId}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedTag} disabled={!selectedTagId}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openTagModal('add')}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openTagModal('edit')} disabled={!selectedTagId}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedTag} disabled={!selectedTagId}><i className="bx bx-trash"></i> 刪除</button>
           <input className="form-control form-control-sm" placeholder="搜尋標籤、分類、引用物件" value={search} onChange={(event) => updateTableSearch('featureVisibility', event.target.value)} />
         </div>
         <table className="forti-table forti-selectable-table">
@@ -6578,7 +6583,7 @@ export default function FortigateView() {
             <div className="forti-compliance-section-heading"><div><strong>端點合規狀態</strong><span>從 EMS Telemetry 彙整的端點健康狀態與動態標籤。</span></div><span className="forti-pill success">Last sync 1 min ago</span></div>
             <div className="forti-toolbar forti-compliance-toolbar">
               <input className="form-control form-control-sm" placeholder="搜尋端點、使用者、OS 或標籤" value={search} onChange={(event) => updateTableSearch(activePage, event.target.value)} />
-              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => refreshFortiArea('FortiClient Compliance')}><i className="bx bx-refresh"></i> 同步 EMS</button>
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => refreshFortiArea('FortiClient Compliance')}><i className="bx bx-sync"></i> 同步 EMS</button>
             </div>
             <table className="forti-table forti-selectable-table"><thead><tr><th>端點</th><th>使用者</th><th>作業系統</th><th>EMS</th><th>合規狀態</th><th>動態標籤</th><th>最後回報</th></tr></thead><tbody>
               {filteredEndpoints.map((endpoint) => <tr key={endpoint.id} className={endpoint.id === selectedComplianceEndpointId ? 'is-selected' : ''} onClick={() => setSelectedComplianceEndpointId(endpoint.id)}><td><strong>{endpoint.device}</strong></td><td>{endpoint.user}</td><td>{endpoint.os}</td><td>{endpoint.ems}</td><td><span className={endpoint.posture === 'Compliant' ? 'forti-pill success' : endpoint.posture === 'Warning' ? 'forti-pill muted' : 'forti-pill danger'}>{endpoint.posture}</span></td><td>{endpoint.tags}</td><td>{endpoint.lastSeen}</td></tr>)}
@@ -6646,7 +6651,7 @@ export default function FortigateView() {
               <button className="btn btn-sm forti-btn" onClick={validateCustomSignature}>檢查語法</button>
               <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('自訂特徵值測試完成：sample packet matched 1 rule')}>測試</button>
               <button className="btn btn-sm btn-outline-secondary" onClick={addCustomSignature}>加入清單</button>
-              <button className="btn btn-sm btn-outline-danger" onClick={deleteCustomSignature} disabled={!selectedCustomSignatureId}>刪除選取</button>
+              <button className="btn btn-sm btn-outline-danger" onClick={deleteCustomSignature} disabled={!selectedCustomSignatureId}><i className="bx bx-trash"></i> 刪除選取</button>
               <label className="mt-2">版本</label><input className="form-control form-control-sm" value={customSignatureVersion} onChange={(event) => setCustomSignatureVersion(event.target.value)} />
               {signatureCheckResult && <div className="forti-info-note">{signatureCheckResult}</div>}
             </section>
@@ -6676,9 +6681,9 @@ export default function FortigateView() {
           <section><strong>預設動作</strong><span>{detail.defaultAction}</span></section>
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => setLastAction(`${title} 新增規則視窗已開啟`)}>新增</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction(`${title} 編輯規則視窗已開啟`)}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={() => setLastAction(`${title} 已刪除選取規則`)}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => setLastAction(`${title} 新增規則視窗已開啟`)}><i className="bx bx-plus"></i> 新增</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction(`${title} 編輯規則視窗已開啟`)}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => setLastAction(`${title} 已刪除選取規則`)}><i className="bx bx-trash"></i> 刪除</button>
           <input className="form-control form-control-sm" placeholder="搜尋設定檔、分類、動作" value={search} onChange={(event) => updateTableSearch(activePage, event.target.value)} />
         </div>
         <table className="forti-table forti-selectable-table">
@@ -6724,11 +6729,11 @@ export default function FortigateView() {
         </div>
         <div className="forti-band">分支 Peer</div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openOverlayPeerModal('add')}>新增 Peer</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openOverlayPeerModal('edit')} disabled={!selectedOverlayPeerId}>編輯</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openOverlayPeerModal('add')}><i className="bx bx-plus"></i> 新增 Peer</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openOverlayPeerModal('edit')} disabled={!selectedOverlayPeerId}><i className="bx bx-edit"></i> 編輯</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={onboardSelectedOverlayPeer} disabled={!selectedOverlayPeerId}>Peer Onboarding</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={syncOverlayHealth}>同步健康狀態</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedOverlayPeer} disabled={!selectedOverlayPeerId}>刪除</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedOverlayPeer} disabled={!selectedOverlayPeerId}><i className="bx bx-trash"></i> 刪除</button>
         </div>
         <table className="forti-table forti-selectable-table">
           <thead><tr><th>名稱</th><th>角色</th><th>遠端 Gateway</th><th>分支網段</th><th>Onboarding</th><th>健康狀態</th><th>狀態</th></tr></thead>
@@ -6947,7 +6952,7 @@ export default function FortigateView() {
           </div>
           <div className="forti-toolbar">
             <button className="btn btn-sm forti-btn" onClick={() => { setIpsecWizardMode('create'); setIpsecWizardStep(1); setIpsecWizardError('') }}>建立 IPsec VPN</button>
-            <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedIpsecTunnel} disabled={!selectedIpsecTunnelId}>刪除</button>
+            <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedIpsecTunnel} disabled={!selectedIpsecTunnelId}><i className="bx bx-trash"></i> 刪除</button>
           </div>
           <table className="forti-table forti-selectable-table">
             <thead><tr><th>名稱</th><th>遠端 Gateway</th><th>本地子網</th><th>遠端子網</th><th>Phase1/2</th><th>狀態</th></tr></thead>
@@ -7034,7 +7039,7 @@ export default function FortigateView() {
           <button className="btn btn-sm forti-btn" onClick={addCustomIpsecTemplate}><i className="bx bx-plus"></i> 新增自訂範本</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={importIpsecTemplateSample}><i className="bx bx-import"></i> 匯入範本</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => exportSelectedIpsecTemplate(selectedTemplate)}><i className="bx bx-export"></i> 匯出範本</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedIpsecTemplate} disabled={!selectedTemplate.custom}>刪除自訂範本</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedIpsecTemplate} disabled={!selectedTemplate.custom}><i className="bx bx-trash"></i> 刪除自訂範本</button>
         </div>
         <div className="forti-ipsec-template-hero">
           <section><span>範本數</span><strong>{ipsecTemplates.length}</strong><small>內建與自訂 IPsec 情境</small></section>
@@ -7121,7 +7126,7 @@ export default function FortigateView() {
               <div className="forti-modal-title">新增 Web Bookmark</div>
               <label>Bookmark 名稱</label><input className="form-control form-control-sm" value={sslBookmarkDraft} onChange={(event) => setSslBookmarkDraft(event.target.value)} />
               <label className="mt-2">URL / 目標</label><input className="form-control form-control-sm" defaultValue="https://intranet.local" />
-              <div className="forti-modal-actions"><button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setSslBookmarkModalOpen(false)}>取消</button><button type="button" className="btn btn-sm forti-btn" onClick={addSslBookmark}>新增</button></div>
+              <div className="forti-modal-actions"><button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setSslBookmarkModalOpen(false)}>取消</button><button type="button" className="btn btn-sm forti-btn" onClick={addSslBookmark}><i className="bx bx-plus"></i> 新增</button></div>
             </div>
           </div>
         )}
@@ -7153,9 +7158,9 @@ export default function FortigateView() {
           <label>預設動作</label><select className="form-select form-select-sm" value={actionFilter} onChange={(event) => setWebFilterDefaultAction(event.target.value)}>{webFilterActionOptions.map((option) => <option key={option}>{option}</option>)}</select>
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openUrlFilterModal('add')}>新增 URL</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openUrlFilterModal('edit')} disabled={!selectedUrlFilterId}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedUrlFilter} disabled={!selectedUrlFilterId}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openUrlFilterModal('add')}><i className="bx bx-plus"></i> 新增 URL</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openUrlFilterModal('edit')} disabled={!selectedUrlFilterId}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedUrlFilter} disabled={!selectedUrlFilterId}><i className="bx bx-trash"></i> 刪除</button>
           <input className="form-control form-control-sm" placeholder="搜尋 URL / 網域" value={search} onChange={(event) => updateTableSearch('webFilter', event.target.value)} />
         </div>
         <table className="forti-table forti-selectable-table">
@@ -7216,9 +7221,9 @@ export default function FortigateView() {
           <label>預設 DNS 伺服器</label><input className="form-control form-control-sm" value={selectedDnsRule?.dnsServer || ''} onChange={(event) => updateSelectedDnsRule({ dnsServer: event.target.value })} />
         </div>
         <div className="forti-toolbar">
-          <button className="btn btn-sm forti-btn" onClick={() => openDnsFilterModal('add')}>新增網域</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openDnsFilterModal('edit')} disabled={!selectedDnsFilterId}>編輯</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedDnsFilter} disabled={!selectedDnsFilterId}>刪除</button>
+          <button className="btn btn-sm forti-btn" onClick={() => openDnsFilterModal('add')}><i className="bx bx-plus"></i> 新增網域</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openDnsFilterModal('edit')} disabled={!selectedDnsFilterId}><i className="bx bx-edit"></i> 編輯</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={deleteSelectedDnsFilter} disabled={!selectedDnsFilterId}><i className="bx bx-trash"></i> 刪除</button>
           <input className="form-control form-control-sm" placeholder="搜尋網域 / DNS" value={search} onChange={(event) => updateTableSearch('dnsFilter', event.target.value)} />
         </div>
         <table className="forti-table forti-selectable-table">
@@ -7317,7 +7322,7 @@ export default function FortigateView() {
                   <input className="form-control form-control-sm" placeholder="IP" value={server.ip} onChange={(event) => updateFortiLbDraftServer(index, { ip: event.target.value })} />
                   <input className="form-control form-control-sm" placeholder="Port" value={server.port} onChange={(event) => updateFortiLbDraftServer(index, { port: event.target.value })} />
                   <FortiSwitch checked={server.enabled} onChange={() => updateFortiLbDraftServer(index, { enabled: !server.enabled })} label={server.enabled ? '啟用' : '停用'} />
-                  <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeFortiLbDraftServer(index)} disabled={fortiLbDraft.servers.length <= 1}>刪除</button>
+                  <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeFortiLbDraftServer(index)} disabled={fortiLbDraft.servers.length <= 1}><i className="bx bx-trash"></i> 刪除</button>
                 </div>
               ))}
               <button type="button" className="btn btn-sm btn-outline-secondary" onClick={addFortiLbDraftServer}><i className="bx bx-plus"></i> 新增 Real Server</button>
@@ -7350,7 +7355,7 @@ export default function FortigateView() {
                   <td><span className={server.serviceRunning ? 'forti-pill success' : 'forti-pill muted'}>{server.serviceRunning ? 'Running' : 'Stopped'}</span></td>
                   <td className="forti-row-actions">
                     <button className="btn btn-sm btn-outline-secondary" disabled={server.serviceRunning} onClick={(event) => { event.stopPropagation(); toggleFortiLbBackend(server, server.serviceName) }}>{server.enabled ? '停用' : '啟用'}</button>
-                    <button className="btn btn-sm btn-outline-danger" disabled={server.serviceRunning} onClick={(event) => { event.stopPropagation(); deleteFortiLbBackend(server, server.serviceName) }}>刪除</button>
+                    <button className="btn btn-sm btn-outline-danger" disabled={server.serviceRunning} onClick={(event) => { event.stopPropagation(); deleteFortiLbBackend(server, server.serviceName) }}><i className="bx bx-trash"></i> 刪除</button>
                   </td>
                 </tr>
               ))}
@@ -7434,7 +7439,7 @@ export default function FortigateView() {
           <button className="btn btn-sm forti-btn" onClick={() => openFortiLbModal('add')}><i className="bx bx-plus"></i> 新增 Virtual Server</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => openFortiLbModal('edit')} disabled={!selectedService}><i className="bx bx-edit"></i> 編輯</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => selectedService && toggleFortiLbService(selectedService)} disabled={!selectedService}>{selectedService?.enabled ? '停用' : '啟用'}</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={() => selectedService && deleteFortiLbService(selectedService)} disabled={!selectedService}>刪除</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => selectedService && deleteFortiLbService(selectedService)} disabled={!selectedService}><i className="bx bx-trash"></i> 刪除</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => loadFortiKyklosHaStatus()} disabled={fortiLbLoading}><i className="bx bx-refresh"></i> 重新整理</button>
         </div>
         <table className="forti-table forti-selectable-table">
@@ -7667,10 +7672,10 @@ export default function FortigateView() {
         </div>
         <div className="forti-toolbar">
           <button className="btn btn-sm forti-btn" onClick={() => openManagedModal(activePage, title, 'add')}>匯入</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => openManagedModal(activePage, title, 'edit')} disabled={!selectedId}>編輯</button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => openManagedModal(activePage, title, 'edit')} disabled={!selectedId}><i className="bx bx-edit"></i> 編輯</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('CSR 產生流程已開啟')}>產生 CSR</button>
           <button className="btn btn-sm btn-outline-secondary" onClick={() => setLastAction('憑證已匯出 PEM')}>匯出</button>
-          <button className="btn btn-sm btn-outline-danger" onClick={() => deleteManagedRow(activePage, title)} disabled={!selectedId}>刪除</button>
+          <button className="btn btn-sm btn-outline-danger" onClick={() => deleteManagedRow(activePage, title)} disabled={!selectedId}><i className="bx bx-trash"></i> 刪除</button>
           <input className="form-control form-control-sm" placeholder="搜尋憑證 / issuer / 使用服務" value={getTableSearch(activePage)} onChange={(event) => updateTableSearch(activePage, event.target.value)} />
         </div>
         <table className="forti-table forti-selectable-table">

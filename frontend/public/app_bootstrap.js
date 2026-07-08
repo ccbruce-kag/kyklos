@@ -451,7 +451,7 @@ var _orig_ready = $;
         reportEditorNoData: "尚無 Report，點擊「新增 Report」開始設計。",
         formEditorLabel: "Form 編輯器", formEditorNew: "新增 Form", formEditorEdit: "編輯 Form", formEditorDelete: "刪除 Form",
         formEditorNoData: "尚無 Form，點擊「新增 Form」開始設計。",
-        menuApiManNew: "新增工作區", menuDbManNew: "新增連線",
+        menuApiManNew: "工作區", menuDbManNew: "新增連線",
         menuSecurityCvs: "CVS 資料庫", menuSecurityScan: "網路掃描",
         menuGroupAI: "AI", menuGroupHelp: "協助", systemLabel: "系統現況", docLabel: "命令文件",
         juniperLabel: "Juniper 設定", juniperInfo: "設備資訊", juniperVlan: "VLAN 管理", juniperPort: "Port 管理",
@@ -553,7 +553,7 @@ var _orig_ready = $;
         reportEditorNoData: "No reports yet. Click \"New Report\" to start designing.",
         formEditorLabel: "Form Designer", formEditorNew: "New Form", formEditorEdit: "Edit Form", formEditorDelete: "Delete Form",
         formEditorNoData: "No forms yet. Click \"New Form\" to start designing.",
-        menuApiManNew: "New Workspace", menuDbManNew: "New Connection",
+        menuApiManNew: "Workspaces", menuDbManNew: "New Connection",
         menuSecurityCvs: "CVS Database", menuSecurityScan: "Network Scan",
         menuGroupAI: "AI", menuGroupHelp: "Help", systemLabel: "System", docLabel: "Command Reference",
         juniperLabel: "Juniper Settings", juniperInfo: "Device Info", juniperVlan: "VLAN Management", juniperPort: "Port Management",
@@ -654,7 +654,7 @@ var _orig_ready = $;
         reportEditorNoData: "レポートがありません。「新規レポート」をクリックして作成してください。",
         formEditorLabel: "フォームエディタ", formEditorNew: "新規フォーム", formEditorEdit: "フォーム編集", formEditorDelete: "フォーム削除",
         formEditorNoData: "フォームがありません。「新規フォーム」をクリックして作成してください。",
-        menuApiManNew: "新規ワークスペース", menuDbManNew: "新規接続",
+        menuApiManNew: "ワークスペース", menuDbManNew: "新規接続",
         menuSecurityCvs: "CVS データベース", menuSecurityScan: "ネットワークスキャン",
         menuGroupAI: "AI", menuGroupHelp: "ヘルプ", systemLabel: "システム情報", docLabel: "コマンドリファレンス",
         juniperLabel: "Juniper 設定", juniperInfo: "デバイス情報", juniperVlan: "VLAN 管理", juniperPort: "Port 管理",
@@ -792,7 +792,7 @@ var _orig_ready = $;
       $('#menuLogViewerLabel').text(lng.logViewerLabel || 'Log Viewer');
       $('#menuCrontabLabel').text(lng.crontabLabel || 'Crontab');
       $('#menuGroupApiManLabel').text(lng.menuGroupApiMan || 'ApiMan');
-      $('#menuApiManNewLabel').text(lng.menuApiManNew || 'New Workspace');
+      $('#menuApiManNewLabel').text(lng.menuApiManNew || 'Workspaces');
       $('#menuGroupDbManLabel').text(lng.menuGroupDbMan || 'DbMan');
       $('#menuDbManNewLabel').text(lng.menuDbManNew || 'New Connection');
       $('#menuGroupSecurityLabel').text(lng.menuGroupSecurity || 'Security');

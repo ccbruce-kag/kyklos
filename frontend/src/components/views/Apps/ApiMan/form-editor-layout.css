@@ -9,6 +9,20 @@
   overflow: hidden;
 }
 
+.kyklos-form-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1;
+}
+
+.kyklos-form-tab-label .semi-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 /* ── 左側：元件庫 ── */
 .kyklos-form-palette {
   display: flex;

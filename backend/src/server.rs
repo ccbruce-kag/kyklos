@@ -1835,7 +1835,10 @@ fn fortigate_firewall_rule_args(
             args.push("-m".to_string());
             args.push("comment".to_string());
             args.push("--comment".to_string());
-            args.push(format!("fortigate-policy:{}:{}", policy.id, policy.name));
+            args.push(format!(
+                "fortigate-policy:{}:{}:src={}:dst={}",
+                policy.id, policy.name, policy.source, policy.destination
+            ));
             args.push("-j".to_string());
             args.push(target.to_string());
             rules.push(args);
@@ -1912,11 +1915,35 @@ fn append_fortigate_addr_match(args: &mut Vec<String>, flag: &str, value: &str) 
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | ':' | '/' | '-' | '_'));
     if !allowed || value.contains(' ') {
-        return Err(format!("invalid FortiGate firewall address match: {value}"));
+        return Err(format!("invalid FortiGate firewall address object: {value}"));
+    }
+
+    // FortiGate policies often reference object/interface names such as VLAN_40 or ssl.root.
+    // iptables cannot use those names in -s/-d, so only emit address matches for real IP/CIDR values.
+    // The original object name is still preserved in the rule comment for traceability.
+    if !is_iptables_addr_match(value) {
+        return Ok(());
     }
     args.push(flag.to_string());
     args.push(value.to_string());
     Ok(())
+}
+
+fn is_iptables_addr_match(value: &str) -> bool {
+    if value.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
+    let Some((addr, prefix)) = value.split_once('/') else {
+        return false;
+    };
+    let Ok(prefix) = prefix.parse::<u8>() else {
+        return false;
+    };
+    match addr.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(_)) => prefix <= 32,
+        Ok(std::net::IpAddr::V6(_)) => prefix <= 128,
+        Err(_) => false,
+    }
 }
 
 // ---- Nginx Handlers ----

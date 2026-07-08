@@ -35,16 +35,37 @@ import {
   IconClock,
   IconSend,
   IconCheckboxTick,
-  IconFemale,
   IconPulse,
   IconBranch,
   IconBox,
   IconTextRectangle,
-  IconAlertTriangle,
   IconColorPalette,
   IconLoading,
   IconSetting,
   IconChevronDown,
+  IconHash,
+  IconPhone,
+  IconSearch,
+  IconMail,
+  IconLock,
+  IconLink,
+  IconStar,
+  IconAt,
+  IconUpload,
+  IconUserCircle,
+  IconImage,
+  IconLayers,
+  IconOrderedList,
+  IconGridRectangle,
+  IconMinus,
+  IconCode,
+  IconButtonStroked,
+  IconTreeTriangleRight,
+  IconEyedropper,
+  IconPlusCircle,
+  IconRadio,
+  IconMenu,
+  IconEdit2Stroked,
 } from '@douyinfe/semi-icons'
 import { createForm, onFieldValueChange } from '@formily/core'
 import { FormProvider, createSchemaField, connect, mapProps } from '@formily/react'
@@ -112,34 +133,34 @@ const fieldTemplates: FieldTemplate[] = [
   // ── basic ──
   { value: 'string', label: '單行文字', component: 'Input', category: 'basic', icon: <IconText />, description: '最基本的輸入欄位', defaultProps: { placeholder: '請輸入...' } },
   { value: 'textarea', label: '多行文字', component: 'Input.TextArea', category: 'basic', icon: <IconTextRectangle />, description: '多行輸入 / 描述', defaultProps: { placeholder: '請輸入...' } },
-  { value: 'number', label: '數字', component: 'InputNumber', category: 'basic', icon: <IconLoading />, description: '數值輸入', defaultProps: { placeholder: '請輸入數字' } },
-  { value: 'integer', label: '整數', component: 'InputNumber', category: 'basic', icon: <IconLoading />, description: '整數輸入', defaultProps: { placeholder: '0' } },
-  { value: 'boolean', label: '開關', component: 'Switch', category: 'basic', icon: <IconBranch />, description: '布林值', defaultProps: {} },
+  { value: 'number', label: '數字', component: 'InputNumber', category: 'basic', icon: <IconHash />, description: '數值輸入', defaultProps: { placeholder: '請輸入數字' } },
+  { value: 'integer', label: '整數', component: 'InputNumber', category: 'basic', icon: <IconOrderedList />, description: '整數輸入', defaultProps: { placeholder: '0' } },
+  { value: 'boolean', label: '開關', component: 'Switch', category: 'basic', icon: <IconRadio />, description: '布林值', defaultProps: {} },
   { value: 'date', label: '日期', component: 'DatePicker', category: 'basic', icon: <IconCalendar />, description: '選擇日期', defaultProps: {} },
 
   // ── input ──
-  { value: 'email', label: 'Email', component: 'Input', category: 'input', icon: <IconSend />, description: 'Email 格式', defaultProps: { type: 'email', placeholder: 'name@example.com' } },
-  { value: 'password', label: '密碼', component: 'Input', category: 'input', icon: <IconSetting />, description: '密碼輸入', defaultProps: { type: 'password', placeholder: '••••••' } },
-  { value: 'url', label: '網址', component: 'Input', category: 'input', icon: <IconComponent />, description: 'URL 格式', defaultProps: { type: 'url', placeholder: 'https://...' } },
-  { value: 'tel', label: '電話', component: 'Input', category: 'input', icon: <IconFemale />, description: '電話號碼', defaultProps: { type: 'tel', placeholder: '0912-345-678' } },
-  { value: 'search', label: '搜尋', component: 'Input', category: 'input', icon: <IconAlignCenter />, description: '搜尋欄位', defaultProps: { type: 'search' } },
-  { value: 'color', label: '顏色', component: 'Input', category: 'input', icon: <IconAlertTriangle />, description: '顏色選擇', defaultProps: { type: 'color' } },
-  { value: 'rate', label: '評分', component: 'Rate', category: 'input', icon: <IconFemale />, description: '星級評分 (1-5)', defaultProps: { count: 5 } },
+  { value: 'email', label: 'Email', component: 'Input', category: 'input', icon: <IconMail />, description: 'Email 格式', defaultProps: { type: 'email', placeholder: 'name@example.com' } },
+  { value: 'password', label: '密碼', component: 'Input', category: 'input', icon: <IconLock />, description: '密碼輸入', defaultProps: { type: 'password', placeholder: '••••••' } },
+  { value: 'url', label: '網址', component: 'Input', category: 'input', icon: <IconLink />, description: 'URL 格式', defaultProps: { type: 'url', placeholder: 'https://...' } },
+  { value: 'tel', label: '電話', component: 'Input', category: 'input', icon: <IconPhone />, description: '電話號碼', defaultProps: { type: 'tel', placeholder: '0912-345-678' } },
+  { value: 'search', label: '搜尋', component: 'Input', category: 'input', icon: <IconSearch />, description: '搜尋欄位', defaultProps: { type: 'search' } },
+  { value: 'color', label: '顏色', component: 'Input', category: 'input', icon: <IconEyedropper />, description: '顏色選擇', defaultProps: { type: 'color' } },
+  { value: 'rate', label: '評分', component: 'Rate', category: 'input', icon: <IconStar />, description: '星級評分 (1-5)', defaultProps: { count: 5 } },
   { value: 'slider', label: '滑桿', component: 'Slider', category: 'input', icon: <IconPulse />, description: '數值滑桿', defaultProps: { min: 0, max: 100, step: 1 } },
-  { value: 'stepper', label: '步進器', component: 'InputNumber', category: 'input', icon: <IconPlus />, description: '增減步進', defaultProps: { min: 0, max: 999, step: 1 } },
-  { value: 'signature', label: '簽名', component: 'Input', category: 'input', icon: <IconText />, description: '簽名欄位', defaultProps: { type: 'text' } },
-  { value: 'mention', label: '@提及', component: 'Input.TextArea', category: 'input', icon: <IconBranch />, description: '@提及輸入', defaultProps: { placeholder: '輸入 @ 提及...' } },
+  { value: 'stepper', label: '步進器', component: 'InputNumber', category: 'input', icon: <IconPlusCircle />, description: '增減步進', defaultProps: { min: 0, max: 999, step: 1 } },
+  { value: 'signature', label: '簽名', component: 'Input', category: 'input', icon: <IconEdit2Stroked />, description: '簽名欄位', defaultProps: { type: 'text' } },
+  { value: 'mention', label: '@提及', component: 'Input.TextArea', category: 'input', icon: <IconAt />, description: '@提及輸入', defaultProps: { placeholder: '輸入 @ 提及...' } },
 
   // ── select ──
   { value: 'select', label: '下拉選單', component: 'Select', category: 'select', icon: <IconChevronDown />, description: '單選下拉', defaultProps: {}, hasOptions: true },
   { value: 'multiSelect', label: '多選下拉', component: 'Select', category: 'select', icon: <IconChevronDown />, description: '多選下拉', defaultProps: { multiple: true }, hasOptions: true },
-  { value: 'treeSelect', label: '樹狀選單', component: 'TreeSelect', category: 'select', icon: <IconBox />, description: '樹狀結構選擇', defaultProps: {}, hasOptions: true },
-  { value: 'cascader', label: '層級選擇', component: 'Cascader', category: 'select', icon: <IconBox />, description: '層級聯動選擇', defaultProps: {}, hasOptions: true },
+  { value: 'treeSelect', label: '樹狀選單', component: 'TreeSelect', category: 'select', icon: <IconTreeTriangleRight />, description: '樹狀結構選擇', defaultProps: {}, hasOptions: true },
+  { value: 'cascader', label: '層級選擇', component: 'Cascader', category: 'select', icon: <IconBranch />, description: '層級聯動選擇', defaultProps: {}, hasOptions: true },
   { value: 'radio', label: '單選群組', component: 'Radio.Group', category: 'select', icon: <IconCheckboxTick />, description: '單選按鈕群組', defaultProps: {}, hasOptions: true },
   { value: 'checkboxGroup', label: '複選群組', component: 'Checkbox.Group', category: 'select', icon: <IconCheckboxTick />, description: '多選核取方塊群組', defaultProps: {}, hasOptions: true },
-  { value: 'transfer', label: '穿梭選單', component: 'Select', category: 'select', icon: <IconBranch />, description: '雙欄穿梭選單', defaultProps: { multiple: true }, hasOptions: true },
-  { value: 'tagInput', label: '標籤輸入', component: 'TagInput', category: 'select', icon: <IconFemale />, description: '標籤式多選輸入', defaultProps: {}, hasOptions: true },
-  { value: 'autoComplete', label: '自動完成', component: 'AutoComplete', category: 'select', icon: <IconAlignCenter />, description: '輸入即建議', defaultProps: {}, hasOptions: true },
+  { value: 'transfer', label: '穿梭選單', component: 'Select', category: 'select', icon: <IconSend />, description: '雙欄穿梭選單', defaultProps: { multiple: true }, hasOptions: true },
+  { value: 'tagInput', label: '標籤輸入', component: 'TagInput', category: 'select', icon: <IconHash />, description: '標籤式多選輸入', defaultProps: {}, hasOptions: true },
+  { value: 'autoComplete', label: '自動完成', component: 'AutoComplete', category: 'select', icon: <IconSearch />, description: '輸入即建議', defaultProps: {}, hasOptions: true },
 
   // ── datetime ──
   { value: 'dateRange', label: '日期區間', component: 'DatePicker', category: 'datetime', icon: <IconCalendar />, description: '起訖日期', defaultProps: { type: 'dateRange' } },
@@ -152,23 +173,23 @@ const fieldTemplates: FieldTemplate[] = [
   { value: 'dateTime', label: '日期時間', component: 'DatePicker', category: 'datetime', icon: <IconCalendar />, description: '日期 + 時間', defaultProps: { type: 'dateTime' } },
 
   // ── media ──
-  { value: 'upload', label: '上傳', component: 'Upload', category: 'media', icon: <IconSend />, description: '檔案上傳', defaultProps: {} },
-  { value: 'avatar', label: '頭像', component: 'Avatar', category: 'media', icon: <IconFemale />, description: '頭像上傳', defaultProps: {} },
+  { value: 'upload', label: '上傳', component: 'Upload', category: 'media', icon: <IconUpload />, description: '檔案上傳', defaultProps: {} },
+  { value: 'avatar', label: '頭像', component: 'Avatar', category: 'media', icon: <IconUserCircle />, description: '頭像上傳', defaultProps: {} },
   { value: 'colorPicker', label: '色彩選擇器', component: 'ColorPicker', category: 'media', icon: <IconColorPalette />, description: '色彩挑選', defaultProps: {} },
 
   // ── layout ──
-  { value: 'object', label: '群組容器', component: 'ObjectField', category: 'layout', icon: <IconBox />, description: '巢狀欄位群組', defaultProps: {} },
-  { value: 'list', label: '陣列容器', component: 'ArrayField', category: 'layout', icon: <IconAlignCenter />, description: '重複欄位組', defaultProps: {} },
-  { value: 'array', label: '靜態陣列', component: 'Input', category: 'layout', icon: <IconAlignCenter />, description: 'JSON 陣列', defaultProps: {} },
+  { value: 'object', label: '群組容器', component: 'ObjectField', category: 'layout', icon: <IconLayers />, description: '巢狀欄位群組', defaultProps: {} },
+  { value: 'list', label: '陣列容器', component: 'ArrayField', category: 'layout', icon: <IconOrderedList />, description: '重複欄位組', defaultProps: {} },
+  { value: 'array', label: '靜態陣列', component: 'Input', category: 'layout', icon: <IconList />, description: 'JSON 陣列', defaultProps: {} },
   { value: 'container', label: '容器', component: 'div', category: 'layout', icon: <IconBox />, description: '純容器', defaultProps: {} },
-  { value: 'tabs', label: '分頁', component: 'Tabs', category: 'layout', icon: <IconBranch />, description: '分頁容器', defaultProps: {} },
-  { value: 'grid', label: '格狀', component: 'div', category: 'layout', icon: <IconBox />, description: '格狀佈局', defaultProps: {} },
-  { value: 'divider', label: '分隔線', component: 'Divider', category: 'layout', icon: <IconAlertTriangle />, description: '水平分隔線', defaultProps: {} },
+  { value: 'tabs', label: '分頁', component: 'Tabs', category: 'layout', icon: <IconMenu />, description: '分頁容器', defaultProps: {} },
+  { value: 'grid', label: '格狀', component: 'div', category: 'layout', icon: <IconGridRectangle />, description: '格狀佈局', defaultProps: {} },
+  { value: 'divider', label: '分隔線', component: 'Divider', category: 'layout', icon: <IconMinus />, description: '水平分隔線', defaultProps: {} },
   { value: 'text', label: '純文字', component: 'Typography.Text', category: 'layout', icon: <IconText />, description: '純文字標籤', defaultProps: {} },
-  { value: 'html', label: 'HTML', component: 'div', category: 'layout', icon: <IconComponent />, description: '自訂 HTML', defaultProps: {} },
-  { value: 'button', label: '按鈕', component: 'Button', category: 'layout', icon: <IconBranch />, description: '動作按鈕', defaultProps: { children: '按鈕' } },
-  { value: 'link', label: '連結', component: 'Typography.Text', category: 'layout', icon: <IconBranch />, description: '超連結', defaultProps: { link: { href: '#', target: '_blank' } } },
-  { value: 'image', label: '圖片', component: 'Avatar', category: 'media', icon: <IconFemale />, description: '顯示圖片', defaultProps: {} },
+  { value: 'html', label: 'HTML', component: 'div', category: 'layout', icon: <IconCode />, description: '自訂 HTML', defaultProps: {} },
+  { value: 'button', label: '按鈕', component: 'Button', category: 'layout', icon: <IconButtonStroked />, description: '動作按鈕', defaultProps: { children: '按鈕' } },
+  { value: 'link', label: '連結', component: 'Typography.Text', category: 'layout', icon: <IconLink />, description: '超連結', defaultProps: { link: { href: '#', target: '_blank' } } },
+  { value: 'image', label: '圖片', component: 'Avatar', category: 'media', icon: <IconImage />, description: '顯示圖片', defaultProps: {} },
 ]
 
 const CATEGORIES: Array<{ value: FieldCategory; label: string }> = [
@@ -531,6 +552,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [searchTemplate, setSearchTemplate] = useState('')
   const [dragState, setDragState] = useState<{ fromIndex: number | null; type: FieldType | null }>({ fromIndex: null, type: null })
+  const [activeSideTab, setActiveSideTab] = useState('props')
 
   useEffect(() => {
     if (!visible) {
@@ -827,19 +849,17 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
   const SafeSchemaField = SchemaField
 
   return (
-    <>
-      <div className="modal-backdrop fade show"></div>
-      <div className="modal fade show" tabIndex={-1} style={{ display: 'block' }}>
-        <div className="modal-dialog modal-xxl" style={{ maxWidth: '99vw' }}>
-          <div className="modal-content" style={{ height: '94vh' }}>
-            <div className="modal-header py-2">
-              <h6 className="modal-title d-flex align-items-center gap-2">
+          <div className="card mb-3">
+            <div className="card-header py-2 d-flex align-items-center">
+              <h6 className="modal-title d-flex align-items-center gap-2 mb-0">
                 <IconList />
                 {record ? `編輯 Form #${record.id}` : '新增 Form'}
               </h6>
-              <button type="button" className="btn-close" onClick={onClose} aria-label="Close"></button>
+              <button type="button" className="btn btn-sm btn-outline-secondary ms-auto" onClick={onClose}>
+                <i className="bx bx-arrow-back me-1"></i>返回清單
+              </button>
             </div>
-            <div className="modal-body p-3" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div className="card-body p-3" style={{ height: 'calc(100vh - 220px)', minHeight: 660, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <div className="row g-2 mb-2">
                 <div className="col-md-4">
                   <label className="form-label mb-1" style={{ fontSize: '.7rem' }}>名稱 *</label>
@@ -987,8 +1007,15 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
 
                 {/* 右：屬性 / 預覽 */}
                 <div className="kyklos-form-side">
-                  <SemiTabs type="line" activeKey="props" tabPosition="top" size="small" style={{ flexShrink: 0 }}>
-                    <SemiTabPane tab={<span><IconSetting /> 屬性</span>} itemKey="props">
+                  <SemiTabs
+                    type="line"
+                    activeKey={activeSideTab}
+                    onChange={(key: string) => setActiveSideTab(key)}
+                    tabPosition="top"
+                    size="small"
+                    style={{ flexShrink: 0 }}
+                  >
+                    <SemiTabPane tab={<span className="kyklos-form-tab-label"><IconSetting /> 屬性</span>} itemKey="props">
                       <div className="kyklos-form-props">
                         {!selectedField ? (
                           <SemiEmpty description="點擊畫布中的欄位以編輯屬性" style={{ padding: 24 }} />
@@ -1001,7 +1028,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                         )}
                       </div>
                     </SemiTabPane>
-                    <SemiTabPane tab={<span><IconAlignCenter /> Formily 預覽</span>} itemKey="preview">
+                    <SemiTabPane tab={<span className="kyklos-form-tab-label"><IconAlignCenter /> Formily 預覽</span>} itemKey="preview">
                       <div className="kyklos-form-preview-header">
                         <SemiTypography.Text type="secondary" style={{ fontSize: '.7rem' }}>
                           <IconAlignCenter style={{ marginRight: 4, fontSize: '.8rem' }} />
@@ -1020,7 +1047,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                         )}
                       </div>
                     </SemiTabPane>
-                    <SemiTabPane tab={<span>JSON</span>} itemKey="json">
+                    <SemiTabPane tab={<span className="kyklos-form-tab-label"><IconCode /> JSON</span>} itemKey="json">
                       <div className="d-flex align-items-center mb-2">
                         <strong style={{ fontSize: '.75rem' }}>JSON Schema</strong>
                         <SemiButton size="small" type="tertiary" onClick={applyJson} style={{ marginLeft: 'auto' }}>
@@ -1038,7 +1065,7 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                 </div>
               </div>
             </div>
-            <div className="modal-footer py-2">
+            <div className="card-footer py-2 d-flex align-items-center gap-2 flex-wrap">
               <span className="text-muted me-auto" style={{ fontSize: '.7rem' }}>
                 <IconList style={{ marginRight: 4 }} />
                 Form Builder · @formily/react + @douyinfe/semi-ui（{fieldTemplates.length} 種元件，拖拉式）
@@ -1054,9 +1081,6 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
               </SemiButton>
             </div>
           </div>
-        </div>
-      </div>
-    </>
   )
 }
 

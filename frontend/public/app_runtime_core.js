@@ -162,7 +162,7 @@
       $('#menuApiManNewLink').on('click', function (e) {
         e.preventDefault();
         switchView('apiman');
-        openApiManWorkspaceDialog();
+        renderApiManTree();
       });
       $('#menuDbManNewLink').on('click', function (e) { e.preventDefault(); switchView('dbman'); });
       $(document).on('click', '.dbman-menu-conn-link', function (e) {

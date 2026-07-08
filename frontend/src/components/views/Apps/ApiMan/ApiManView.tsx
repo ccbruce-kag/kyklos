@@ -5,14 +5,7 @@ export default function ApiManView() {
         <div className="col-lg-4 col-xl-3">
           <div className="card">
             <div className="card-header py-2 d-flex justify-content-between align-items-center">
-              <strong style={{ fontSize: '.8125rem' }}><i className="bx bx-folder me-1"></i><span id="apimanTreeTitle">ApiMan</span></strong>
-              <div className="dropdown">
-                <button className="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown"><i className="bx bx-plus"></i></button>
-                <ul className="dropdown-menu dropdown-menu-end" id="apimanAddMenu">
-                  <li><a className="dropdown-item" href="#" id="apimanNewFolder"><i className="bx bx-folder-plus me-1"></i>新增資料夾</a></li>
-                  <li><a className="dropdown-item" href="#" id="apimanNewRequest"><i className="bx bx-plus-circle me-1"></i>新增 Request</a></li>
-                </ul>
-              </div>
+              <strong style={{ fontSize: '1rem' }}><i className="bx bx-folder me-1"></i><span id="apimanTreeTitle">ApiMan</span></strong>
             </div>
             <div className="card-body p-2" id="apimanTreeBody" style={{ minHeight: 200, maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}></div>
           </div>
@@ -110,7 +103,7 @@ export default function ApiManView() {
           <div className="card" id="apimanEmptyState">
             <div className="card-body text-center text-muted py-5">
               <i className="bx bx-folder-open" style={{ fontSize: '3rem', opacity: .3 }}></i>
-              <p className="mt-2" id="apimanEmptyLabel">請選擇一個 Request 或建立新的</p>
+              <p className="mt-2" id="apimanEmptyLabel">請選擇或建立一個新的工作區</p>
             </div>
           </div>
         </div>

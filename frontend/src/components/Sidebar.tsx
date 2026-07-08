@@ -200,7 +200,7 @@ export default function Sidebar() {
             <li className="menu-item" id="menuApiManNew">
               <a href="#" className="menu-link" id="menuApiManNewLink">
                 <i className="menu-icon tf-icons bx bx-plus-circle"></i>
-                <div className="text-truncate" id="menuApiManNewLabel">新增工作區</div>
+                <div className="text-truncate" id="menuApiManNewLabel">工作區</div>
               </a>
             </li>
             <li className="menu-item" id="menuWireframe">

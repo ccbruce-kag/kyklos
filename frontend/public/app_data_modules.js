@@ -188,6 +188,7 @@
     // ─── ApiMan ───
     var apimanBase = '/apiman';
     var apimanCurrentNodeId = null;
+    var apimanSelectedFolderId = null;
     var apimanWorkspaces = [];
     var apimanExpanded = {};
     function apimanUrl(path) { return apimanBase + path; }
@@ -196,24 +197,60 @@
       var s = document.createElement('style');
       s.id = 'apiman-style';
       s.textContent = [
-        '.apiman-ws-item{transition:all .12s ease;border:1px solid var(--bs-border-color);cursor:pointer}',
-        '.apiman-ws-item:hover{border-color:var(--bs-primary);background:rgba(var(--bs-primary-rgb),.04)}',
-        '.apiman-folder-header{transition:background .12s ease;border-radius:4px}',
-        '.apiman-folder-header:hover{background:rgba(var(--bs-secondary-rgb),.06)}',
-        '.apiman-req-item{transition:background .12s ease;border-radius:4px}',
-        '.apiman-req-item:hover{background:rgba(var(--bs-secondary-rgb),.05)}',
+        '.apiman-workspace-toolbar{display:flex;gap:6px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}',
+        '.apiman-workspace-tip{border:1px solid rgba(var(--bs-primary-rgb),.25);background:rgba(var(--bs-primary-rgb),.07);color:var(--bs-body-color);border-radius:6px;padding:8px 10px;font-size:.75rem;line-height:1.45;margin-bottom:8px}',
+        '.apiman-ws-item{transition:all .12s ease;border:1px solid var(--bs-border-color);cursor:pointer;background:var(--bs-body-bg)}',
+        '.apiman-ws-item:hover{border-color:var(--bs-primary);background:rgba(var(--bs-primary-rgb),.04);box-shadow:0 0 0 2px rgba(var(--bs-primary-rgb),.08)}',
+        '.apiman-folder-item{margin:2px 0}',
+        '.apiman-folder-header,.apiman-req-item{transition:all .12s ease;border-radius:6px;border:1px solid transparent;background:transparent}',
+        '.apiman-folder-header:hover,.apiman-req-item:hover{background:rgba(var(--bs-secondary-rgb),.06);border-color:var(--bs-border-color)}',
+        '.apiman-folder-header.is-selected{background:rgba(var(--bs-warning-rgb),.12);border-color:rgba(var(--bs-warning-rgb),.35)}',
+        '.apiman-req-item.is-active{background:rgba(var(--bs-primary-rgb),.1);border-color:rgba(var(--bs-primary-rgb),.35)}',
         '.apiman-method-badge{font-size:.6rem;font-weight:700;padding:1px 5px;border-radius:3px;letter-spacing:.3px}',
         '.apiman-fold-toggle{width:18px;display:inline-block;text-align:center;cursor:pointer;user-select:none;font-size:.7rem;color:var(--bs-secondary-color);transition:color .12s}',
         '.apiman-fold-toggle:hover{color:var(--bs-primary)}',
+        '.apiman-children{margin-left:18px;padding-left:11px;border-left:1px dashed var(--bs-border-color);min-height:8px}',
         '.apiman-tree-line{border-left:1px solid var(--bs-border-color);margin-left:11px}',
         '.apiman-drop-hint{background:rgba(var(--bs-primary-rgb),.06);outline:2px dashed var(--bs-primary)}',
         '.apiman-ws-icon{font-size:.9rem}',
         '.apiman-folder-icon{font-size:.85rem;color:var(--bs-warning)}',
         '.apiman-request-icon{font-size:.75rem;color:var(--bs-info)}',
-        '.apiman-empty-dot{width:6px;height:6px;border-radius:50%;background:var(--bs-border-color);display:inline-block;margin-left:11px}',
+        '.apiman-empty-dot{width:6px;height:6px;border-radius:50%;background:var(--bs-border-color);display:inline-block;margin:6px 0 4px 5px}',
+        '.apiman-node-title{min-width:0;display:flex;align-items:center;gap:4px;font-size:.8125rem}',
+        '.apiman-node-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '.apiman-node-subtitle{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--bs-secondary-color);font-size:.675rem;max-width:170px;margin-top:1px}',
+        '.apiman-node-actions{opacity:.6;transition:opacity .12s}',
+        '.apiman-folder-header:hover .apiman-node-actions,.apiman-req-item:hover .apiman-node-actions{opacity:1}',
+        '.apiman-toast{position:fixed;right:22px;bottom:22px;z-index:2147483000;min-width:260px;max-width:360px;border-radius:8px;padding:12px 14px;background:#111827;color:#fff;box-shadow:0 12px 34px rgba(15,23,42,.28);font-size:.8125rem;border-left:4px solid #696cff}',
+        '.apiman-toast.success{border-left-color:#28c76f}',
+        '.apiman-toast.warning{border-left-color:#ffab00}',
+        '.apiman-toast.danger{border-left-color:#ea5455}',
+        '.apiman-toast-title{font-weight:700;margin-bottom:2px}',
       ].join('');
       document.head.appendChild(s);
     })();
+    function showApiManNotice(title, detail, kind) {
+      $('.apiman-toast').remove();
+      var cls = kind || 'success';
+      var html = '<div class="apiman-toast ' + cls + '">' +
+        '<div class="apiman-toast-title">' + escHtml(title || 'ApiMan') + '</div>' +
+        (detail ? '<div>' + escHtml(detail) + '</div>' : '') + '</div>';
+      $('body').append(html);
+      setTimeout(function () { $('.apiman-toast').fadeOut(180, function () { $(this).remove(); }); }, 3200);
+    }
+    function setApiManEmptyLabel(text) {
+      $('#apimanEmptyLabel').text(text || '請選擇或建立一個新的工作區');
+    }
+    function updateApiManRequestTreeItem(nodeId, method, url) {
+      var $item = $('.apiman-req-item[data-node-id="' + nodeId + '"]');
+      if (!$item.length) return;
+      var safeMethod = method || 'GET';
+      $item.find('.apiman-method-badge').text(safeMethod);
+      var bg = safeMethod === 'GET' ? 'rgba(102,187,106,.15)' : safeMethod === 'POST' ? 'rgba(255,193,7,.2)' : safeMethod === 'DELETE' ? 'rgba(234,84,85,.15)' : 'rgba(3,169,244,.15)';
+      var color = safeMethod === 'GET' ? '#2e7d32' : safeMethod === 'POST' ? '#b8860b' : safeMethod === 'DELETE' ? '#c62828' : '#0277bd';
+      $item.find('.apiman-method-badge').css({ background: bg, color: color });
+      $item.find('.apiman-node-subtitle').text(url && url.trim() ? url.trim() : '尚未設定 URL');
+    }
     function loadApiManWorkspaces(done) {
       $.get(apimanUrl('/workspaces'), function (res) {
         if (res.code === 0) {
@@ -256,13 +293,15 @@
           var description = $('#apimanWsDescInput').val().trim();
           if (!name) { layer.msg(lang.apimanWorkspaceNameRequired || 'Enter a workspace name', { icon: 2 }); return; }
           $.post(apimanUrl('/workspaces'), { name: name, description: description }, function (res) {
-            if (res.code === 0) {
+          if (res.code === 0) {
               _hideModal();
-              layer.msg(lang.apimanWorkspaceCreated || 'Workspace created', { icon: 1 });
               loadApiManWorkspaces(function () {
                 renderApiManTree();
                 rebuildApiManMenu();
-                if (res.data && res.data.id) renderApiManTreeForWs(res.data.id);
+                if (res.data && res.data.id) {
+                  renderApiManTreeForWs(res.data.id);
+                  showApiManNotice(lang.apimanWorkspaceCreated || '工作區已建立', name, 'success');
+                }
               });
             } else {
               layer.alert(res.msg);
@@ -274,19 +313,28 @@
       setTimeout(function () { $('#apimanWsNameInput').trigger('focus'); }, 50);
     }
     function renderApiManTree() {
+      apimanCurrentWsId = null;
+      apimanCurrentNodeId = null;
+      apimanSelectedFolderId = null;
+      $('#apimanRequestCard').hide();
+      $('#apimanEmptyState').show();
+      setApiManEmptyLabel('請選擇或建立一個新的工作區');
       loadApiManWorkspaces(function (workspaces) {
         var $tree = $('#apimanTreeBody');
         var lang = i18n[currentLang] || i18n.en;
         if (!workspaces.length) {
-          $tree.html('<div class="text-muted text-center p-4" style="font-size:.8125rem">' +
+          $tree.html('<div class="apiman-workspace-tip"><strong>工作區入口</strong><br>這裡只列出工作區；請按下 + 建立工作區後，再進入工作區新增資料夾或 Request。</div>' +
+            '<div class="text-muted text-center p-4" style="font-size:.8125rem">' +
             '<i class="bx bx-folder-open" style="font-size:2.2rem;opacity:.25;display:block;margin-bottom:8px"></i>' +
             escHtml(lang.apimanNoWorkspace || 'No workspaces yet') +
             '<br><button class="btn btn-sm btn-outline-primary mt-2" id="apimanCreateFirstWs"><i class="bx bx-plus me-1"></i>' +
             escHtml(lang.apimanCreateFirstWorkspace || 'Create first workspace') + '</button></div>');
           return;
         }
-        var html = '<div class="d-flex justify-content-end gap-1 px-1 mb-1">' +
-          '<button class="btn btn-sm btn-outline-info" id="apimanImportBtn" title="匯入工作區"><i class="bx bx-import"></i></button></div>';
+        var html = '<div class="apiman-workspace-toolbar px-1">' +
+          '<button class="btn btn-sm btn-primary" id="apimanCreateWsBtn"><i class="bx bx-plus me-1"></i>新增工作區</button>' +
+          '<button class="btn btn-sm btn-outline-info" id="apimanImportBtn" title="匯入工作區"><i class="bx bx-import me-1"></i>匯入</button></div>' +
+          '<div class="apiman-workspace-tip"><strong>工作區清單</strong><br>點選工作區名稱進入 Collection。進入後再用上方按鈕新增資料夾或 Request；若先選取資料夾，新增項目會放在該資料夾底下。</div>';
         workspaces.forEach(function (ws) {
           html += '<div class="apiman-ws-item p-1 mb-1 rounded" data-ws-id="' + ws.id + '">' +
             '<div class="d-flex justify-content-between align-items-center px-2 py-1">' +
@@ -299,6 +347,10 @@
     }
     function renderApiManTreeForWs(wsId) {
       apimanCurrentWsId = wsId;
+      apimanSelectedFolderId = null;
+      $('#apimanRequestCard').hide();
+      $('#apimanEmptyState').show();
+      setApiManEmptyLabel('請選擇或建立一個 Request、資料夾');
       loadApiManVars();
       var ws = (apimanWorkspaces || []).find(function (item) { return String(item.id) === String(wsId); });
       $.get(apimanUrl('/workspaces/' + wsId + '/nodes'), function (res) {
@@ -306,13 +358,15 @@
         var treeData = res.data || [];
         var html = buildApiManTreeHtml(treeData, 0);
         $('#apimanTreeBody').html(
-          '<div class="d-flex justify-content-between align-items-center px-1 mb-2">' +
-          '<strong style="font-size:.8125rem" id="apimanCurrentWsLabel"><i class="bx bx-folder apiman-ws-icon me-1"></i></strong>' +
-          '<div class="d-flex gap-1">' +
-          '<button class="btn btn-sm btn-outline-primary apiman-add-folder" data-ws="' + wsId + '" title="新增資料夾"><i class="bx bx-folder-plus"></i></button>' +
-          '<button class="btn btn-sm btn-outline-success apiman-add-req" data-ws="' + wsId + '" title="新增 Request"><i class="bx bx-plus-circle"></i></button>' +
-          '<button class="btn btn-sm btn-outline-info apiman-export-ws" data-ws="' + wsId + '" title="匯出"><i class="bx bx-export"></i></button>' +
-          '<button class="btn btn-sm btn-outline-secondary apiman-back-ws" title="返回"><i class="bx bx-arrow-back"></i></button></div></div>' +
+          '<div class="d-flex justify-content-between align-items-center flex-wrap gap-1 px-1 mb-2">' +
+          '<div class="d-flex align-items-center gap-1 min-w-0">' +
+          '<button class="btn btn-sm btn-outline-secondary apiman-back-ws" title="返回工作區清單"><i class="bx bx-arrow-back"></i></button>' +
+          '<strong class="text-truncate" style="font-size:.8125rem" id="apimanCurrentWsLabel"><i class="bx bx-folder apiman-ws-icon me-1"></i></strong></div>' +
+          '<div class="d-flex gap-1 flex-wrap">' +
+          '<button class="btn btn-sm btn-outline-primary apiman-add-folder" data-ws="' + wsId + '" title="新增資料夾"><i class="bx bx-folder-plus me-1"></i>資料夾</button>' +
+          '<button class="btn btn-sm btn-success apiman-add-req" data-ws="' + wsId + '" title="新增 Request"><i class="bx bx-plus-circle me-1"></i>Request</button>' +
+          '<button class="btn btn-sm btn-outline-info apiman-export-ws" data-ws="' + wsId + '" title="匯出"><i class="bx bx-export me-1"></i>匯出</button></div></div>' +
+          '<div class="apiman-workspace-tip" id="apimanFolderHint"><strong>目前位置：</strong>工作區根目錄。點資料夾可選取新增位置，再按「資料夾」或「Request」。</div>' +
           (html || '<div class="text-muted p-3 text-center" style="font-size:.8125rem"><i class="bx bx-inbox" style="font-size:1.6rem;opacity:.25;display:block;margin-bottom:4px"></i>空的，點擊上方按鈕新增</div>')
         );
         $('#apimanCurrentWsLabel').html('<i class="bx bx-folder apiman-ws-icon me-1"></i>' + (ws ? escHtml(ws.name) : ''));
@@ -331,32 +385,35 @@
       sorted.forEach(function (item) {
         var nodeId = item.node.id;
         var isExpanded = apimanExpanded[nodeId] !== false;
-        var indent = depth * 16 + 4;
         if (item.node.node_type === 'folder') {
           var hasChildren = item.children && item.children.length > 0;
-          html += '<div class="apiman-folder-item" style="padding-left:' + indent + 'px;padding-right:3px">' +
-            '<div class="d-flex justify-content-between align-items-center px-1 py-1 apiman-folder-header" data-node-id="' + nodeId + '" draggable="true" style="cursor:grab">' +
-            '<span style="font-size:.8125rem">' +
+          html += '<div class="apiman-folder-item" data-node-id="' + nodeId + '">' +
+            '<div class="d-flex justify-content-between align-items-center px-2 py-1 apiman-folder-header" data-node-id="' + nodeId + '" data-node-name="' + escHtml(item.node.name) + '" draggable="true" style="cursor:grab">' +
+            '<span class="apiman-node-title">' +
             '<span class="apiman-fold-toggle" data-fold="' + nodeId + '">' + (hasChildren ? (isExpanded ? '▾' : '▸') : '') + '</span>' +
             '<i class="bx ' + (isExpanded ? 'bx-folder-open' : 'bx-folder') + ' apiman-folder-icon me-1"></i>' +
-            escHtml(item.node.name) + '</span>' +
-            '<div class="d-flex gap-1">' +
+            '<span class="apiman-node-name">' + escHtml(item.node.name) + '</span></span>' +
+            '<div class="d-flex gap-1 apiman-node-actions">' +
             '<button class="btn btn-sm btn-outline-info apiman-copy-node border-0 px-1" data-id="' + nodeId + '" title="複製"><i class="bx bx-copy" style="font-size:.8rem"></i></button>' +
             '<button class="btn btn-sm btn-outline-danger apiman-del-node border-0 px-1" data-id="' + nodeId + '"><i class="bx bx-trash" style="font-size:.8rem"></i></button></div>' +
             '</div>' +
-            '<div class="apiman-children apiman-drop-zone' + (isExpanded ? '' : ' d-none') + '" data-parent-id="' + nodeId + '" style="min-height:2px;padding-left:25px">' +
+            '<div class="apiman-children apiman-drop-zone' + (isExpanded ? '' : ' d-none') + '" data-parent-id="' + nodeId + '">' +
             (hasChildren ? buildApiManTreeHtml(item.children, depth + 1) : '<span class="apiman-empty-dot"></span>') +
             '</div></div>';
         } else {
           var method = item.request ? item.request.method : 'GET';
+          var reqName = item.node.name || (item.request && item.request.url) || 'Untitled Request';
+          var reqUrl = item.request && item.request.url ? item.request.url : '尚未設定 URL';
           var methodBg = method === 'GET' ? 'rgba(102,187,106,.15)' : method === 'POST' ? 'rgba(255,193,7,.2)' : method === 'DELETE' ? 'rgba(234,84,85,.15)' : 'rgba(3,169,244,.15)';
           var methodColor = method === 'GET' ? '#2e7d32' : method === 'POST' ? '#b8860b' : method === 'DELETE' ? '#c62828' : '#0277bd';
-          html += '<div class="apiman-req-item px-1 py-1" style="padding-left:' + indent + 'px;padding-right:3px;cursor:grab" data-node-id="' + nodeId + '" draggable="true">' +
+          var activeCls = String(apimanCurrentNodeId || '') === String(nodeId) ? ' is-active' : '';
+          html += '<div class="apiman-req-item px-2 py-1' + activeCls + '" style="cursor:grab" data-node-id="' + nodeId + '" draggable="true">' +
             '<div class="d-flex justify-content-between align-items-center">' +
-            '<span style="font-size:.75rem;display:flex;align-items:center;gap:4px;min-width:0">' +
-            '<span class="apiman-method-badge" style="background:' + methodBg + ';color:' + methodColor + '">' + method + '</span> ' +
-            '<span class="text-truncate" style="max-width:140px;display:inline-block;color:var(--bs-body-color)">' + escHtml(item.request ? item.request.url : '') + '</span></span>' +
-            '<div class="d-flex gap-1">' +
+            '<span style="font-size:.75rem;min-width:0;display:block">' +
+            '<span class="d-flex align-items-center gap-1 min-w-0"><span class="apiman-method-badge" style="background:' + methodBg + ';color:' + methodColor + '">' + method + '</span>' +
+            '<span class="apiman-node-name">' + escHtml(reqName) + '</span></span>' +
+            '<span class="apiman-node-subtitle">' + escHtml(reqUrl) + '</span></span>' +
+            '<div class="d-flex gap-1 apiman-node-actions">' +
             '<button class="btn btn-sm btn-outline-info apiman-copy-node border-0 px-1" data-id="' + nodeId + '" title="複製"><i class="bx bx-copy" style="font-size:.8rem"></i></button>' +
             '<button class="btn btn-sm btn-outline-danger apiman-del-node border-0 px-1" data-id="' + nodeId + '"><i class="bx bx-trash" style="font-size:.8rem"></i></button></div>' +
             '</div></div>';
@@ -454,14 +511,16 @@
         $.get(apimanUrl('/requests/' + nodeId + '/history'), function (res) {
           if (res.code !== 0) return;
           var items = res.data || [];
-          if (!items.length) { layer.msg('尚無歷史紀錄', { icon: 2 }); return; }
+          if (!items.length) { showApiManNotice('尚無歷史紀錄', '此 Request 還沒有送出紀錄。', 'warning'); return; }
           var html = '<div class="table-responsive"><table class="table table-sm table-bordered mb-0" style="font-size:.75rem"><thead><tr><th>#</th><th>Status</th><th>Time</th><th>Elapsed</th><th></th></tr></thead><tbody>';
           items.forEach(function (item) {
             var statusCls = item.status >= 200 && item.status < 300 ? 'text-success' : item.status >= 400 ? 'text-danger' : 'text-warning';
+            var encodedItem = encodeURIComponent(JSON.stringify(item));
             html += '<tr><td>' + item.id + '</td><td class="' + statusCls + ' fw-bold">' + (item.status || '?') + '</td><td>' + escHtml(item.created_at) + '</td><td>' + (item.elapsed_ms || '-') + 'ms</td>' +
-              '<td><button class="btn btn-sm btn-outline-info apiman-view-history" data-id="' + item.id + '" data-body=\'' + escHtml(JSON.stringify(item).replace(/'/g,'&#39;')) + '\'><i class="bx bx-show"></i></button></td></tr>';
+              '<td><button class="btn btn-sm btn-outline-info apiman-view-history" data-id="' + item.id + '" data-body="' + escHtml(encodedItem) + '"><i class="bx bx-show"></i></button></td></tr>';
           });
           html += '</tbody></table></div>';
+          showApiManNotice('歷史紀錄已載入', items.length + ' 筆 Response History', 'success');
           layer.open({ title: 'Response History', content: html, area: ['700px', '60vh'], btn: ['OK'] });
         });
       }

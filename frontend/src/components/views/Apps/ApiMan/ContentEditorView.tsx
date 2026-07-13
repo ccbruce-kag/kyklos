@@ -69,15 +69,15 @@ export default function ContentEditorView() {
         if (!isMounted) return
         setRecords(data.contents || [])
       } catch (err) {
-        if (!isMounted) {
+        if (isMounted) {
           setMsg(err instanceof Error ? err.message : String(err))
           setMsgKind('danger')
         }
       } finally {
-        if (!isMounted) setBusy(false)
+        if (isMounted) setBusy(false)
       }
     })()
-    return () => { isMounted = true ? false : true } // ensure cleanup
+    return () => { isMounted = false }
   }, [])
 
   const filtered = records.filter((r) => {

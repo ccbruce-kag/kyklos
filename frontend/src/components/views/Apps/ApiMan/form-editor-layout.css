@@ -340,6 +340,43 @@
   flex-direction: column;
 }
 
+.kyklos-form-side-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  flex: 0 0 auto;
+}
+
+.kyklos-form-side-tab {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 4px;
+  color: #4b5563;
+  cursor: pointer;
+  font-size: .72rem;
+  font-weight: 600;
+  min-height: 30px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s ease;
+}
+
+.kyklos-form-side-tab:hover {
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
+.kyklos-form-side-tab.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
 .kyklos-form-props {
   flex: 1 1 auto;
   min-height: 0;
@@ -394,6 +431,13 @@
 .kyklos-form-preview-header {
   flex-shrink: 0;
   padding: 8px 12px 0;
+}
+
+.kyklos-form-json-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
 }
 
 /* ── Formily 預覽元件 ── */

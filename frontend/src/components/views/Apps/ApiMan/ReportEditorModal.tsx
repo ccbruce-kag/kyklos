@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import 'reportbro-designer/dist/reportbro.css'
 import { ReportBro } from 'reportbro-designer'
 import { getApiBase } from '../../../../utils/api'
@@ -23,6 +24,7 @@ type ReportBroInstance = {
   getReport: () => Record<string, unknown>
   load: (report: Record<string, unknown>) => void
   save: () => void
+  setModified?: (modified: boolean) => void
   destroy?: () => void
 }
 
@@ -52,6 +54,50 @@ function parseStoredReport(raw: string | null | undefined): Record<string, unkno
   }
 }
 
+function cleanupReportBroDom() {
+  document.querySelectorAll('#reportbro').forEach((el) => el.remove())
+  document.getElementById('rbro_background_overlay')?.remove()
+  document.getElementById('rbro_loading_div')?.remove()
+  document.body.classList.remove('rbroFixedBackground')
+  document.body.classList.remove('rbroDefaultTheme')
+  document.body.classList.remove('rbroClassicTheme')
+}
+
+function enhanceReportBroControls(showMessage: (msg: string) => void) {
+  const elementIds = [
+    'rbro_menu_element_text',
+    'rbro_menu_element_line',
+    'rbro_menu_element_image',
+    'rbro_menu_element_bar_code',
+    'rbro_menu_element_table',
+    'rbro_menu_element_frame',
+    'rbro_menu_element_section',
+    'rbro_menu_element_page_break',
+  ]
+
+  elementIds.forEach((id) => {
+    const el = document.getElementById(id) as HTMLElement | null
+    if (!el) return
+    // ReportBro 3.12 renders these buttons with a misspelled "draggle" attribute.
+    // Set both the DOM property and the attribute so the native dragstart handlers
+    // registered by ReportBro actually fire in Chromium/Firefox.
+    el.draggable = true
+    el.setAttribute('draggable', 'true')
+    el.title = `${el.title || '元素'}：請按住拖曳到文件頁面。`
+  })
+
+  const previewButton = document.getElementById('rbro_menu_preview')
+  if (previewButton) {
+    const replacement = previewButton.cloneNode(true) as HTMLElement
+    replacement.title = '內建 Preview 需 reportbro-lib 預覽服務；目前此頁提供模板設計與儲存。'
+    replacement.addEventListener('click', (event) => {
+      event.preventDefault()
+      showMessage('PREVIEW 需要另外啟用 reportbro-lib 預覽服務；目前已攔截內建 Preview，避免出現 preview failed 或頁面卡住。')
+    })
+    previewButton.replaceWith(replacement)
+  }
+}
+
 export default function ReportEditorModal({ record, visible, onSaved, onClose }: Props) {
   const wrapperId = useMemo(() => `rbro-wrapper-${Date.now()}-${Math.random().toString(36).slice(2)}`, [])
   const reportRef = useRef<ReportBroInstance | null>(null)
@@ -61,6 +107,7 @@ export default function ReportEditorModal({ record, visible, onSaved, onClose }:
   const [errMsg, setErrMsg] = useState('')
   const [ready, setReady] = useState(false)
   const [legacyNotice, setLegacyNotice] = useState('')
+  const [designerRev, setDesignerRev] = useState(0)
 
   useEffect(() => {
     if (!visible) return
@@ -79,13 +126,16 @@ export default function ReportEditorModal({ record, visible, onSaved, onClose }:
     const timeout = setTimeout(async () => {
       const wrapper = document.getElementById(wrapperId)
       if (!wrapper || !isMounted) return
+      cleanupReportBroDom()
       containerEl = document.createElement('div')
+      containerEl.id = 'reportbro'
       containerEl.style.cssText = 'width:100%;height:100%;overflow:auto;'
       wrapper.appendChild(containerEl)
       try {
         if (!isMounted) return
         instance = new ReportBro(containerEl, {
           menuShowButtonLabels: true,
+          menuShowDebug: true,
           saveCallback: () => undefined,
           reportServerUrl: '',
         }) as ReportBroInstance
@@ -100,6 +150,7 @@ export default function ReportEditorModal({ record, visible, onSaved, onClose }:
             setLegacyNotice('既有資料不是 ReportBro JSON 格式，已開啟空白設計器；儲存後會轉為新版格式。')
           }
         }
+        window.setTimeout(() => enhanceReportBroControls(setErrMsg), 0)
         setReady(true)
       } catch (err) {
         if (isMounted) setErrMsg(err instanceof Error ? err.message : String(err))
@@ -111,18 +162,20 @@ export default function ReportEditorModal({ record, visible, onSaved, onClose }:
       if (containerEl && containerEl.parentNode) containerEl.parentNode.removeChild(containerEl)
       reportRef.current = null
       setReady(false)
+      cleanupReportBroDom()
     }
-  }, [visible, record?.id, record?.report_xml, wrapperId])
+  }, [visible, record?.id, record?.report_xml, wrapperId, designerRev])
 
   const handleSave = async () => {
     if (!name.trim()) {
       setErrMsg('請輸入名稱')
       return
-      }
-      setBusy(true)
-      setErrMsg('')
-      try {
+    }
+    setBusy(true)
+    setErrMsg('')
+    try {
       const instance = reportRef.current
+      instance?.setModified?.(false)
       const xml = instance ? JSON.stringify(instance.getReport()) : ''
       const body = {
         name: name.trim(),
@@ -157,18 +210,26 @@ export default function ReportEditorModal({ record, visible, onSaved, onClose }:
 
   if (!visible) return null
 
-  return (
-        <div className="card mb-3">
-          <div className="card-header py-2 d-flex align-items-center">
+  return createPortal(
+    <>
+      <div className="modal-backdrop fade show"></div>
+      <div className="modal fade show kyklos-report-designer-modal" tabIndex={-1} style={{ display: 'block' }}>
+        <div className="modal-dialog modal-fullscreen">
+          <div className="modal-content">
+            <div className="modal-header py-2">
             <h6 className="modal-title d-flex align-items-center gap-2">
               <i className="bx bx-file"></i>
               {record ? `編輯 Report #${record.id}` : '新增 Report'}
             </h6>
-            <button type="button" className="btn btn-sm btn-outline-secondary ms-auto" onClick={onClose}>
-              <i className="bx bx-arrow-back me-1"></i>返回清單
-            </button>
+              <div className="ms-auto d-flex align-items-center gap-2">
+                <span className={`badge ${ready ? 'bg-label-success' : 'bg-label-secondary'}`}>{ready ? '已載入' : '載入中…'}</span>
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => { setReady(false); setErrMsg(''); setDesignerRev((value) => value + 1) }}>
+                  <i className="bx bx-reset me-1"></i>重新載入設計器
+                </button>
+                <button type="button" className="btn-close" onClick={onClose} aria-label="Close"></button>
+              </div>
           </div>
-          <div className="card-body p-2 d-flex flex-column" style={{ height: 'calc(100vh - 220px)', minHeight: 620, overflow: 'hidden' }}>
+            <div className="modal-body p-2 d-flex flex-column" style={{ overflow: 'hidden' }}>
             <div className="row g-2 mb-2">
               <div className="col-md-5">
                 <label className="form-label mb-1" style={{ fontSize: '.7rem' }}>名稱 *</label>
@@ -178,12 +239,10 @@ export default function ReportEditorModal({ record, visible, onSaved, onClose }:
                 <label className="form-label mb-1" style={{ fontSize: '.7rem' }}>描述</label>
                 <input className="form-control form-control-sm" value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
-              <div className="col-md-2 d-flex align-items-end">
-                {ready ? (
-                  <span className="badge bg-label-success">已載入</span>
-                ) : (
-                  <span className="badge bg-label-secondary">載入中…</span>
-                )}
+              <div className="col-md-2 d-flex align-items-end justify-content-md-end">
+                <span className="text-muted" style={{ fontSize: '.72rem' }}>
+                  元素工具需按住拖曳到文件頁面。
+                </span>
               </div>
             </div>
             {errMsg && (
@@ -194,9 +253,10 @@ export default function ReportEditorModal({ record, visible, onSaved, onClose }:
             )}
             <div
               id={wrapperId}
+              className="kyklos-reportbro-stage"
               style={{
                 flexGrow: 1,
-                minHeight: 480,
+                minHeight: 0,
                 background: '#fff',
                 border: '1px solid #e5e7eb',
                 borderRadius: 4,
@@ -211,7 +271,7 @@ export default function ReportEditorModal({ record, visible, onSaved, onClose }:
               )}
             </div>
           </div>
-          <div className="card-footer py-2 d-flex align-items-center gap-2 flex-wrap">
+            <div className="modal-footer py-2 d-flex align-items-center gap-2 flex-wrap">
             <span className="text-muted me-auto" style={{ fontSize: '.7rem' }}>
                 <i className="bx bx-info-circle me-1"></i>ReportBro Designer · 支援 PDF / Excel 報表模板設計，模板以 ReportBro JSON 儲存
             </span>
@@ -223,6 +283,10 @@ export default function ReportEditorModal({ record, visible, onSaved, onClose }:
               <i className="bx bx-save me-1"></i>{busy ? '儲存中…' : '儲存'}
             </button>
           </div>
+          </div>
         </div>
+      </div>
+    </>,
+    document.body,
   )
 }

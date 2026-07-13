@@ -260,16 +260,7 @@
       });
     }
     function rebuildApiManMenu() {
-      loadApiManWorkspaces(function (workspaces) {
-        var html = '';
-        workspaces.forEach(function (ws) {
-          html += '<li class="menu-item apiman-menu-ws" data-ws-id="' + ws.id + '">' +
-            '<a href="#" class="menu-link apiman-menu-ws-link" data-ws-id="' + ws.id + '">' +
-            '<i class="menu-icon tf-icons bx bx-folder"></i>' +
-            '<div class="text-truncate">' + escHtml(ws.name) + '</div></a></li>';
-        });
-        $('#menuApiManWsItems').html(html);
-      });
+      $('#menuApiManWsItems').empty();
     }
     function refreshApiManWorkspaceLists() {
       renderApiManTree();

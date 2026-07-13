@@ -14,8 +14,6 @@ import {
   Empty as SemiEmpty,
   Tooltip as SemiTooltip,
   Banner as SemiBanner,
-  Tabs as SemiTabs,
-  TabPane as SemiTabPane,
   Typography as SemiTypography,
   Divider as SemiDivider,
 } from '@douyinfe/semi-ui'
@@ -34,7 +32,6 @@ import {
   IconCalendar,
   IconClock,
   IconSend,
-  IconCheckboxTick,
   IconPulse,
   IconBranch,
   IconBox,
@@ -66,6 +63,9 @@ import {
   IconRadio,
   IconMenu,
   IconEdit2Stroked,
+  IconOption,
+  IconCheckList,
+  IconAISearchLevel1,
 } from '@douyinfe/semi-icons'
 import { createForm, onFieldValueChange } from '@formily/core'
 import { FormProvider, createSchemaField, connect, mapProps } from '@formily/react'
@@ -156,11 +156,11 @@ const fieldTemplates: FieldTemplate[] = [
   { value: 'multiSelect', label: '多選下拉', component: 'Select', category: 'select', icon: <IconChevronDown />, description: '多選下拉', defaultProps: { multiple: true }, hasOptions: true },
   { value: 'treeSelect', label: '樹狀選單', component: 'TreeSelect', category: 'select', icon: <IconTreeTriangleRight />, description: '樹狀結構選擇', defaultProps: {}, hasOptions: true },
   { value: 'cascader', label: '層級選擇', component: 'Cascader', category: 'select', icon: <IconBranch />, description: '層級聯動選擇', defaultProps: {}, hasOptions: true },
-  { value: 'radio', label: '單選群組', component: 'Radio.Group', category: 'select', icon: <IconCheckboxTick />, description: '單選按鈕群組', defaultProps: {}, hasOptions: true },
-  { value: 'checkboxGroup', label: '複選群組', component: 'Checkbox.Group', category: 'select', icon: <IconCheckboxTick />, description: '多選核取方塊群組', defaultProps: {}, hasOptions: true },
+  { value: 'radio', label: '單選群組', component: 'Radio.Group', category: 'select', icon: <IconOption />, description: '單選按鈕群組', defaultProps: {}, hasOptions: true },
+  { value: 'checkboxGroup', label: '複選群組', component: 'Checkbox.Group', category: 'select', icon: <IconCheckList />, description: '多選核取方塊群組', defaultProps: {}, hasOptions: true },
   { value: 'transfer', label: '穿梭選單', component: 'Select', category: 'select', icon: <IconSend />, description: '雙欄穿梭選單', defaultProps: { multiple: true }, hasOptions: true },
   { value: 'tagInput', label: '標籤輸入', component: 'TagInput', category: 'select', icon: <IconHash />, description: '標籤式多選輸入', defaultProps: {}, hasOptions: true },
-  { value: 'autoComplete', label: '自動完成', component: 'AutoComplete', category: 'select', icon: <IconSearch />, description: '輸入即建議', defaultProps: {}, hasOptions: true },
+  { value: 'autoComplete', label: '自動完成', component: 'AutoComplete', category: 'select', icon: <IconAISearchLevel1 />, description: '輸入即建議', defaultProps: {}, hasOptions: true },
 
   // ── datetime ──
   { value: 'dateRange', label: '日期區間', component: 'DatePicker', category: 'datetime', icon: <IconCalendar />, description: '起訖日期', defaultProps: { type: 'dateRange' } },
@@ -1007,32 +1007,48 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
 
                 {/* 右：屬性 / 預覽 */}
                 <div className="kyklos-form-side">
-                  <SemiTabs
-                    type="line"
-                    activeKey={activeSideTab}
-                    onChange={(key: string) => setActiveSideTab(key)}
-                    tabPosition="top"
-                    size="small"
-                    style={{ flexShrink: 0 }}
-                  >
-                    <SemiTabPane tab={<span className="kyklos-form-tab-label"><IconSetting /> 屬性</span>} itemKey="props">
-                      <div className="kyklos-form-props">
-                        {!selectedField ? (
-                          <SemiEmpty description="點擊畫布中的欄位以編輯屬性" style={{ padding: 24 }} />
-                        ) : (
-                          <FieldPropsEditor
-                            field={selectedField}
-                            onChange={(patch) => setField(selectedField.id, patch)}
-                            onDelete={() => removeField(selectedField.id)}
-                          />
-                        )}
-                      </div>
-                    </SemiTabPane>
-                    <SemiTabPane tab={<span className="kyklos-form-tab-label"><IconAlignCenter /> Formily 預覽</span>} itemKey="preview">
+                  <div className="kyklos-form-side-tabs">
+                    <button
+                      type="button"
+                      className={`kyklos-form-side-tab ${activeSideTab === 'props' ? 'active' : ''}`}
+                      onClick={() => setActiveSideTab('props')}
+                    >
+                      <span className="kyklos-form-tab-label"><IconSetting /> 屬性</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`kyklos-form-side-tab ${activeSideTab === 'preview' ? 'active' : ''}`}
+                      onClick={() => setActiveSideTab('preview')}
+                    >
+                      <span className="kyklos-form-tab-label"><IconAlignCenter /> Formily 預覽</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`kyklos-form-side-tab ${activeSideTab === 'json' ? 'active' : ''}`}
+                      onClick={() => setActiveSideTab('json')}
+                    >
+                      <span className="kyklos-form-tab-label"><IconCode /> JSON</span>
+                    </button>
+                  </div>
+                  {activeSideTab === 'props' && (
+                    <div className="kyklos-form-props">
+                      {!selectedField ? (
+                        <SemiEmpty description="點擊畫布中的欄位以編輯屬性" style={{ padding: 24 }} />
+                      ) : (
+                        <FieldPropsEditor
+                          field={selectedField}
+                          onChange={(patch) => setField(selectedField.id, patch)}
+                          onDelete={() => removeField(selectedField.id)}
+                        />
+                      )}
+                    </div>
+                  )}
+                  {activeSideTab === 'preview' && (
+                    <>
                       <div className="kyklos-form-preview-header">
                         <SemiTypography.Text type="secondary" style={{ fontSize: '.7rem' }}>
                           <IconAlignCenter style={{ marginRight: 4, fontSize: '.8rem' }} />
-                          這是實際的 Formily 即時編輯表單 — 與 Formily 設計工具渲染一致，可即時輸入測試
+                          這是實際的 Formily 即時編輯表單，與目前畫布欄位同步。
                         </SemiTypography.Text>
                       </div>
                       <div className="kyklos-form-preview-body">
@@ -1046,8 +1062,10 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                           <SemiEmpty description="Formily 載入失敗" style={{ padding: 24 }} />
                         )}
                       </div>
-                    </SemiTabPane>
-                    <SemiTabPane tab={<span className="kyklos-form-tab-label"><IconCode /> JSON</span>} itemKey="json">
+                    </>
+                  )}
+                  {activeSideTab === 'json' && (
+                    <div className="kyklos-form-json-pane">
                       <div className="d-flex align-items-center mb-2">
                         <strong style={{ fontSize: '.75rem' }}>JSON Schema</strong>
                         <SemiButton size="small" type="tertiary" onClick={applyJson} style={{ marginLeft: 'auto' }}>
@@ -1060,8 +1078,8 @@ export default function FormEditorModal({ record, visible, onSaved, onClose }: P
                         spellCheck={false}
                         style={{ minHeight: 360, fontFamily: 'Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '.7rem' }}
                       />
-                    </SemiTabPane>
-                  </SemiTabs>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -78,7 +78,7 @@
       });
       $('#logClear').on('click', function () { logger.clear(); });
       function inactiveAllLeaf() {
-        $('#menuDash,#menuWorkflow,#menuNetArch,#menuErdDiagram,#menuWireframe,#menuReportEditor,#menuFormEditor,#menuRole,#menuUnit,#menuUser,#menuDictionary,#menuSystemSetting,#menuFirewallMan,#menuFortigate,#menuJuniper,#menuHaproxy,#menuKyklosHa,#menuNginx,#menuNetplan,#menuPcap,#menuSnmp,#menuSys,#menuTools,#menuShell,#menuWidgets,#menuLogViewer,#menuCrontab,#menuApiManNew,#menuDbManNew,#menuSecurityCvs,#menuSecurityScan,#menuAI,#menuDoc').removeClass('active');
+        $('#menuDash,#menuWorkflow,#menuNetArch,#menuErdDiagram,#menuWireframe,#menuReportEditor,#menuFormEditor,#menuRole,#menuUnit,#menuUser,#menuDictionary,#menuSystemSetting,#menuFirewallMan,#menuFortigate,#menuJuniper,#menuHaproxy,#menuKyklosHa,#menuNginx,#menuNetplan,#menuPcap,#menuSnmp,#menuSys,#menuTools,#menuShell,#menuWidgets,#menuLogViewer,#menuCrontab,#menuApiManNew,#menuDbManNew,#menuSecurityCvs,#menuSecurityScan,#menuSecurityWhitelist,#menuAI,#menuDoc').removeClass('active');
       }
       function hideAllViews() {
         hideAllWorkViews();
@@ -135,7 +135,8 @@
             menuAILink: 'ai',
             menuDbManNewLink: 'dbman',
             menuSecurityCvsLink: 'security',
-            menuSecurityScanLink: 'security'
+            menuSecurityScanLink: 'security',
+            menuSecurityWhitelistLink: 'security'
           };
           var mode = viewMap[link.id];
           if (!mode || typeof window.fwmSwitchView !== 'function') return;
@@ -144,6 +145,9 @@
           window.fwmSwitchView(mode);
           if (link.id === 'menuSecurityScanLink') {
             setTimeout(function () { $('#security-scan-tab').click(); }, 100);
+          }
+          if (link.id === 'menuSecurityWhitelistLink') {
+            setTimeout(function () { $('#security-whitelist-tab').click(); }, 100);
           }
           console.log('[fwm-menu] leaf switched', link.id, mode);
         }, true);
@@ -176,6 +180,7 @@
       });
       $('#menuSecurityCvsLink').on('click', function (e) { e.preventDefault(); switchView('security'); });
       $('#menuSecurityScanLink').on('click', function (e) { e.preventDefault(); switchView('security'); setTimeout(function () { $('#security-scan-tab').click(); }, 100); });
+      $('#menuSecurityWhitelistLink').on('click', function (e) { e.preventDefault(); switchView('security'); setTimeout(function () { $('#security-whitelist-tab').click(); }, 100); });
       $('#menuSysLink').on('click', function (e) { e.preventDefault(); switchView('system'); });
       $('#menuToolsLink').on('click', function (e) { e.preventDefault(); switchView('tools'); });
       $('#menuShellLink').on('click', function (e) { e.preventDefault(); switchView('shell'); });

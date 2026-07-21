@@ -268,6 +268,11 @@ export default function Sidebar() {
                 <div className="text-truncate" id="menuSecurityScanLabel">網路掃描</div>
               </a>
             </li>
+            <li className="menu-item" id="menuSecurityWhitelist">
+              <a href="#" className="menu-link" id="menuSecurityWhitelistLink">
+                <div className="text-truncate" id="menuSecurityWhitelistLabel">白名單</div>
+              </a>
+            </li>
           </ul>
         </li>
         <li className="menu-item" id="menuGroupAI">

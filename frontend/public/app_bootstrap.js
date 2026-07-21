@@ -452,7 +452,7 @@ var _orig_ready = $;
         formEditorLabel: "Form 編輯器", formEditorNew: "新增 Form", formEditorEdit: "編輯 Form", formEditorDelete: "刪除 Form",
         formEditorNoData: "尚無 Form，點擊「新增 Form」開始設計。",
         menuApiManNew: "工作區", menuDbManNew: "新增連線",
-        menuSecurityCvs: "CVS 資料庫", menuSecurityScan: "網路掃描",
+        menuSecurityCvs: "CVS 資料庫", menuSecurityScan: "網路掃描", menuSecurityWhitelist: "白名單",
         menuGroupAI: "AI", menuGroupHelp: "協助", systemLabel: "系統現況", docLabel: "命令文件",
         juniperLabel: "Juniper 設定", juniperInfo: "設備資訊", juniperVlan: "VLAN 管理", juniperPort: "Port 管理",
         juniperRefresh: "重新整理", juniperCreateVlan: "新增 VLAN", juniperVlanList: "VLAN 列表", juniperPortList: "Port 管理",
@@ -554,7 +554,7 @@ var _orig_ready = $;
         formEditorLabel: "Form Designer", formEditorNew: "New Form", formEditorEdit: "Edit Form", formEditorDelete: "Delete Form",
         formEditorNoData: "No forms yet. Click \"New Form\" to start designing.",
         menuApiManNew: "Workspaces", menuDbManNew: "New Connection",
-        menuSecurityCvs: "CVS Database", menuSecurityScan: "Network Scan",
+        menuSecurityCvs: "CVS Database", menuSecurityScan: "Network Scan", menuSecurityWhitelist: "Whitelist",
         menuGroupAI: "AI", menuGroupHelp: "Help", systemLabel: "System", docLabel: "Command Reference",
         juniperLabel: "Juniper Settings", juniperInfo: "Device Info", juniperVlan: "VLAN Management", juniperPort: "Port Management",
         juniperRefresh: "Refresh", juniperCreateVlan: "Create VLAN", juniperVlanList: "VLAN List", juniperPortList: "Port Management",
@@ -655,7 +655,7 @@ var _orig_ready = $;
         formEditorLabel: "フォームエディタ", formEditorNew: "新規フォーム", formEditorEdit: "フォーム編集", formEditorDelete: "フォーム削除",
         formEditorNoData: "フォームがありません。「新規フォーム」をクリックして作成してください。",
         menuApiManNew: "ワークスペース", menuDbManNew: "新規接続",
-        menuSecurityCvs: "CVS データベース", menuSecurityScan: "ネットワークスキャン",
+        menuSecurityCvs: "CVS データベース", menuSecurityScan: "ネットワークスキャン", menuSecurityWhitelist: "ホワイトリスト",
         menuGroupAI: "AI", menuGroupHelp: "ヘルプ", systemLabel: "システム情報", docLabel: "コマンドリファレンス",
         juniperLabel: "Juniper 設定", juniperInfo: "デバイス情報", juniperVlan: "VLAN 管理", juniperPort: "Port 管理",
         juniperRefresh: "更新", juniperCreateVlan: "VLAN 作成", juniperVlanList: "VLAN 一覧", juniperPortList: "Port 管理",
@@ -798,6 +798,7 @@ var _orig_ready = $;
       $('#menuGroupSecurityLabel').text(lng.menuGroupSecurity || 'Security');
       $('#menuSecurityCvsLabel').text(lng.menuSecurityCvs || 'CVS 資料庫');
       $('#menuSecurityScanLabel').text(lng.menuSecurityScan || '網路掃描');
+      $('#menuSecurityWhitelistLabel').text(lng.menuSecurityWhitelist || '白名單');
       $('#menuGroupAILabel').text(lng.menuGroupAI || 'AI');
       $('#menuAILabel').text(lng.aiLabel || 'AI Assistant');
       $('#menuGroupHelpLabel').text(lng.menuGroupHelp || 'Help');

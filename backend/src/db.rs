@@ -189,6 +189,45 @@ pub struct FortigateFirewallPolicyUpdate {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct SecurityWhitelistSettings {
+    pub enabled: bool,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SecurityWhitelistIp {
+    pub id: i64,
+    pub ip_address: String,
+    pub enabled: bool,
+    pub note: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct SecurityWhitelistIpInput {
+    pub ip_address: String,
+    pub enabled: bool,
+    pub note: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SecurityWhitelistConnectionLog {
+    pub id: i64,
+    pub source_ip: String,
+    pub destination_ip: String,
+    pub destination_port: Option<i64>,
+    pub protocol: String,
+    pub decision: String,
+    pub start_time: String,
+    pub end_time: Option<String>,
+    pub duration_secs: Option<i64>,
+    pub note: String,
+    pub observed_count: i64,
+    pub last_seen: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CronJob {
     pub id: i64,
     pub name: String,
@@ -988,11 +1027,7 @@ impl AppDb {
         )
     }
 
-    pub fn set_fortigate_lb_service_enabled(
-        &self,
-        id: i64,
-        enabled: bool,
-    ) -> Result<bool, String> {
+    pub fn set_fortigate_lb_service_enabled(&self, id: i64, enabled: bool) -> Result<bool, String> {
         self.set_lb_service_enabled(id, enabled, "fortigate_lb_services", "FortiGate LB")
     }
 
@@ -1042,9 +1077,7 @@ impl AppDb {
         )
     }
 
-    pub fn list_fortigate_firewall_policies(
-        &self,
-    ) -> Result<Vec<FortigateFirewallPolicy>, String> {
+    pub fn list_fortigate_firewall_policies(&self) -> Result<Vec<FortigateFirewallPolicy>, String> {
         let conn = self.connect()?;
         let mut stmt = conn
             .prepare(
@@ -1367,6 +1400,33 @@ impl AppDb {
                 state TEXT NOT NULL,
                 banner TEXT,
                 FOREIGN KEY (task_id) REFERENCES security_scan_tasks(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS security_whitelist_settings (
+                id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                enabled INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            );
+            CREATE TABLE IF NOT EXISTS security_whitelist_ips (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip_address TEXT NOT NULL UNIQUE,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            );
+            CREATE TABLE IF NOT EXISTS security_whitelist_connection_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_ip TEXT NOT NULL,
+                destination_ip TEXT NOT NULL,
+                destination_port INTEGER,
+                protocol TEXT NOT NULL DEFAULT 'tcp',
+                decision TEXT NOT NULL DEFAULT 'blocked',
+                start_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                end_time TEXT,
+                duration_secs INTEGER,
+                note TEXT NOT NULL DEFAULT '',
+                observed_count INTEGER NOT NULL DEFAULT 1,
+                last_seen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             );
             CREATE TABLE IF NOT EXISTS dbman_saved_queries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1823,14 +1883,19 @@ impl AppDb {
         let existing_sql =
             format!("SELECT id FROM {service_table} WHERE service_type = ?1 AND name = ?2");
         let existing_id: Option<i64> = tx
-            .query_row(&existing_sql, params![update.service_type, update.name], |row| {
-                row.get(0)
-            })
+            .query_row(
+                &existing_sql,
+                params![update.service_type, update.name],
+                |row| row.get(0),
+            )
             .optional()
             .map_err(|e| format!("lookup {label} service failed: {e}"))?;
         if let Some(existing_id) = existing_id {
             if Some(existing_id) != update.id {
-                return Err(format!("{label} service name already exists: {}", update.name));
+                return Err(format!(
+                    "{label} service name already exists: {}",
+                    update.name
+                ));
             }
         }
         if update.enabled {
@@ -2735,6 +2800,299 @@ impl AppDb {
             items.push(row.map_err(|e| format!("read scan result row failed: {e}"))?);
         }
         Ok(items)
+    }
+
+    pub fn security_whitelist_settings(&self) -> Result<SecurityWhitelistSettings, String> {
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT OR IGNORE INTO security_whitelist_settings (id, enabled) VALUES (1, 0)",
+            [],
+        )
+        .map_err(|e| format!("init whitelist settings failed: {e}"))?;
+        conn.query_row(
+            "SELECT enabled, updated_at FROM security_whitelist_settings WHERE id = 1",
+            [],
+            |row| {
+                Ok(SecurityWhitelistSettings {
+                    enabled: row.get::<_, i64>(0)? != 0,
+                    updated_at: row.get(1)?,
+                })
+            },
+        )
+        .map_err(|e| format!("query whitelist settings failed: {e}"))
+    }
+
+    pub fn set_security_whitelist_enabled(
+        &self,
+        enabled: bool,
+    ) -> Result<SecurityWhitelistSettings, String> {
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT OR REPLACE INTO security_whitelist_settings (id, enabled, updated_at)
+             VALUES (1, ?1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))",
+            params![if enabled { 1 } else { 0 }],
+        )
+        .map_err(|e| format!("update whitelist settings failed: {e}"))?;
+        self.security_whitelist_settings()
+    }
+
+    pub fn list_security_whitelist_ips(&self) -> Result<Vec<SecurityWhitelistIp>, String> {
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, ip_address, enabled, note, created_at, updated_at
+                 FROM security_whitelist_ips
+                 ORDER BY enabled DESC, ip_address",
+            )
+            .map_err(|e| format!("prepare whitelist IP query failed: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(SecurityWhitelistIp {
+                    id: row.get(0)?,
+                    ip_address: row.get(1)?,
+                    enabled: row.get::<_, i64>(2)? != 0,
+                    note: row.get(3)?,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
+                })
+            })
+            .map_err(|e| format!("query whitelist IPs failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("read whitelist IP failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn save_security_whitelist_ip(
+        &self,
+        input: SecurityWhitelistIpInput,
+    ) -> Result<SecurityWhitelistIp, String> {
+        validate_security_ip_or_cidr(&input.ip_address)?;
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO security_whitelist_ips (ip_address, enabled, note)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(ip_address) DO UPDATE SET
+                enabled = excluded.enabled,
+                note = excluded.note,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+            params![
+                input.ip_address.trim(),
+                if input.enabled { 1 } else { 0 },
+                input.note.trim()
+            ],
+        )
+        .map_err(|e| format!("save whitelist IP failed: {e}"))?;
+        let id = conn
+            .query_row(
+                "SELECT id FROM security_whitelist_ips WHERE ip_address = ?1",
+                params![input.ip_address.trim()],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|e| format!("load saved whitelist IP id failed: {e}"))?;
+        self.get_security_whitelist_ip(id)
+    }
+
+    pub fn set_security_whitelist_ip_enabled(
+        &self,
+        id: i64,
+        enabled: bool,
+    ) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE security_whitelist_ips
+                 SET enabled = ?1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = ?2",
+                params![if enabled { 1 } else { 0 }, id],
+            )
+            .map_err(|e| format!("update whitelist IP status failed: {e}"))?;
+        Ok(affected > 0)
+    }
+
+    pub fn delete_security_whitelist_ip(&self, id: i64) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "DELETE FROM security_whitelist_ips WHERE id = ?1",
+                params![id],
+            )
+            .map_err(|e| format!("delete whitelist IP failed: {e}"))?;
+        Ok(affected > 0)
+    }
+
+    fn get_security_whitelist_ip(&self, id: i64) -> Result<SecurityWhitelistIp, String> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT id, ip_address, enabled, note, created_at, updated_at
+             FROM security_whitelist_ips WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(SecurityWhitelistIp {
+                    id: row.get(0)?,
+                    ip_address: row.get(1)?,
+                    enabled: row.get::<_, i64>(2)? != 0,
+                    note: row.get(3)?,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
+                })
+            },
+        )
+        .map_err(|e| format!("get whitelist IP failed: {e}"))
+    }
+
+    pub fn list_security_whitelist_logs(
+        &self,
+    ) -> Result<Vec<SecurityWhitelistConnectionLog>, String> {
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, source_ip, destination_ip, destination_port, protocol, decision,
+                        start_time, end_time, duration_secs, note, observed_count, last_seen
+                 FROM security_whitelist_connection_logs
+                 ORDER BY datetime(last_seen) DESC, id DESC
+                 LIMIT 300",
+            )
+            .map_err(|e| format!("prepare whitelist connection logs query failed: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(SecurityWhitelistConnectionLog {
+                    id: row.get(0)?,
+                    source_ip: row.get(1)?,
+                    destination_ip: row.get(2)?,
+                    destination_port: row.get(3)?,
+                    protocol: row.get(4)?,
+                    decision: row.get(5)?,
+                    start_time: row.get(6)?,
+                    end_time: row.get(7)?,
+                    duration_secs: row.get(8)?,
+                    note: row.get(9)?,
+                    observed_count: row.get(10)?,
+                    last_seen: row.get(11)?,
+                })
+            })
+            .map_err(|e| format!("query whitelist connection logs failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("read whitelist connection log failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn upsert_security_whitelist_connection_log(
+        &self,
+        source_ip: &str,
+        destination_ip: &str,
+        destination_port: Option<i64>,
+        protocol: &str,
+        decision: &str,
+        note: &str,
+    ) -> Result<(), String> {
+        let conn = self.connect()?;
+        let existing: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM security_whitelist_connection_logs
+                 WHERE source_ip = ?1 AND destination_ip = ?2
+                   AND COALESCE(destination_port, -1) = COALESCE(?3, -1)
+                   AND protocol = ?4 AND end_time IS NULL
+                 ORDER BY id DESC LIMIT 1",
+                params![source_ip, destination_ip, destination_port, protocol],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("find active whitelist connection log failed: {e}"))?;
+        if let Some(id) = existing {
+            conn.execute(
+                "UPDATE security_whitelist_connection_logs
+                 SET decision = ?1,
+                     note = CASE WHEN note = '' THEN ?2 ELSE note END,
+                     observed_count = observed_count + 1,
+                     last_seen = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                     duration_secs = CAST(strftime('%s', 'now') - strftime('%s', start_time) AS INTEGER)
+                 WHERE id = ?3",
+                params![decision, note, id],
+            )
+            .map_err(|e| format!("update whitelist connection log failed: {e}"))?;
+        } else {
+            conn.execute(
+                "INSERT INTO security_whitelist_connection_logs
+                    (source_ip, destination_ip, destination_port, protocol, decision, note)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    source_ip,
+                    destination_ip,
+                    destination_port,
+                    protocol,
+                    decision,
+                    note
+                ],
+            )
+            .map_err(|e| format!("insert whitelist connection log failed: {e}"))?;
+        }
+        Ok(())
+    }
+
+    pub fn finish_stale_security_whitelist_logs(
+        &self,
+        refreshed_after: &str,
+    ) -> Result<(), String> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE security_whitelist_connection_logs
+             SET end_time = last_seen,
+                 duration_secs = CAST(strftime('%s', last_seen) - strftime('%s', start_time) AS INTEGER)
+             WHERE end_time IS NULL AND last_seen < ?1",
+            params![refreshed_after],
+        )
+        .map_err(|e| format!("finish stale whitelist connection logs failed: {e}"))?;
+        Ok(())
+    }
+
+    pub fn mark_security_whitelist_log_decision(
+        &self,
+        id: i64,
+        decision: &str,
+        note: &str,
+    ) -> Result<Option<SecurityWhitelistConnectionLog>, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE security_whitelist_connection_logs
+                 SET decision = ?1,
+                     note = ?2,
+                     last_seen = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE id = ?3",
+                params![decision, note, id],
+            )
+            .map_err(|e| format!("update whitelist log decision failed: {e}"))?;
+        if affected == 0 {
+            return Ok(None);
+        }
+        conn.query_row(
+            "SELECT id, source_ip, destination_ip, destination_port, protocol, decision,
+                    start_time, end_time, duration_secs, note, observed_count, last_seen
+             FROM security_whitelist_connection_logs WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(SecurityWhitelistConnectionLog {
+                    id: row.get(0)?,
+                    source_ip: row.get(1)?,
+                    destination_ip: row.get(2)?,
+                    destination_port: row.get(3)?,
+                    protocol: row.get(4)?,
+                    decision: row.get(5)?,
+                    start_time: row.get(6)?,
+                    end_time: row.get(7)?,
+                    duration_secs: row.get(8)?,
+                    note: row.get(9)?,
+                    observed_count: row.get(10)?,
+                    last_seen: row.get(11)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| format!("load updated whitelist log failed: {e}"))
     }
 
     // ---- DbMan Saved Queries ----
@@ -3805,7 +4163,9 @@ fn validate_kyklos_ha_backend_update(update: &KyklosHaBackendServerUpdate) -> Re
     Ok(())
 }
 
-fn validate_fortigate_firewall_policy(update: &FortigateFirewallPolicyUpdate) -> Result<(), String> {
+fn validate_fortigate_firewall_policy(
+    update: &FortigateFirewallPolicyUpdate,
+) -> Result<(), String> {
     let valid_name = !update.name.trim().is_empty()
         && update.name.len() <= 64
         && update
@@ -3826,7 +4186,10 @@ fn validate_fortigate_firewall_policy(update: &FortigateFirewallPolicyUpdate) ->
             return Err(format!("invalid FortiGate firewall policy {label}"));
         }
     }
-    if !matches!(update.action.as_str(), "ACCEPT" | "DENY" | "DROP" | "REJECT") {
+    if !matches!(
+        update.action.as_str(),
+        "ACCEPT" | "DENY" | "DROP" | "REJECT"
+    ) {
         return Err("invalid FortiGate firewall policy action".to_string());
     }
     if !matches!(update.status.as_str(), "啟用" | "停用") {
@@ -5631,6 +5994,29 @@ impl AppDb {
             .map_err(|e| format!("delete form failed: {e}"))?;
         Ok(affected > 0)
     }
+}
+
+fn validate_security_ip_or_cidr(value: &str) -> Result<(), String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("IP address is required".to_string());
+    }
+    if let Some((ip, prefix)) = value.split_once('/') {
+        ip.parse::<std::net::IpAddr>()
+            .map_err(|_| format!("invalid whitelist IP: {value}"))?;
+        let prefix = prefix
+            .parse::<u8>()
+            .map_err(|_| format!("invalid whitelist CIDR prefix: {value}"))?;
+        let max = if ip.contains(':') { 128 } else { 32 };
+        if prefix > max {
+            return Err(format!("invalid whitelist CIDR prefix: {value}"));
+        }
+        return Ok(());
+    }
+    value
+        .parse::<std::net::IpAddr>()
+        .map(|_| ())
+        .map_err(|_| format!("invalid whitelist IP: {value}"))
 }
 
 // ---- ApiMan Contents (Puck) ----

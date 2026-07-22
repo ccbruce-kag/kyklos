@@ -44,7 +44,8 @@
         snmp: function() {},
         apiman: function() { renderApiManTree(); },
         dbman: function() { loadDbManConnections(); loadDbManSavedQueries(); },
-        security: function() { loadSecurityCvsSources(); },
+        security: function() { setSecuritySubView('cvs'); loadSecurityCvsSources(); },
+        securityWhitelist: function() { setSecuritySubView('whitelist'); },
         tools: function() {
           // Force Bootstrap tabs to init after DOM wrapping
           try {
@@ -64,7 +65,7 @@
         role: 'menuRole', unit: 'menuUnit', user: 'menuUser', dictionary: 'menuDictionary', systemSetting: 'menuSystemSetting',
         firewallMan: 'menuFirewallMan', fortigate: 'menuFortigate', juniper: 'menuJuniper',
         haproxy: 'menuHaproxy', kyklosHa: 'menuKyklosHa', nginx: 'menuNginx', netplan: 'menuNetplan',
-        pcap: 'menuPcap', snmp: 'menuSnmp', apiman: 'menuApiManNew', dbman: 'menuDbManNew', security: 'menuSecurityCvs',
+        pcap: 'menuPcap', snmp: 'menuSnmp', apiman: 'menuApiManNew', dbman: 'menuDbManNew', security: 'menuSecurityCvs', securityWhitelist: 'menuSecurityWhitelist',
         tools: 'menuTools', system: 'menuSys', shell: 'menuShell', widgets: 'menuWidgets', logViewer: 'menuLogViewer', crontab: 'menuCrontab', ai: 'menuAI',
       };
       // ─── Rebuild dynamic menus ───
@@ -83,6 +84,29 @@
       function hideAllViews() {
         hideAllWorkViews();
       }
+      function setSecuritySubView(subview) {
+        var $view = $('#securityView');
+        if (!$view.length) return;
+        $view.toggleClass('security-whitelist-standalone', subview === 'whitelist');
+        $('#securityCvsPane,#securityScanPane,#securityWhitelistPane').removeClass('show active');
+        $('#security-cvs-tab,#security-scan-tab').removeClass('active');
+        $('#menuSecurityCvs,#menuSecurityScan,#menuSecurityWhitelist').removeClass('active');
+        if (subview === 'scan') {
+          $('#securityScanPane').addClass('show active');
+          $('#security-scan-tab').addClass('active');
+          $('#menuSecurityScan').addClass('active');
+          return;
+        }
+        if (subview === 'whitelist') {
+          $('#securityWhitelistPane').addClass('show active');
+          $('#menuSecurityWhitelist').addClass('active');
+          return;
+        }
+        $('#securityCvsPane').addClass('show active');
+        $('#security-cvs-tab').addClass('active');
+        $('#menuSecurityCvs').addClass('active');
+      }
+      window.fwmSetSecuritySubView = setSecuritySubView;
       // ─── Dashboard view toggle & timer ───
       function switchView(mode) {
         destroyTerminal();
@@ -136,18 +160,21 @@
             menuDbManNewLink: 'dbman',
             menuSecurityCvsLink: 'security',
             menuSecurityScanLink: 'security',
-            menuSecurityWhitelistLink: 'security'
+            menuSecurityWhitelistLink: 'securityWhitelist'
           };
           var mode = viewMap[link.id];
           if (!mode || typeof window.fwmSwitchView !== 'function') return;
           event.preventDefault();
           event.stopPropagation();
           window.fwmSwitchView(mode);
+          if (link.id === 'menuSecurityCvsLink') {
+            setTimeout(function () { setSecuritySubView('cvs'); }, 100);
+          }
           if (link.id === 'menuSecurityScanLink') {
-            setTimeout(function () { $('#security-scan-tab').click(); }, 100);
+            setTimeout(function () { setSecuritySubView('scan'); }, 100);
           }
           if (link.id === 'menuSecurityWhitelistLink') {
-            setTimeout(function () { $('#security-whitelist-tab').click(); }, 100);
+            setTimeout(function () { setSecuritySubView('whitelist'); }, 100);
           }
           console.log('[fwm-menu] leaf switched', link.id, mode);
         }, true);
@@ -178,9 +205,9 @@
           $('.dbman-conn-item[data-conn-id="' + connId + '"]').click();
         }, 300);
       });
-      $('#menuSecurityCvsLink').on('click', function (e) { e.preventDefault(); switchView('security'); });
-      $('#menuSecurityScanLink').on('click', function (e) { e.preventDefault(); switchView('security'); setTimeout(function () { $('#security-scan-tab').click(); }, 100); });
-      $('#menuSecurityWhitelistLink').on('click', function (e) { e.preventDefault(); switchView('security'); setTimeout(function () { $('#security-whitelist-tab').click(); }, 100); });
+      $('#menuSecurityCvsLink').on('click', function (e) { e.preventDefault(); switchView('security'); setTimeout(function () { setSecuritySubView('cvs'); }, 100); });
+      $('#menuSecurityScanLink').on('click', function (e) { e.preventDefault(); switchView('security'); setTimeout(function () { setSecuritySubView('scan'); }, 100); });
+      $('#menuSecurityWhitelistLink').on('click', function (e) { e.preventDefault(); switchView('securityWhitelist'); setTimeout(function () { setSecuritySubView('whitelist'); }, 100); });
       $('#menuSysLink').on('click', function (e) { e.preventDefault(); switchView('system'); });
       $('#menuToolsLink').on('click', function (e) { e.preventDefault(); switchView('tools'); });
       $('#menuShellLink').on('click', function (e) { e.preventDefault(); switchView('shell'); });

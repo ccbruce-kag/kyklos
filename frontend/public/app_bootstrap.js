@@ -162,10 +162,14 @@ var _orig_ready = $;
       'dashboard', 'workflow', 'netArch', 'erdDiagram', 'wireframe', 'reportEditor', 'formEditor',
       'role', 'unit', 'user', 'dictionary', 'systemSetting',
       'firewallMan', 'system', 'fortigate', 'juniper', 'haproxy', 'kyklosHa', 'nginx', 'netplan',
-      'pcap', 'snmp', 'sftp', 'samba', 'apiman', 'dbman', 'security', 'tools', 'ai',
+      'pcap', 'snmp', 'sftp', 'samba', 'apiman', 'dbman', 'security', 'securityWhitelist', 'tools', 'ai',
       'shell', 'widgets', 'logViewer', 'crontab'
     ];
     let tabState = { tabs: [], activeId: null };
+    function viewModeFor(mode) {
+      if (mode === 'securityWhitelist') return 'security';
+      return mode;
+    }
     function hideAllWorkViews() {
       WORK_VIEW_MODES.forEach(function (viewMode) {
         $('#' + viewMode + 'View').hide();
@@ -218,6 +222,7 @@ var _orig_ready = $;
         apiman: 'ApiMan',
         dbman: 'DbMan',
         security: lang.securityLabel || 'Security',
+        securityWhitelist: lang.menuSecurityWhitelist || 'Whitelist',
       };
       return map[mode] || mode;
     }
@@ -230,7 +235,7 @@ var _orig_ready = $;
         dictionary: 'bx-book', systemSetting: 'bx-slider',
         shell: 'bx-terminal', widgets: 'bx-cube', logViewer: 'bx-file', crontab: 'bx-time-five', ai: 'bx-bot', tools: 'bx-wrench', fortigate: 'bx-shield-alt-2', haproxy: 'bx-transfer', kyklosHa: 'bx-git-branch',
         nginx: 'bx-windows', juniper: 'bx-network-chart', netplan: 'bx-wifi',
-        apiman: 'bx-link', dbman: 'bx-data', security: 'bx-shield',
+        apiman: 'bx-link', dbman: 'bx-data', security: 'bx-shield', securityWhitelist: 'bx-list-check',
       };
       return map[mode] || 'bx-file';
     }
@@ -248,15 +253,16 @@ var _orig_ready = $;
     }
     function activateTabImpl(mode) {
       tabState.activeId = mode;
+      var viewMode = viewModeFor(mode);
       // Keep raw view nodes hidden before moving/showing the active tab pane.
       hideAllWorkViews();
       // Hide all tab panes
       $('.tab-content-pane').removeClass('active').hide();
-      var paneId = TAB_VIEW_PREFIX + mode;
+      var paneId = TAB_VIEW_PREFIX + viewMode;
       var $pane = $('#' + paneId);
       if (!$pane.length) {
         // Find the original view element and wrap it in a tab pane
-        var $origView = $('#' + mode + 'View');
+        var $origView = $('#' + viewMode + 'View');
         if ($origView.length) {
           // Remove inline display:none from original view so pane visibility controls it
           if ($origView.css('display') === 'none') $origView.css('display', '');
@@ -266,7 +272,13 @@ var _orig_ready = $;
       }
       if ($pane.length) {
         $pane.addClass('active').show();
-        $('#' + mode + 'View').css('display', '');
+        $('#' + viewMode + 'View').css('display', '');
+      }
+      if (mode === 'security' && typeof window.fwmSetSecuritySubView === 'function') {
+        window.fwmSetSecuritySubView('cvs');
+      }
+      if (mode === 'securityWhitelist' && typeof window.fwmSetSecuritySubView === 'function') {
+        window.fwmSetSecuritySubView('whitelist');
       }
       renderTabs();
       saveTabs();
@@ -295,10 +307,12 @@ var _orig_ready = $;
       }
       saveTabs();
       // Remove the pane
-      var paneId = TAB_VIEW_PREFIX + mode;
+      var viewMode = viewModeFor(mode);
+      var hasSharedViewTab = tabState.tabs.some(function (tab) { return tab.id !== mode && viewModeFor(tab.id) === viewMode; });
+      var paneId = TAB_VIEW_PREFIX + viewMode;
       var $pane = $('#' + paneId);
-      if ($pane.length) {
-        var $view = $pane.find('#' + mode + 'View');
+      if ($pane.length && !hasSharedViewTab) {
+        var $view = $pane.find('#' + viewMode + 'View');
         if ($view.length) {
           $view.unwrap();
           $view.css('display', 'none');

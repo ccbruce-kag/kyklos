@@ -2913,12 +2913,36 @@ impl AppDb {
 
     pub fn delete_security_whitelist_ip(&self, id: i64) -> Result<bool, String> {
         let conn = self.connect()?;
+        let ip_address = conn
+            .query_row(
+                "SELECT ip_address FROM security_whitelist_ips WHERE id = ?1",
+                params![id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| format!("load whitelist IP before delete failed: {e}"))?;
         let affected = conn
             .execute(
                 "DELETE FROM security_whitelist_ips WHERE id = ?1",
                 params![id],
             )
             .map_err(|e| format!("delete whitelist IP failed: {e}"))?;
+        if affected > 0 {
+            if let Some(ip_address) = ip_address {
+                conn.execute(
+                    "UPDATE security_whitelist_connection_logs
+                     SET decision = 'blocked',
+                         note = CASE
+                             WHEN note IS NULL OR note = '' THEN '白名單刪除後回復阻擋'
+                             ELSE note || '；白名單刪除後回復阻擋'
+                         END,
+                         last_seen = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                     WHERE source_ip = ?1 AND decision = 'allowed'",
+                    params![ip_address],
+                )
+                .map_err(|e| format!("reset whitelist log decision after delete failed: {e}"))?;
+            }
+        }
         Ok(affected > 0)
     }
 

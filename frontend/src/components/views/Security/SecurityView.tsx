@@ -171,9 +171,13 @@ export default function SecurityView() {
       })
       if (res.code !== 0) throw new Error(res.msg)
       await loadWhitelist(true)
-      showSecurityToast(settings.enabled ? '白名單防護已啟用' : '白名單防護已停用', sync ? 'iptables 已同步' : '設定已儲存')
+      if (sync) {
+        showSecurityToast('iptables 設定已同步', settings.enabled ? '白名單防護規則已套用' : '白名單防護規則已停用')
+      } else {
+        showSecurityToast(settings.enabled ? '白名單防護已啟用' : '白名單防護已停用', '設定已儲存')
+      }
     } catch (err) {
-      showSecurityToast('白名單防護同步失敗', err instanceof Error ? err.message : String(err), undefined, true)
+      showSecurityToast(sync ? 'iptables 設定同步失敗' : '白名單防護儲存失敗', err instanceof Error ? err.message : String(err), undefined, true)
     } finally {
       setLoading(false)
     }
@@ -242,7 +246,6 @@ export default function SecurityView() {
       <ul className="nav nav-tabs nav-fill mb-3" id="securityTabs" role="tablist">
         <li className="nav-item"><button className="nav-link active" id="security-cvs-tab" data-bs-toggle="tab" data-bs-target="#securityCvsPane" type="button" role="tab"><i className="bx bx-cloud-download me-1"></i><span className="securityTabLabel">CVS 資料庫</span></button></li>
         <li className="nav-item"><button className="nav-link" id="security-scan-tab" data-bs-toggle="tab" data-bs-target="#securityScanPane" type="button" role="tab"><i className="bx bx-scan me-1"></i><span className="securityTabLabel">網路掃描</span></button></li>
-        <li className="nav-item"><button className="nav-link" id="security-whitelist-tab" data-bs-toggle="tab" data-bs-target="#securityWhitelistPane" type="button" role="tab"><i className="bx bx-list-check me-1"></i><span className="securityTabLabel">白名單</span></button></li>
       </ul>
       <div className="tab-content p-0">
         <div className="tab-pane fade show active" id="securityCvsPane" role="tabpanel">
@@ -367,7 +370,7 @@ export default function SecurityView() {
                     </div>
                     <div className="security-whitelist-actions">
                       <button className="btn btn-outline-success" type="button" disabled={loading} onClick={() => saveSettings(false)}>儲存設定</button>
-                      <button className="btn btn-success" type="button" disabled={loading} onClick={() => saveSettings(true)}>啟用防護並同步 iptables</button>
+                      <button className="btn btn-success" type="button" disabled={loading} onClick={() => saveSettings(true)}>同步 iptables 設定</button>
                     </div>
                   </div>
                   <div className="security-whitelist-warning mt-3">

@@ -550,8 +550,23 @@ function safeJson(data: Data): string {
 }
 
 type ContentItem = { type?: string; props?: Record<string, unknown> }
+type ContentComponentDefaults = { defaultProps?: Record<string, unknown> }
+
+const outlineQuickBlocks = [
+  { type: 'Hero', label: 'Hero' },
+  { type: 'SectionTitle', label: '標題' },
+  { type: 'Paragraph', label: '文字' },
+  { type: 'ButtonRow', label: '按鈕列' },
+  { type: 'FeatureGrid', label: '功能卡片' },
+  { type: 'StatGrid', label: '統計列' },
+  { type: 'Alert', label: '提示' },
+] as const
 
 function getContentItems(data: Data): ContentItem[] {
+  if (Array.isArray(data.content) && data.content.length > 0) return data.content as ContentItem[]
+  if (data.zones && typeof data.zones === 'object') {
+    return Object.values(data.zones).flatMap((zone) => Array.isArray(zone) ? zone as ContentItem[] : [])
+  }
   return Array.isArray(data.content) ? data.content as ContentItem[] : []
 }
 
@@ -568,6 +583,18 @@ function itemId(item: ContentItem, index: number): string {
 
 function withContent(data: Data, content: ContentItem[]): Data {
   return { ...data, content: content as Data['content'] }
+}
+
+function createContentItem(type: string): ContentItem {
+  const component = (config.components as Record<string, ContentComponentDefaults>)[type]
+  const defaultProps = component?.defaultProps || {}
+  return {
+    type,
+    props: {
+      ...JSON.parse(JSON.stringify(defaultProps)),
+      id: `${type.toLowerCase()}-${Date.now()}`,
+    },
+  }
 }
 
 export default function ContentEditorModal({ record, onSaved, onClose }: Props) {
@@ -679,6 +706,14 @@ export default function ContentEditorModal({ record, onSaved, onClose }: Props) 
     notify(message)
   }
 
+  const addOutlineItem = (type: string, label: string) => {
+    const item = createContentItem(type)
+    const nextItems = [...outlineItems, item]
+    updateContentItems(nextItems, `已新增區塊：${label}`)
+    setSelectedOutlineId(itemId(item, nextItems.length - 1))
+    setMode('outline')
+  }
+
   const moveOutlineItem = (index: number, direction: -1 | 1) => {
     const nextIndex = index + direction
     if (nextIndex < 0 || nextIndex >= outlineItems.length) return
@@ -778,15 +813,27 @@ export default function ContentEditorModal({ record, onSaved, onClose }: Props) 
                       <strong>內容結構</strong>
                       <span>{outlineItems.length} 個區塊，可在此調整順序、複製或刪除。</span>
                     </div>
-                    <button type="button" className="btn btn-sm btn-primary" onClick={() => setMode('design')}>
-                      <i className="bx bx-edit-alt me-1"></i>回到設計
-                    </button>
+                    <div className="kyklos-content-outline-summary-actions">
+                      <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setMode('design')}>
+                        <i className="bx bx-edit-alt me-1"></i>回到設計
+                      </button>
+                    </div>
+                  </div>
+                  <div className="kyklos-content-outline-quick">
+                    <span>快速新增區塊</span>
+                    <div>
+                      {outlineQuickBlocks.map((item) => (
+                        <button key={item.type} type="button" className="btn btn-sm btn-outline-primary" onClick={() => addOutlineItem(item.type, item.label)}>
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   {outlineItems.length === 0 ? (
                     <div className="kyklos-content-outline-empty">
                       <div>
-                        <strong>Outline 是內容結構管理</strong>
-                        <p>目前尚無區塊。新增區塊後，這裡會列出每個區塊，並可調整順序、複製、刪除。</p>
+                        <strong>目前尚無內容區塊</strong>
+                        <p>可直接使用上方快速新增區塊，或套用模板後再回到 Outline 調整順序、複製、刪除。</p>
                         <div className="kyklos-content-outline-empty-actions">
                           <button type="button" className="btn btn-sm btn-primary" onClick={() => applyTemplate(templateLanding, 'Landing')}>
                             <i className="bx bx-layer-plus me-1"></i>套用 Landing 模板

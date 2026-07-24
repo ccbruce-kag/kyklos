@@ -198,6 +198,9 @@ pub struct SecurityWhitelistSettings {
 pub struct SecurityWhitelistIp {
     pub id: i64,
     pub ip_address: String,
+    pub protocol: String,
+    pub port_start: Option<i64>,
+    pub port_end: Option<i64>,
     pub enabled: bool,
     pub note: String,
     pub created_at: String,
@@ -206,7 +209,11 @@ pub struct SecurityWhitelistIp {
 
 #[derive(Clone, Deserialize)]
 pub struct SecurityWhitelistIpInput {
+    pub id: Option<i64>,
     pub ip_address: String,
+    pub protocol: String,
+    pub port_start: Option<i64>,
+    pub port_end: Option<i64>,
     pub enabled: bool,
     pub note: String,
 }
@@ -1408,7 +1415,10 @@ impl AppDb {
             );
             CREATE TABLE IF NOT EXISTS security_whitelist_ips (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ip_address TEXT NOT NULL UNIQUE,
+                ip_address TEXT NOT NULL,
+                protocol TEXT NOT NULL DEFAULT 'all',
+                port_start INTEGER,
+                port_end INTEGER,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 note TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
@@ -1675,6 +1685,7 @@ impl AppDb {
             "ALTER TABLE nginx_sites ADD COLUMN listen_port INTEGER NOT NULL DEFAULT 80",
             [],
         );
+        migrate_security_whitelist_ips_schema(&conn)?;
         self.ensure_seeded()
     }
 
@@ -2840,9 +2851,9 @@ impl AppDb {
         let conn = self.connect()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, ip_address, enabled, note, created_at, updated_at
+                "SELECT id, ip_address, protocol, port_start, port_end, enabled, note, created_at, updated_at
                  FROM security_whitelist_ips
-                 ORDER BY enabled DESC, ip_address",
+                 ORDER BY enabled DESC, ip_address, protocol, COALESCE(port_start, 0), COALESCE(port_end, 0)",
             )
             .map_err(|e| format!("prepare whitelist IP query failed: {e}"))?;
         let rows = stmt
@@ -2850,10 +2861,13 @@ impl AppDb {
                 Ok(SecurityWhitelistIp {
                     id: row.get(0)?,
                     ip_address: row.get(1)?,
-                    enabled: row.get::<_, i64>(2)? != 0,
-                    note: row.get(3)?,
-                    created_at: row.get(4)?,
-                    updated_at: row.get(5)?,
+                    protocol: row.get(2)?,
+                    port_start: row.get(3)?,
+                    port_end: row.get(4)?,
+                    enabled: row.get::<_, i64>(5)? != 0,
+                    note: row.get(6)?,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
                 })
             })
             .map_err(|e| format!("query whitelist IPs failed: {e}"))?;
@@ -2868,29 +2882,79 @@ impl AppDb {
         &self,
         input: SecurityWhitelistIpInput,
     ) -> Result<SecurityWhitelistIp, String> {
-        validate_security_ip_or_cidr(&input.ip_address)?;
+        let ip_address = input.ip_address.trim().to_string();
+        validate_security_ip_or_cidr(&ip_address)?;
+        let protocol = normalize_security_whitelist_protocol(&input.protocol)?;
+        let (port_start, port_end) =
+            normalize_security_whitelist_ports(&protocol, input.port_start, input.port_end)?;
         let conn = self.connect()?;
-        conn.execute(
-            "INSERT INTO security_whitelist_ips (ip_address, enabled, note)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(ip_address) DO UPDATE SET
-                enabled = excluded.enabled,
-                note = excluded.note,
-                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
-            params![
-                input.ip_address.trim(),
-                if input.enabled { 1 } else { 0 },
-                input.note.trim()
-            ],
-        )
-        .map_err(|e| format!("save whitelist IP failed: {e}"))?;
-        let id = conn
+        let existing_id = conn
             .query_row(
-                "SELECT id FROM security_whitelist_ips WHERE ip_address = ?1",
-                params![input.ip_address.trim()],
+                "SELECT id FROM security_whitelist_ips
+                 WHERE ip_address = ?1
+                   AND protocol = ?2
+                   AND COALESCE(port_start, 0) = COALESCE(?3, 0)
+                   AND COALESCE(port_end, 0) = COALESCE(?4, 0)",
+                params![ip_address, protocol, port_start, port_end],
                 |row| row.get::<_, i64>(0),
             )
-            .map_err(|e| format!("load saved whitelist IP id failed: {e}"))?;
+            .optional()
+            .map_err(|e| format!("check duplicate whitelist IP failed: {e}"))?;
+        if let (Some(current_id), Some(existing_id)) = (input.id, existing_id) {
+            if current_id != existing_id {
+                return Err(format!(
+                    "白名單規則已存在：{} / {} / {}",
+                    ip_address,
+                    protocol.to_uppercase(),
+                    format_security_port_range(port_start, port_end)
+                ));
+            }
+        }
+        let id = input.id.or(existing_id);
+        let id = if let Some(id) = id {
+            let affected = conn
+                .execute(
+                    "UPDATE security_whitelist_ips
+                     SET ip_address = ?1,
+                         protocol = ?2,
+                         port_start = ?3,
+                         port_end = ?4,
+                         enabled = ?5,
+                         note = ?6,
+                         updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                     WHERE id = ?7",
+                    params![
+                        ip_address,
+                        protocol,
+                        port_start,
+                        port_end,
+                        if input.enabled { 1 } else { 0 },
+                        input.note.trim(),
+                        id
+                    ],
+                )
+                .map_err(|e| format!("update whitelist IP failed: {e}"))?;
+            if affected == 0 {
+                return Err("whitelist IP not found".to_string());
+            }
+            id
+        } else {
+            conn.execute(
+                "INSERT INTO security_whitelist_ips
+                    (ip_address, protocol, port_start, port_end, enabled, note)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    ip_address,
+                    protocol,
+                    port_start,
+                    port_end,
+                    if input.enabled { 1 } else { 0 },
+                    input.note.trim()
+                ],
+            )
+            .map_err(|e| format!("save whitelist IP failed: {e}"))?;
+            conn.last_insert_rowid()
+        };
         self.get_security_whitelist_ip(id)
     }
 
@@ -2949,17 +3013,20 @@ impl AppDb {
     fn get_security_whitelist_ip(&self, id: i64) -> Result<SecurityWhitelistIp, String> {
         let conn = self.connect()?;
         conn.query_row(
-            "SELECT id, ip_address, enabled, note, created_at, updated_at
+            "SELECT id, ip_address, protocol, port_start, port_end, enabled, note, created_at, updated_at
              FROM security_whitelist_ips WHERE id = ?1",
             params![id],
             |row| {
                 Ok(SecurityWhitelistIp {
                     id: row.get(0)?,
                     ip_address: row.get(1)?,
-                    enabled: row.get::<_, i64>(2)? != 0,
-                    note: row.get(3)?,
-                    created_at: row.get(4)?,
-                    updated_at: row.get(5)?,
+                    protocol: row.get(2)?,
+                    port_start: row.get(3)?,
+                    port_end: row.get(4)?,
+                    enabled: row.get::<_, i64>(5)? != 0,
+                    note: row.get(6)?,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
                 })
             },
         )
@@ -3000,6 +3067,47 @@ impl AppDb {
         let mut items = Vec::new();
         for row in rows {
             items.push(row.map_err(|e| format!("read whitelist connection log failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn export_security_whitelist_logs(
+        &self,
+        start_time: Option<&str>,
+        end_time: Option<&str>,
+    ) -> Result<Vec<SecurityWhitelistConnectionLog>, String> {
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, source_ip, destination_ip, destination_port, protocol, decision,
+                        start_time, end_time, duration_secs, note, observed_count, last_seen
+                 FROM security_whitelist_connection_logs
+                 WHERE (?1 IS NULL OR datetime(COALESCE(end_time, last_seen, start_time)) >= datetime(?1))
+                   AND (?2 IS NULL OR datetime(start_time) <= datetime(?2))
+                 ORDER BY datetime(start_time) DESC, id DESC",
+            )
+            .map_err(|e| format!("prepare whitelist connection log export failed: {e}"))?;
+        let rows = stmt
+            .query_map(params![start_time, end_time], |row| {
+                Ok(SecurityWhitelistConnectionLog {
+                    id: row.get(0)?,
+                    source_ip: row.get(1)?,
+                    destination_ip: row.get(2)?,
+                    destination_port: row.get(3)?,
+                    protocol: row.get(4)?,
+                    decision: row.get(5)?,
+                    start_time: row.get(6)?,
+                    end_time: row.get(7)?,
+                    duration_secs: row.get(8)?,
+                    note: row.get(9)?,
+                    observed_count: row.get(10)?,
+                    last_seen: row.get(11)?,
+                })
+            })
+            .map_err(|e| format!("query whitelist connection log export failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("read whitelist connection log export failed: {e}"))?);
         }
         Ok(items)
     }
@@ -6041,6 +6149,98 @@ fn validate_security_ip_or_cidr(value: &str) -> Result<(), String> {
         .parse::<std::net::IpAddr>()
         .map(|_| ())
         .map_err(|_| format!("invalid whitelist IP: {value}"))
+}
+
+fn normalize_security_whitelist_protocol(value: &str) -> Result<String, String> {
+    let protocol = value.trim().to_ascii_lowercase();
+    match protocol.as_str() {
+        "" | "all" => Ok("all".to_string()),
+        "tcp" | "udp" => Ok(protocol),
+        _ => Err("白名單協定僅支援 ALL / TCP / UDP".to_string()),
+    }
+}
+
+fn normalize_security_whitelist_ports(
+    protocol: &str,
+    port_start: Option<i64>,
+    port_end: Option<i64>,
+) -> Result<(Option<i64>, Option<i64>), String> {
+    if protocol == "all" {
+        return Ok((None, None));
+    }
+    let (start, end) = match (port_start, port_end) {
+        (None, None) => return Ok((None, None)),
+        (Some(value), None) | (None, Some(value)) => (value, value),
+        (Some(start), Some(end)) => (start, end),
+    };
+    if !(1..=65535).contains(&start) || !(1..=65535).contains(&end) {
+        return Err("白名單 Port 範圍需介於 1 到 65535".to_string());
+    }
+    if start > end {
+        return Err("白名單 Port 起始值不可大於結束值".to_string());
+    }
+    Ok((Some(start), Some(end)))
+}
+
+fn format_security_port_range(port_start: Option<i64>, port_end: Option<i64>) -> String {
+    match (port_start, port_end) {
+        (Some(start), Some(end)) if start == end => start.to_string(),
+        (Some(start), Some(end)) => format!("{start}-{end}"),
+        _ => "全部 Port".to_string(),
+    }
+}
+
+fn migrate_security_whitelist_ips_schema(conn: &Connection) -> Result<(), String> {
+    let _ = conn.execute(
+        "ALTER TABLE security_whitelist_ips ADD COLUMN protocol TEXT NOT NULL DEFAULT 'all'",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE security_whitelist_ips ADD COLUMN port_start INTEGER",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE security_whitelist_ips ADD COLUMN port_end INTEGER",
+        [],
+    );
+
+    let table_sql = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'security_whitelist_ips'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| format!("inspect whitelist table failed: {e}"))?
+        .unwrap_or_default();
+    if !table_sql.to_ascii_uppercase().contains("IP_ADDRESS TEXT NOT NULL UNIQUE") {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS security_whitelist_ips_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip_address TEXT NOT NULL,
+            protocol TEXT NOT NULL DEFAULT 'all',
+            port_start INTEGER,
+            port_end INTEGER,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            note TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        );
+        INSERT INTO security_whitelist_ips_new
+            (id, ip_address, protocol, port_start, port_end, enabled, note, created_at, updated_at)
+        SELECT id, ip_address, COALESCE(protocol, 'all'), port_start, port_end,
+               enabled, note, created_at, updated_at
+        FROM security_whitelist_ips;
+        DROP TABLE security_whitelist_ips;
+        ALTER TABLE security_whitelist_ips_new RENAME TO security_whitelist_ips;
+        ",
+    )
+    .map_err(|e| format!("migrate whitelist IP table failed: {e}"))?;
+    Ok(())
 }
 
 // ---- ApiMan Contents (Puck) ----

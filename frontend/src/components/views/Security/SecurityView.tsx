@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiGet, apiPost } from '../../../utils/api'
 
 type WhitelistSettings = {
@@ -9,6 +9,9 @@ type WhitelistSettings = {
 type WhitelistIp = {
   id: number
   ip_address: string
+  protocol: string
+  port_start?: number | null
+  port_end?: number | null
   enabled: boolean
   note: string
   created_at: string
@@ -63,17 +66,39 @@ function decisionLabel(decision: string) {
   return decision || '未知'
 }
 
+function whitelistPortLabel(item: Pick<WhitelistIp, 'port_start' | 'port_end'>) {
+  if (!item.port_start && !item.port_end) return '全部 Port'
+  if (item.port_start && item.port_end && item.port_start !== item.port_end) return `${item.port_start} - ${item.port_end}`
+  return `${item.port_start || item.port_end}`
+}
+
+function whitelistScopeLabel(item: Pick<WhitelistIp, 'protocol' | 'port_start' | 'port_end'>) {
+  const protocol = (item.protocol || 'all').toUpperCase()
+  if (protocol === 'ALL') return 'ALL / 全部 Port'
+  return `${protocol} / ${whitelistPortLabel(item)}`
+}
+
 export default function SecurityView() {
   const [settings, setSettings] = useState<WhitelistSettings>({ enabled: false, updated_at: '' })
   const [ips, setIps] = useState<WhitelistIp[]>([])
   const [logs, setLogs] = useState<WhitelistLog[]>([])
   const [ipAddress, setIpAddress] = useState('')
+  const [protocol, setProtocol] = useState('all')
+  const [portStart, setPortStart] = useState('')
+  const [portEnd, setPortEnd] = useState('')
   const [note, setNote] = useState('')
   const [enabled, setEnabled] = useState(true)
   const [loading, setLoading] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingIp, setEditingIp] = useState<WhitelistIp | null>(null)
   const [modalError, setModalError] = useState('')
+  const [lastLogSyncAt, setLastLogSyncAt] = useState('')
+  const [lastLogSyncCount, setLastLogSyncCount] = useState<number | null>(null)
+  const [logSyncError, setLogSyncError] = useState('')
+  const [logExportMode, setLogExportMode] = useState<'all' | 'range'>('all')
+  const [logExportStart, setLogExportStart] = useState('')
+  const [logExportEnd, setLogExportEnd] = useState('')
+  const logRefreshInFlight = useRef(false)
 
   const enabledIpCount = useMemo(() => ips.filter((item) => item.enabled).length, [ips])
   const blockedCount = useMemo(() => logs.filter((item) => item.decision === 'blocked').length, [logs])
@@ -101,6 +126,25 @@ export default function SecurityView() {
     loadWhitelist(true)
   }, [])
 
+  useEffect(() => {
+    const isWhitelistVisible = () => {
+      const view = document.getElementById('securityView')
+      const pane = document.getElementById('securityWhitelistPane')
+      if (!view || !pane) return false
+      const viewVisible = window.getComputedStyle(view).display !== 'none'
+      const whitelistStandalone = view.classList.contains('security-whitelist-standalone')
+      const whitelistActive = pane.classList.contains('show') || pane.classList.contains('active')
+      return viewVisible && (whitelistStandalone || whitelistActive)
+    }
+    const sync = () => {
+      if (!isWhitelistVisible()) return
+      refreshLogs(true)
+    }
+    sync()
+    const timer = window.setInterval(sync, 5000)
+    return () => window.clearInterval(timer)
+  }, [])
+
   async function saveIp() {
     if (!ipAddress.trim()) {
       const message = '可輸入單一 IP 或 CIDR，例如 10.20.100.103 或 10.20.100.0/24'
@@ -112,19 +156,26 @@ export default function SecurityView() {
     setLoading(true)
     try {
       const res = await apiPost<WhitelistIp>('/security/whitelist/ips', {
+        id: editingIp?.id,
         ip_address: ipAddress.trim(),
+        protocol,
+        port_start: portStart.trim(),
+        port_end: portEnd.trim(),
         enabled,
         note,
       })
       if (res.code !== 0) throw new Error(res.msg)
       setIpAddress('')
+      setProtocol('all')
+      setPortStart('')
+      setPortEnd('')
       setNote('')
       setEnabled(true)
       setShowAddModal(false)
       setEditingIp(null)
       setModalError('')
       await loadWhitelist(true)
-      showSecurityToast(editingIp ? '白名單 IP 已更新' : '白名單 IP 已儲存', res.data.ip_address, res.data.note)
+      showSecurityToast(editingIp ? '白名單規則已更新' : '白名單規則已儲存', res.data.ip_address, whitelistScopeLabel(res.data))
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (showAddModal) setModalError(message)
@@ -140,7 +191,7 @@ export default function SecurityView() {
       const res = await apiPost(`/security/whitelist/ips/${item.id}/enabled`, { enabled: next })
       if (res.code !== 0) throw new Error(res.msg)
       await loadWhitelist(true)
-      showSecurityToast(next ? '白名單 IP 已啟用' : '白名單 IP 已停用', item.ip_address)
+      showSecurityToast(next ? '白名單規則已啟用' : '白名單規則已停用', item.ip_address, whitelistScopeLabel(item))
     } catch (err) {
       showSecurityToast('白名單狀態更新失敗', err instanceof Error ? err.message : String(err), undefined, true)
     }
@@ -183,17 +234,25 @@ export default function SecurityView() {
     }
   }
 
-  async function refreshLogs() {
-    setLoading(true)
+  async function refreshLogs(silent = false) {
+    if (logRefreshInFlight.current) return
+    logRefreshInFlight.current = true
+    if (!silent) setLoading(true)
     try {
       const res = await apiPost<{ refreshed: number; logs: WhitelistLog[] }>('/security/whitelist/logs/refresh', {})
       if (res.code !== 0) throw new Error(res.msg)
       setLogs(res.data.logs || [])
-      showSecurityToast('連線紀錄已同步', `本次觀察到 ${res.data.refreshed} 筆目前連線`)
+      setLastLogSyncAt(new Date().toLocaleTimeString('zh-TW', { hour12: false }))
+      setLastLogSyncCount(res.data.refreshed)
+      setLogSyncError('')
+      if (!silent) showSecurityToast('連線紀錄已同步', `本次觀察到 ${res.data.refreshed} 筆目前連線`)
     } catch (err) {
-      showSecurityToast('連線紀錄同步失敗', err instanceof Error ? err.message : String(err), undefined, true)
+      const message = err instanceof Error ? err.message : String(err)
+      setLogSyncError(message)
+      if (!silent) showSecurityToast('連線紀錄同步失敗', message, undefined, true)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
+      logRefreshInFlight.current = false
     }
   }
 
@@ -223,8 +282,35 @@ export default function SecurityView() {
     }
   }
 
+  function downloadLogs() {
+    const params = new URLSearchParams()
+    if (logExportMode === 'range') {
+      if (!logExportStart || !logExportEnd) {
+        showSecurityToast('請選擇匯出時段', '自訂時段需要同時選擇開始時間與結束時間。', undefined, true)
+        return
+      }
+      if (logExportStart > logExportEnd) {
+        showSecurityToast('匯出時段不正確', '開始時間不可晚於結束時間。', undefined, true)
+        return
+      }
+      params.set('start', logExportStart)
+      params.set('end', logExportEnd)
+    }
+    const url = `/security/whitelist/logs/export${params.toString() ? `?${params.toString()}` : ''}`
+    const link = document.createElement('a')
+    link.href = url
+    link.download = ''
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    showSecurityToast('連線紀錄下載已開始', logExportMode === 'all' ? '全部時間紀錄' : `${logExportStart} ~ ${logExportEnd}`)
+  }
+
   function openAddIpModal() {
     setIpAddress('')
+    setProtocol('all')
+    setPortStart('')
+    setPortEnd('')
     setNote('')
     setEnabled(true)
     setEditingIp(null)
@@ -234,6 +320,9 @@ export default function SecurityView() {
 
   function openEditIpModal(item: WhitelistIp) {
     setIpAddress(item.ip_address)
+    setProtocol(item.protocol || 'all')
+    setPortStart(item.port_start ? String(item.port_start) : '')
+    setPortEnd(item.port_end ? String(item.port_end) : '')
     setNote(item.note || '')
     setEnabled(item.enabled)
     setEditingIp(item)
@@ -333,7 +422,7 @@ export default function SecurityView() {
                   <div>
                     <span>啟用白名單</span>
                     <strong>{enabledIpCount} 筆</strong>
-                    <small>目前可通過的 IP / CIDR</small>
+                    <small>目前可通過的 IP / CIDR / Port 規則</small>
                   </div>
                 </section>
                 <section className="is-blocked">
@@ -387,13 +476,13 @@ export default function SecurityView() {
                     <i className="bx bx-list-check"></i>
                     <div>
                       <strong>白名單清單列表</strong>
-                      <span>手動允許的來源 IP / CIDR，可編輯、啟用停用或刪除。</span>
+                      <span>手動允許的來源 IP / CIDR / Port，可編輯、啟用停用或刪除。</span>
                     </div>
                   </div>
                   <div className="d-flex align-items-center gap-2 flex-wrap">
                     <span className="badge bg-label-primary">{ips.length} 筆</span>
                     <button className="btn btn-sm btn-primary" type="button" disabled={loading} onClick={openAddIpModal}>
-                      <i className="bx bx-plus-circle me-1"></i>新增白名單 IP
+                      <i className="bx bx-plus-circle me-1"></i>新增白名單規則
                     </button>
                   </div>
                 </div>
@@ -405,6 +494,10 @@ export default function SecurityView() {
                           <div className="security-whitelist-ip-line">
                             <code>{item.ip_address}</code>
                             <span className={`badge ${item.enabled ? 'bg-label-success' : 'bg-label-secondary'}`}>{item.enabled ? '啟用' : '停用'}</span>
+                          </div>
+                          <div className="security-whitelist-rule-badges">
+                            <span><i className="bx bx-git-branch me-1"></i>{(item.protocol || 'all').toUpperCase()}</span>
+                            <span><i className="bx bx-transfer-alt me-1"></i>{whitelistPortLabel(item)}</span>
                           </div>
                           <div className="security-whitelist-note">{item.note || '無備註'}</div>
                           <div className="security-whitelist-meta">
@@ -422,7 +515,7 @@ export default function SecurityView() {
                     {!ips.length && (
                       <div className="security-whitelist-empty">
                         <i className="bx bx-list-plus"></i>
-                        <strong>尚未建立白名單 IP</strong>
+                        <strong>尚未建立白名單規則</strong>
                         <span>請先新增目前管理端 IP，再啟用白名單防護。</span>
                       </div>
                     )}
@@ -437,16 +530,35 @@ export default function SecurityView() {
                     <i className="bx bx-history"></i>
                     <div>
                       <strong>連線紀錄 Log</strong>
-                      <span>來源 IP 可直接改為允許或維持阻擋。</span>
+                      <span>即時同步目前連線，來源 IP 可直接改為允許或維持阻擋。</span>
                     </div>
                   </div>
                   <div className="d-flex align-items-center gap-2 flex-wrap">
-                    <button className="btn btn-sm btn-outline-primary" type="button" disabled={loading} onClick={refreshLogs}>
-                      <i className="bx bx-history me-1"></i>同步連線紀錄
+                    <div className={`security-whitelist-live-status ${logSyncError ? 'is-error' : 'is-live'}`}>
+                      <i className={logSyncError ? 'bx bx-error-circle' : 'bx bx-radio-circle-marked'}></i>
+                      <span>{logSyncError ? '同步異常' : '即時同步中'}</span>
+                      <small>{logSyncError || (lastLogSyncAt ? `${lastLogSyncAt} · ${lastLogSyncCount ?? 0} 筆` : '等待首次同步')}</small>
+                    </div>
+                    <button className="btn btn-sm btn-outline-primary" type="button" disabled={loading} onClick={() => refreshLogs(false)}>
+                      <i className="bx bx-history me-1"></i>立即同步
                     </button>
                   </div>
                 </div>
                 <div className="card-body">
+                  <div className="security-whitelist-log-toolbar">
+                    <div className="security-whitelist-log-export-mode" role="group" aria-label="連線紀錄匯出範圍">
+                      <button className={`btn btn-sm ${logExportMode === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} type="button" onClick={() => setLogExportMode('all')}>全部時間</button>
+                      <button className={`btn btn-sm ${logExportMode === 'range' ? 'btn-primary' : 'btn-outline-secondary'}`} type="button" onClick={() => setLogExportMode('range')}>自訂時段</button>
+                    </div>
+                    <div className="security-whitelist-log-date-range">
+                      <input className="form-control form-control-sm" type="datetime-local" value={logExportStart} onChange={(event) => setLogExportStart(event.target.value)} disabled={logExportMode === 'all'} aria-label="匯出開始時間" />
+                      <span>至</span>
+                      <input className="form-control form-control-sm" type="datetime-local" value={logExportEnd} onChange={(event) => setLogExportEnd(event.target.value)} disabled={logExportMode === 'all'} aria-label="匯出結束時間" />
+                    </div>
+                    <button className="btn btn-sm btn-success" type="button" onClick={downloadLogs}>
+                      <i className="bx bx-download me-1"></i>下載紀錄
+                    </button>
+                  </div>
                   <div className="security-whitelist-log-list">
                     {logs.map((item) => (
                       <article key={item.id} className={`security-whitelist-log-item ${item.decision === 'blocked' ? 'is-blocked' : 'is-allowed'}`}>
@@ -485,7 +597,7 @@ export default function SecurityView() {
                       <div className="security-whitelist-empty">
                         <i className="bx bx-history"></i>
                         <strong>尚無連線紀錄</strong>
-                        <span>請按右上方「同步連線紀錄」。</span>
+                        <span>頁面開啟時會自動同步，目前尚未觀察到連線。</span>
                       </div>
                     )}
                   </div>
@@ -498,8 +610,8 @@ export default function SecurityView() {
               <div className="security-whitelist-modal" role="dialog" aria-modal="true" aria-labelledby="securityWhitelistAddTitle">
                 <div className="security-whitelist-modal-header">
                   <div>
-                    <strong id="securityWhitelistAddTitle">{editingIp ? '編輯白名單 IP' : '新增白名單 IP'}</strong>
-                    <span>{editingIp ? '編輯時 IP / CIDR 固定，避免誤產生重複白名單。' : '可輸入單一 IP 或 CIDR 網段'}</span>
+                    <strong id="securityWhitelistAddTitle">{editingIp ? '編輯白名單規則' : '新增白名單規則'}</strong>
+                    <span>可設定來源 IP / CIDR，也可限制 TCP 或 UDP 的目的 Port 範圍。</span>
                   </div>
                   <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => { setShowAddModal(false); setEditingIp(null); setModalError('') }} aria-label="關閉"><i className="bx bx-x"></i></button>
                 </div>
@@ -511,12 +623,33 @@ export default function SecurityView() {
                     </div>
                   )}
                   <label className="form-label" htmlFor="secWhitelistIp">IP / CIDR</label>
-                  <input id="secWhitelistIp" className="form-control font-monospace" value={ipAddress} onChange={(event) => { setIpAddress(event.target.value); setModalError('') }} placeholder="10.20.100.103 或 10.20.100.0/24" disabled={!!editingIp} autoFocus={!editingIp} />
+                  <input id="secWhitelistIp" className="form-control font-monospace" value={ipAddress} onChange={(event) => { setIpAddress(event.target.value); setModalError('') }} placeholder="172.23.23.1 或 10.20.100.0/24" autoFocus={!editingIp} />
+                  <div className="security-whitelist-port-grid">
+                    <div>
+                      <label className="form-label" htmlFor="secWhitelistProtocol">協定</label>
+                      <select id="secWhitelistProtocol" className="form-select" value={protocol} onChange={(event) => { setProtocol(event.target.value); setModalError('') }}>
+                        <option value="all">ALL - 不限制協定</option>
+                        <option value="tcp">TCP</option>
+                        <option value="udp">UDP</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label" htmlFor="secWhitelistPortStart">Port 起始</label>
+                      <input id="secWhitelistPortStart" className="form-control font-monospace" inputMode="numeric" value={portStart} onChange={(event) => { setPortStart(event.target.value); setModalError('') }} placeholder="例如 10000" disabled={protocol === 'all'} />
+                    </div>
+                    <div>
+                      <label className="form-label" htmlFor="secWhitelistPortEnd">Port 結束</label>
+                      <input id="secWhitelistPortEnd" className="form-control font-monospace" inputMode="numeric" value={portEnd} onChange={(event) => { setPortEnd(event.target.value); setModalError('') }} placeholder="例如 20000" disabled={protocol === 'all'} />
+                    </div>
+                  </div>
+                  <div className="form-text mt-1">
+                    {protocol === 'all' ? 'ALL 會允許此來源 IP / CIDR 的全部協定與 Port。' : 'Port 可留空代表該協定全部 Port；只填一欄時會視為單一 Port。'}
+                  </div>
                   <label className="form-label mt-2" htmlFor="secWhitelistNote">備註</label>
                   <textarea id="secWhitelistNote" className="form-control" rows={3} value={note} onChange={(event) => { setNote(event.target.value); setModalError('') }} placeholder="例如：主管筆電、維運主機、測試網段" />
                   <div className="form-check form-switch mt-3">
                     <input className="form-check-input" type="checkbox" id="secWhitelistEnabled" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-                    <label className="form-check-label" htmlFor="secWhitelistEnabled">{editingIp ? '啟用此 IP' : '新增後啟用'}</label>
+                    <label className="form-check-label" htmlFor="secWhitelistEnabled">{editingIp ? '啟用此規則' : '新增後啟用'}</label>
                   </div>
                 </div>
                 <div className="security-whitelist-modal-actions">

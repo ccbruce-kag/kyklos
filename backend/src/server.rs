@@ -13,7 +13,8 @@ use crate::bapi_log;
 use crate::db::{
     AppDb, CronJobInput, FortigateFirewallPolicy, FortigateFirewallPolicyUpdate,
     HaproxyBackendServerUpdate, HaproxyLoadBalancerUpdate, JuniperDeviceUpdate,
-    KyklosHaBackendServerUpdate, KyklosHaServiceUpdate, SecurityWhitelistIpInput,
+    KyklosHaBackendServerUpdate, KyklosHaServiceUpdate, SecurityWhitelistIp,
+    SecurityWhitelistIpInput,
 };
 use crate::net::firewall::FirewallCmd;
 use crate::net::haproxy::{BackendServer, HaproxyClient};
@@ -29,7 +30,7 @@ use crate::sys::system;
 use crate::sys::tools;
 use crate::utils;
 use axum::body::Body;
-use axum::extract::{Form, Path, Request, State};
+use axum::extract::{Form, Path, Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -267,6 +268,23 @@ fn parse_form_bool(value: Option<&str>) -> bool {
     value
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(false)
+}
+
+fn parse_optional_i64_form(value: Option<&str>) -> Option<i64> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<i64>().ok())
+}
+
+fn parse_optional_i64_form_strict(value: Option<&str>, field: &str) -> Result<Option<i64>, String> {
+    match value.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => value
+            .parse::<i64>()
+            .map(Some)
+            .map_err(|_| format!("{field} 必須是數字")),
+        None => Ok(None),
+    }
 }
 
 fn decode_juniper_port_path(port: &str) -> String {
@@ -4764,7 +4782,11 @@ async fn handle_security_whitelist_ips(State(state): State<Arc<AppState>>) -> Js
 
 #[derive(Deserialize)]
 struct SecurityWhitelistIpForm {
+    pub id: Option<String>,
     pub ip_address: Option<String>,
+    pub protocol: Option<String>,
+    pub port_start: Option<String>,
+    pub port_end: Option<String>,
     pub enabled: Option<String>,
     pub note: Option<String>,
 }
@@ -4777,8 +4799,20 @@ async fn handle_security_whitelist_save_ip(
         Some(value) if !value.trim().is_empty() => value.trim().to_string(),
         _ => return utils::output(Some("IP address is required"), None),
     };
+    let port_start = match parse_optional_i64_form_strict(form.port_start.as_deref(), "Port 起始值") {
+        Ok(value) => value,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let port_end = match parse_optional_i64_form_strict(form.port_end.as_deref(), "Port 結束值") {
+        Ok(value) => value,
+        Err(e) => return utils::output(Some(&e), None),
+    };
     let input = SecurityWhitelistIpInput {
+        id: parse_optional_i64_form(form.id.as_deref()),
         ip_address,
+        protocol: form.protocol.unwrap_or_else(|| "all".to_string()),
+        port_start,
+        port_end,
         enabled: form
             .enabled
             .as_deref()
@@ -4828,6 +4862,87 @@ async fn handle_security_whitelist_logs(State(state): State<Arc<AppState>>) -> J
     }
 }
 
+#[derive(Deserialize)]
+struct SecurityWhitelistLogExportQuery {
+    pub start: Option<String>,
+    pub end: Option<String>,
+}
+
+async fn handle_security_whitelist_export_logs(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SecurityWhitelistLogExportQuery>,
+) -> axum::response::Response {
+    let start = match normalize_whitelist_export_time(query.start.as_deref()) {
+        Ok(value) => value,
+        Err(e) => return csv_error_response(&e),
+    };
+    let end = match normalize_whitelist_export_time(query.end.as_deref()) {
+        Ok(value) => value,
+        Err(e) => return csv_error_response(&e),
+    };
+    if let (Some(start), Some(end)) = (start.as_deref(), end.as_deref()) {
+        if start > end {
+            return csv_error_response("匯出起始時間不可晚於結束時間");
+        }
+    }
+    let items = match state
+        .db
+        .export_security_whitelist_logs(start.as_deref(), end.as_deref())
+    {
+        Ok(items) => items,
+        Err(e) => return csv_error_response(&e),
+    };
+    let mut csv = String::from(
+        "\u{feff}id,source_ip,destination_ip,destination_port,protocol,decision,start_time,end_time,duration_secs,observed_count,last_seen,note\n",
+    );
+    for item in items {
+        let fields = [
+            item.id.to_string(),
+            item.source_ip,
+            item.destination_ip,
+            item.destination_port
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            item.protocol,
+            item.decision,
+            item.start_time,
+            item.end_time.unwrap_or_default(),
+            item.duration_secs
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            item.observed_count.to_string(),
+            item.last_seen,
+            item.note,
+        ];
+        csv.push_str(
+            &fields
+                .iter()
+                .map(|field| csv_escape(field))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        csv.push('\n');
+    }
+    let range = match (start.as_deref(), end.as_deref()) {
+        (Some(start), Some(end)) => format!(
+            "{}-{}",
+            whitelist_filename_time(start),
+            whitelist_filename_time(end)
+        ),
+        (Some(start), None) => format!("from-{}", whitelist_filename_time(start)),
+        (None, Some(end)) => format!("until-{}", whitelist_filename_time(end)),
+        (None, None) => "all".to_string(),
+    };
+    Response::builder()
+        .header(header::CONTENT_TYPE, "text/csv; charset=utf-8")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"whitelist-logs-{range}.csv\""),
+        )
+        .body(Body::from(csv))
+        .unwrap_or_else(|_| Response::new(Body::from("failed to build csv response")))
+}
+
 async fn handle_security_whitelist_refresh_logs(State(state): State<Arc<AppState>>) -> Json<Value> {
     match refresh_security_whitelist_connection_logs(&state).await {
         Ok(count) => match state.db.list_security_whitelist_logs() {
@@ -4858,7 +4973,11 @@ async fn handle_security_whitelist_allow_log_ip(
         Err(e) => return utils::output(Some(&e), None),
     };
     let input = SecurityWhitelistIpInput {
+        id: None,
         ip_address: log.source_ip.clone(),
+        protocol: log.protocol.clone(),
+        port_start: log.destination_port,
+        port_end: log.destination_port,
         enabled: true,
         note: form
             .note
@@ -4904,16 +5023,16 @@ async fn refresh_security_whitelist_connection_logs(state: &AppState) -> Result<
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
     let whitelist = state.db.list_security_whitelist_ips()?;
-    let allowed: Vec<String> = whitelist
+    let allowed: Vec<SecurityWhitelistIp> = whitelist
         .iter()
         .filter(|item| item.enabled)
-        .map(|item| item.ip_address.clone())
+        .cloned()
         .collect();
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut count = 0usize;
     for line in stdout.lines() {
         if let Some(conn) = parse_ss_connection_line(line) {
-            let decision = if ip_matches_whitelist(&conn.source_ip, &allowed) {
+            let decision = if connection_matches_whitelist(&conn, &allowed) {
                 "allowed"
             } else {
                 "blocked"
@@ -4987,12 +5106,99 @@ fn split_socket_addr(raw: &str) -> Option<(String, Option<i64>)> {
     ))
 }
 
-fn ip_matches_whitelist(source_ip: &str, whitelist: &[String]) -> bool {
+fn connection_matches_whitelist(
+    conn: &ObservedConnection,
+    whitelist: &[SecurityWhitelistIp],
+) -> bool {
+    whitelist.iter().any(|item| {
+        ip_matches_whitelist(&conn.source_ip, &item.ip_address)
+            && whitelist_protocol_matches(&conn.protocol, &item.protocol)
+            && whitelist_port_matches(conn.destination_port, item.port_start, item.port_end)
+    })
+}
+
+fn ip_matches_whitelist(source_ip: &str, entry: &str) -> bool {
     let source = match source_ip.parse::<std::net::IpAddr>() {
         Ok(ip) => ip,
         Err(_) => return false,
     };
-    whitelist.iter().any(|item| ip_matches_entry(source, item))
+    ip_matches_entry(source, entry)
+}
+
+fn whitelist_protocol_matches(conn_protocol: &str, rule_protocol: &str) -> bool {
+    let rule_protocol = rule_protocol.trim().to_ascii_lowercase();
+    rule_protocol == "all" || rule_protocol == conn_protocol.trim().to_ascii_lowercase()
+}
+
+fn whitelist_port_matches(
+    destination_port: Option<i64>,
+    port_start: Option<i64>,
+    port_end: Option<i64>,
+) -> bool {
+    match (port_start, port_end) {
+        (Some(start), Some(end)) => destination_port
+            .map(|port| port >= start && port <= end)
+            .unwrap_or(false),
+        _ => true,
+    }
+}
+
+fn normalize_whitelist_export_time(value: Option<&str>) -> Result<Option<String>, String> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if value.len() > 32
+        || !value
+            .chars()
+            .all(|ch| ch.is_ascii_digit() || matches!(ch, '-' | 'T' | ':' | 'Z' | ' '))
+    {
+        return Err("匯出時間格式不正確".to_string());
+    }
+    let mut normalized = value.replace(' ', "T");
+    if normalized.len() == 16 {
+        normalized.push_str(":00");
+    }
+    if normalized.len() == 19 {
+        normalized.push('Z');
+    }
+    let bytes = normalized.as_bytes();
+    let valid_shape = normalized.len() == 20
+        && bytes.get(4) == Some(&b'-')
+        && bytes.get(7) == Some(&b'-')
+        && bytes.get(10) == Some(&b'T')
+        && bytes.get(13) == Some(&b':')
+        && bytes.get(16) == Some(&b':')
+        && bytes.get(19) == Some(&b'Z');
+    if valid_shape {
+        Ok(Some(normalized))
+    } else {
+        Err("匯出時間格式不正確，請使用 YYYY-MM-DDTHH:mm".to_string())
+    }
+}
+
+fn whitelist_filename_time(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
+}
+
+fn csv_escape(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn csv_error_response(message: &str) -> Response {
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .body(Body::from(message.to_string()))
+        .unwrap_or_else(|_| Response::new(Body::from(message.to_string())))
 }
 
 fn ip_matches_entry(source: std::net::IpAddr, entry: &str) -> bool {
@@ -5042,13 +5248,13 @@ async fn sync_security_whitelist_rules(state: &AppState) -> Result<Value, String
     }
     let settings = state.db.security_whitelist_settings()?;
     let items = state.db.list_security_whitelist_ips()?;
-    let enabled_ips: Vec<String> = items
+    let enabled_rules: Vec<SecurityWhitelistIp> = items
         .iter()
         .filter(|item| item.enabled)
-        .map(|item| item.ip_address.clone())
+        .cloned()
         .collect();
     const CHAIN: &str = "KYKLOS_SECURITY_WHITELIST";
-    if settings.enabled && enabled_ips.is_empty() {
+    if settings.enabled && enabled_rules.is_empty() {
         return Err(
             "啟用白名單防護前，至少需要一筆啟用中的白名單 IP，避免鎖住管理連線".to_string(),
         );
@@ -5076,9 +5282,35 @@ async fn sync_security_whitelist_rules(state: &AppState) -> Result<Value, String
         ])
         .await?;
         run_iptables(&["-t", "filter", "-A", CHAIN, "-i", "lo", "-j", "RETURN"]).await?;
-        for ip in &enabled_ips {
-            run_iptables(&["-t", "filter", "-A", CHAIN, "-s", ip, "-j", "RETURN"]).await?;
-            commands.push(format!("iptables -t filter -A {CHAIN} -s {ip} -j RETURN"));
+        for rule in &enabled_rules {
+            let mut args = vec![
+                "-t".to_string(),
+                "filter".to_string(),
+                "-A".to_string(),
+                CHAIN.to_string(),
+                "-s".to_string(),
+                rule.ip_address.clone(),
+            ];
+            let protocol = rule.protocol.trim().to_ascii_lowercase();
+            if protocol == "tcp" || protocol == "udp" {
+                args.push("-p".to_string());
+                args.push(protocol.clone());
+                if let (Some(start), Some(end)) = (rule.port_start, rule.port_end) {
+                    args.push("-m".to_string());
+                    args.push(protocol.clone());
+                    args.push("--dport".to_string());
+                    args.push(if start == end {
+                        start.to_string()
+                    } else {
+                        format!("{start}:{end}")
+                    });
+                }
+            }
+            args.push("-j".to_string());
+            args.push("RETURN".to_string());
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_iptables(&refs).await?;
+            commands.push(format!("iptables {}", args.join(" ")));
         }
         run_iptables(&[
             "-t",
@@ -5106,7 +5338,7 @@ async fn sync_security_whitelist_rules(state: &AppState) -> Result<Value, String
     Ok(json!({
         "enabled": settings.enabled,
         "chain": CHAIN,
-        "whitelist_count": enabled_ips.len(),
+        "whitelist_count": enabled_rules.len(),
         "commands": commands
     }))
 }
@@ -6313,6 +6545,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handle_security_whitelist_logs),
         )
         .route(
+            "/security/whitelist/logs/export",
+            get(handle_security_whitelist_export_logs),
+        )
+        .route(
             "/security/whitelist/logs/refresh",
             post(handle_security_whitelist_refresh_logs),
         )
@@ -6763,6 +6999,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/security/whitelist/logs",
             get(handle_security_whitelist_logs),
+        )
+        .route(
+            "/api/security/whitelist/logs/export",
+            get(handle_security_whitelist_export_logs),
         )
         .route(
             "/api/security/whitelist/logs/refresh",

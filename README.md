@@ -47,6 +47,11 @@ export IPT_WEB_USERNAME=admin
 export IPT_WEB_PASSWORD=secret
 export IPT_WEB_ADDRESS=:10001
 ./kyklos
+
+# Enable HTTPS management interface
+export KYKLOS_TLS_CERT=/etc/kyklos/tls/kyklos.crt
+export KYKLOS_TLS_KEY=/etc/kyklos/tls/kyklos.key
+./kyklos
 ```
 
 ### Windows
@@ -110,6 +115,8 @@ docker run -d --network host --privileged Miitai/kyklos:0.1.0
 | `IPT_WEB_USERNAME` | Login username | `admin` |
 | `IPT_WEB_PASSWORD` | Login password | `admin` |
 | `IPT_WEB_ADDRESS` | Listen address | `:10001` |
+| `KYKLOS_TLS_CERT` | TLS certificate PEM path. When set with `KYKLOS_TLS_KEY`, the management interface uses HTTPS. | empty |
+| `KYKLOS_TLS_KEY` | TLS private key PEM path. | empty |
 
 ## CLI Arguments
 
@@ -118,6 +125,8 @@ docker run -d --network host --privileged Miitai/kyklos:0.1.0
 | `-u` / `--username` | Login username | `admin` |
 | `-p` / `--password` | Login password | `admin` |
 | `-a` / `--address` | Listen address | `:10001` |
+| `--tls-cert` | TLS certificate PEM path | empty |
+| `--tls-key` | TLS private key PEM path | empty |
 
 ## Directory Structure
 

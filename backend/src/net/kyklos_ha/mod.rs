@@ -153,7 +153,8 @@ impl KyklosHaManager {
                     info!(
                         "{} listener started: {} {}",
                         self.label(),
-                        service.name, service.listen_port
+                        service.name,
+                        service.listen_port
                     );
                     listeners.insert(id, listener);
                 }

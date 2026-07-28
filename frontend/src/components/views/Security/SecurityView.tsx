@@ -78,7 +78,36 @@ function whitelistScopeLabel(item: Pick<WhitelistIp, 'protocol' | 'port_start' |
   return `${protocol} / ${whitelistPortLabel(item)}`
 }
 
-export default function SecurityView() {
+function parseIpv4(value: string): number[] | null {
+  const parts = value.trim().split('.')
+  if (parts.length !== 4) return null
+  const nums = parts.map((part) => {
+    if (!/^\d{1,3}$/.test(part)) return Number.NaN
+    return Number(part)
+  })
+  if (nums.some((num) => !Number.isInteger(num) || num < 0 || num > 255)) return null
+  return nums
+}
+
+function validateIpRangeInput(value: string): string {
+  const raw = value.trim()
+  if (!raw || !raw.includes('-')) return ''
+  const parts = raw.split('-')
+  if (parts.length !== 2) return 'IP 範圍格式錯誤，請使用 172.23.23.10 - 172.23.23.110'
+  const start = parseIpv4(parts[0])
+  const end = parseIpv4(parts[1])
+  if (!start || !end) return 'IP 範圍僅支援 IPv4，格式例如 172.23.23.10 - 172.23.23.110'
+  if (start.slice(0, 3).join('.') !== end.slice(0, 3).join('.')) return 'IP 範圍前三碼必須相同，例如 172.23.23.15 - 172.23.23.30'
+  if (start[3] > end[3]) return 'IP 範圍起始位址不可大於結束位址'
+  if (end[3] - start[3] + 1 > 100) return '一次性設定 IP 範圍不可大於 100 個位址'
+  return ''
+}
+
+type SecurityViewProps = {
+  whitelistOnly?: boolean
+}
+
+export default function SecurityView({ whitelistOnly = false }: SecurityViewProps) {
   const [settings, setSettings] = useState<WhitelistSettings>({ enabled: false, updated_at: '' })
   const [ips, setIps] = useState<WhitelistIp[]>([])
   const [logs, setLogs] = useState<WhitelistLog[]>([])
@@ -90,18 +119,21 @@ export default function SecurityView() {
   const [enabled, setEnabled] = useState(true)
   const [loading, setLoading] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showClearLogsModal, setShowClearLogsModal] = useState(false)
   const [editingIp, setEditingIp] = useState<WhitelistIp | null>(null)
   const [modalError, setModalError] = useState('')
   const [lastLogSyncAt, setLastLogSyncAt] = useState('')
   const [lastLogSyncCount, setLastLogSyncCount] = useState<number | null>(null)
   const [logSyncError, setLogSyncError] = useState('')
   const [logExportMode, setLogExportMode] = useState<'all' | 'range'>('all')
+  const [logExportFormat, setLogExportFormat] = useState<'csv' | 'pdf'>('csv')
   const [logExportStart, setLogExportStart] = useState('')
   const [logExportEnd, setLogExportEnd] = useState('')
   const logRefreshInFlight = useRef(false)
 
   const enabledIpCount = useMemo(() => ips.filter((item) => item.enabled).length, [ips])
   const blockedCount = useMemo(() => logs.filter((item) => item.decision === 'blocked').length, [logs])
+  const ipRangeError = useMemo(() => validateIpRangeInput(ipAddress), [ipAddress])
 
   async function loadWhitelist(silent = false) {
     try {
@@ -137,19 +169,25 @@ export default function SecurityView() {
       return viewVisible && (whitelistStandalone || whitelistActive)
     }
     const sync = () => {
+      if (!settings.enabled) return
       if (!isWhitelistVisible()) return
       refreshLogs(true)
     }
     sync()
     const timer = window.setInterval(sync, 5000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [settings.enabled])
 
   async function saveIp() {
     if (!ipAddress.trim()) {
       const message = '可輸入單一 IP 或 CIDR，例如 10.20.100.103 或 10.20.100.0/24'
       if (showAddModal) setModalError(message)
       else showSecurityToast('請輸入白名單 IP', message, undefined, true)
+      return
+    }
+    if (ipRangeError) {
+      if (showAddModal) setModalError(ipRangeError)
+      else showSecurityToast('白名單 IP 範圍錯誤', ipRangeError, undefined, true)
       return
     }
     setModalError('')
@@ -235,6 +273,10 @@ export default function SecurityView() {
   }
 
   async function refreshLogs(silent = false) {
+    if (!settings.enabled) {
+      if (!silent) showSecurityToast('連線紀錄同步暫停', '白名單防護未啟用，連線紀錄不會進行同步。', undefined, true)
+      return
+    }
     if (logRefreshInFlight.current) return
     logRefreshInFlight.current = true
     if (!silent) setLoading(true)
@@ -296,6 +338,7 @@ export default function SecurityView() {
       params.set('start', logExportStart)
       params.set('end', logExportEnd)
     }
+    params.set('format', logExportFormat)
     const url = `/security/whitelist/logs/export${params.toString() ? `?${params.toString()}` : ''}`
     const link = document.createElement('a')
     link.href = url
@@ -303,7 +346,25 @@ export default function SecurityView() {
     document.body.appendChild(link)
     link.click()
     link.remove()
-    showSecurityToast('連線紀錄下載已開始', logExportMode === 'all' ? '全部時間紀錄' : `${logExportStart} ~ ${logExportEnd}`)
+    showSecurityToast('連線紀錄下載已開始', `${logExportFormat.toUpperCase()} · ${logExportMode === 'all' ? '全部時間紀錄' : `${logExportStart} ~ ${logExportEnd}`}`)
+  }
+
+  async function clearLogs() {
+    setLoading(true)
+    try {
+      const res = await apiPost<{ cleared: number }>('/security/whitelist/logs/clear', {})
+      if (res.code !== 0) throw new Error(res.msg)
+      setLogs([])
+      setLastLogSyncAt('')
+      setLastLogSyncCount(0)
+      setLogSyncError('')
+      setShowClearLogsModal(false)
+      showSecurityToast('連線紀錄已清除', `已清除 ${res.data.cleared} 筆連線紀錄`)
+    } catch (err) {
+      showSecurityToast('清除連線紀錄失敗', err instanceof Error ? err.message : String(err), undefined, true)
+    } finally {
+      setLoading(false)
+    }
   }
 
   function openAddIpModal() {
@@ -331,7 +392,7 @@ export default function SecurityView() {
   }
 
   return (
-    <div id="securityView" className="security-view" style={{ display: 'none' }}>
+    <div id="securityView" className={`security-view ${whitelistOnly ? 'security-whitelist-standalone' : ''}`} style={{ display: 'none' }}>
       <ul className="nav nav-tabs nav-fill mb-3" id="securityTabs" role="tablist">
         <li className="nav-item"><button className="nav-link active" id="security-cvs-tab" data-bs-toggle="tab" data-bs-target="#securityCvsPane" type="button" role="tab"><i className="bx bx-cloud-download me-1"></i><span className="securityTabLabel">CVS 資料庫</span></button></li>
         <li className="nav-item"><button className="nav-link" id="security-scan-tab" data-bs-toggle="tab" data-bs-target="#securityScanPane" type="button" role="tab"><i className="bx bx-scan me-1"></i><span className="securityTabLabel">網路掃描</span></button></li>
@@ -534,12 +595,12 @@ export default function SecurityView() {
                     </div>
                   </div>
                   <div className="d-flex align-items-center gap-2 flex-wrap">
-                    <div className={`security-whitelist-live-status ${logSyncError ? 'is-error' : 'is-live'}`}>
-                      <i className={logSyncError ? 'bx bx-error-circle' : 'bx bx-radio-circle-marked'}></i>
-                      <span>{logSyncError ? '同步異常' : '即時同步中'}</span>
-                      <small>{logSyncError || (lastLogSyncAt ? `${lastLogSyncAt} · ${lastLogSyncCount ?? 0} 筆` : '等待首次同步')}</small>
+                    <div className={`security-whitelist-live-status ${!settings.enabled ? 'is-paused' : logSyncError ? 'is-error' : 'is-live'}`}>
+                      <i className={!settings.enabled ? 'bx bx-pause-circle' : logSyncError ? 'bx bx-error-circle' : 'bx bx-radio-circle-marked'}></i>
+                      <span>{!settings.enabled ? '同步暫停' : logSyncError ? '同步異常' : '即時同步中'}</span>
+                      <small>{!settings.enabled ? '白名單防護未啟用' : logSyncError || (lastLogSyncAt ? `${lastLogSyncAt} · ${lastLogSyncCount ?? 0} 筆` : '等待首次同步')}</small>
                     </div>
-                    <button className="btn btn-sm btn-outline-primary" type="button" disabled={loading} onClick={() => refreshLogs(false)}>
+                    <button className="btn btn-sm btn-outline-primary" type="button" disabled={loading || !settings.enabled} onClick={() => refreshLogs(false)}>
                       <i className="bx bx-history me-1"></i>立即同步
                     </button>
                   </div>
@@ -550,6 +611,10 @@ export default function SecurityView() {
                       <button className={`btn btn-sm ${logExportMode === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} type="button" onClick={() => setLogExportMode('all')}>全部時間</button>
                       <button className={`btn btn-sm ${logExportMode === 'range' ? 'btn-primary' : 'btn-outline-secondary'}`} type="button" onClick={() => setLogExportMode('range')}>自訂時段</button>
                     </div>
+                    <div className="security-whitelist-log-export-mode" role="group" aria-label="連線紀錄匯出格式">
+                      <button className={`btn btn-sm ${logExportFormat === 'csv' ? 'btn-dark' : 'btn-outline-secondary'}`} type="button" onClick={() => setLogExportFormat('csv')}>CSV</button>
+                      <button className={`btn btn-sm ${logExportFormat === 'pdf' ? 'btn-dark' : 'btn-outline-secondary'}`} type="button" onClick={() => setLogExportFormat('pdf')}>PDF</button>
+                    </div>
                     <div className="security-whitelist-log-date-range">
                       <input className="form-control form-control-sm" type="datetime-local" value={logExportStart} onChange={(event) => setLogExportStart(event.target.value)} disabled={logExportMode === 'all'} aria-label="匯出開始時間" />
                       <span>至</span>
@@ -557,6 +622,9 @@ export default function SecurityView() {
                     </div>
                     <button className="btn btn-sm btn-success" type="button" onClick={downloadLogs}>
                       <i className="bx bx-download me-1"></i>下載紀錄
+                    </button>
+                    <button className="btn btn-sm btn-outline-danger" type="button" disabled={loading || logs.length === 0} onClick={() => setShowClearLogsModal(true)}>
+                      <i className="bx bx-trash me-1"></i>清除紀錄
                     </button>
                   </div>
                   <div className="security-whitelist-log-list">
@@ -605,6 +673,32 @@ export default function SecurityView() {
               </div>
             </div>
           </div>
+          {showClearLogsModal && (
+            <div className="security-whitelist-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowClearLogsModal(false) }}>
+              <div className="security-whitelist-modal" role="dialog" aria-modal="true" aria-labelledby="securityWhitelistClearLogsTitle">
+                <div className="security-whitelist-modal-header is-danger">
+                  <div>
+                    <strong id="securityWhitelistClearLogsTitle">清除連線紀錄 Log</strong>
+                    <span>此動作只會清空連線紀錄，不會刪除白名單規則與防護設定。</span>
+                  </div>
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setShowClearLogsModal(false)} aria-label="關閉"><i className="bx bx-x"></i></button>
+                </div>
+                <div className="security-whitelist-form">
+                  <div className="security-whitelist-modal-alert" role="alert">
+                    <i className="bx bx-error-circle"></i>
+                    <span>清除後將無法從頁面復原這些歷史紀錄。若需要保留稽核資料，請先使用「下載紀錄」匯出 CSV 或 PDF。</span>
+                  </div>
+                  <p className="mb-0 text-muted">目前準備清除 <strong className="text-danger">{logs.length}</strong> 筆連線紀錄。</p>
+                </div>
+                <div className="security-whitelist-modal-actions">
+                  <button type="button" className="btn btn-outline-secondary" disabled={loading} onClick={() => setShowClearLogsModal(false)}>取消</button>
+                  <button type="button" className="btn btn-danger" disabled={loading} onClick={clearLogs}>
+                    {loading ? '清除中...' : '執行清除'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {showAddModal && (
             <div className="security-whitelist-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowAddModal(false) }}>
               <div className="security-whitelist-modal" role="dialog" aria-modal="true" aria-labelledby="securityWhitelistAddTitle">
@@ -623,7 +717,10 @@ export default function SecurityView() {
                     </div>
                   )}
                   <label className="form-label" htmlFor="secWhitelistIp">IP / CIDR</label>
-                  <input id="secWhitelistIp" className="form-control font-monospace" value={ipAddress} onChange={(event) => { setIpAddress(event.target.value); setModalError('') }} placeholder="172.23.23.1 或 10.20.100.0/24" autoFocus={!editingIp} />
+                  <input id="secWhitelistIp" className={`form-control font-monospace ${ipRangeError ? 'is-invalid' : ''}`} value={ipAddress} onChange={(event) => { setIpAddress(event.target.value); setModalError('') }} placeholder="172.23.23.1、10.20.100.0/24 或 172.23.23.10 - 172.23.23.110" autoFocus={!editingIp} />
+                  <div className={ipRangeError ? 'invalid-feedback d-block' : 'form-text'}>
+                    {ipRangeError || '可輸入單一 IP、CIDR，或 IPv4 範圍。一次性設定範圍不可大於 100，且 IP 前三碼必須相同。'}
+                  </div>
                   <div className="security-whitelist-port-grid">
                     <div>
                       <label className="form-label" htmlFor="secWhitelistProtocol">協定</label>

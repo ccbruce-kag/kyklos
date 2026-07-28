@@ -1,10 +1,27 @@
 import { useCallback } from 'react'
 
-export default function Sidebar() {
+type AuthProfile = {
+  username: string
+  display_name?: string | null
+  role_codes?: string[]
+}
+
+type SidebarProps = {
+  authProfile?: AuthProfile | null
+}
+
+function isWhitelistOnlyUser(authProfile?: AuthProfile | null): boolean {
+  const roles = authProfile?.role_codes || []
+  return roles.includes('security_whitelist') && !roles.includes('admin')
+}
+
+export default function Sidebar({ authProfile }: SidebarProps) {
   const toggleSidebar = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     document.documentElement.classList.toggle('layout-menu-collapsed');
   }, []);
+  const whitelistOnly = isWhitelistOnlyUser(authProfile);
+
   return (
     <aside id="layout-menu" className="layout-menu menu-vertical menu bg-menu-theme">
       <div className="app-brand demo">
@@ -47,6 +64,22 @@ export default function Sidebar() {
       <div className="menu-divider mt-0"></div>
       <div className="menu-inner-shadow"></div>
       <ul className="menu-inner py-1">
+        {whitelistOnly ? (
+        <li className="menu-item open active" id="menuGroupSecurity">
+          <a href="#" className="menu-link menu-toggle">
+            <i className="menu-icon tf-icons bx bx-shield"></i>
+            <div className="text-truncate" id="menuGroupSecurityLabel">資安</div>
+          </a>
+          <ul className="menu-sub">
+            <li className="menu-item active" id="menuSecurityWhitelist">
+              <a href="#" className="menu-link" id="menuSecurityWhitelistLink">
+                <div className="text-truncate" id="menuSecurityWhitelistLabel">白名單</div>
+              </a>
+            </li>
+          </ul>
+        </li>
+        ) : (
+        <>
         <li className="menu-item" id="menuGroupDash">
           <a href="#" className="menu-link menu-toggle">
             <i className="menu-icon tf-icons bx bx-bar-chart-alt-2"></i>
@@ -189,6 +222,26 @@ export default function Sidebar() {
                 <div className="text-truncate" id="menuCrontabLabel">Crontab</div>
               </a>
             </li>
+            <li className="menu-item" id="menuOperationLog">
+              <a href="#" className="menu-link" id="menuOperationLogLink">
+                <i className="menu-icon tf-icons bx bx-history"></i>
+                <div className="text-truncate" id="menuOperationLogLabel">操作記錄</div>
+              </a>
+            </li>
+          </ul>
+        </li>
+        <li className="menu-item" id="menuGroupBackup">
+          <a href="#" className="menu-link menu-toggle">
+            <i className="menu-icon tf-icons bx bx-archive"></i>
+            <div className="text-truncate" id="menuGroupBackupLabel">備份</div>
+          </a>
+          <ul className="menu-sub">
+            <li className="menu-item" id="menuBackupData">
+              <a href="#" className="menu-link" id="menuBackupDataLink">
+                <i className="menu-icon tf-icons bx bx-data"></i>
+                <div className="text-truncate" id="menuBackupDataLabel">資料備份</div>
+              </a>
+            </li>
           </ul>
         </li>
         <li className="menu-item" id="menuGroupApiMan">
@@ -324,6 +377,12 @@ export default function Sidebar() {
                 <div className="text-truncate" id="menuSystemSettingLabel">系統設定資料維護</div>
               </a>
             </li>
+            <li className="menu-item" id="menuNotificationSettings">
+              <a href="#" className="menu-link" id="menuNotificationSettingsLink">
+                <i className="menu-icon tf-icons bx bx-bell"></i>
+                <div className="text-truncate" id="menuNotificationSettingsLabel">告警通知設定</div>
+              </a>
+            </li>
           </ul>
         </li>
         <li className="menu-divider my-2"></li>
@@ -340,6 +399,8 @@ export default function Sidebar() {
             </li>
           </ul>
         </li>
+        </>
+        )}
       </ul>
     </aside>
   )

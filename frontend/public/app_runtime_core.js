@@ -46,6 +46,9 @@
         dbman: function() { loadDbManConnections(); loadDbManSavedQueries(); },
         security: function() { setSecuritySubView('cvs'); loadSecurityCvsSources(); },
         securityWhitelist: function() { setSecuritySubView('whitelist'); },
+        operationLog: function() { if (window.loadOperationLogs) window.loadOperationLogs(); },
+        backup: function() { if (window.loadBackups) window.loadBackups(); },
+        notificationSettings: function() { if (window.loadNotificationSettings) window.loadNotificationSettings(); },
         tools: function() {
           // Force Bootstrap tabs to init after DOM wrapping
           try {
@@ -67,6 +70,7 @@
         haproxy: 'menuHaproxy', kyklosHa: 'menuKyklosHa', nginx: 'menuNginx', netplan: 'menuNetplan',
         pcap: 'menuPcap', snmp: 'menuSnmp', apiman: 'menuApiManNew', dbman: 'menuDbManNew', security: 'menuSecurityCvs', securityWhitelist: 'menuSecurityWhitelist',
         tools: 'menuTools', system: 'menuSys', shell: 'menuShell', widgets: 'menuWidgets', logViewer: 'menuLogViewer', crontab: 'menuCrontab', ai: 'menuAI',
+        operationLog: 'menuOperationLog', backup: 'menuBackupData', notificationSettings: 'menuNotificationSettings',
       };
       // ─── Rebuild dynamic menus ───
       rebuildApiManMenu();
@@ -79,7 +83,7 @@
       });
       $('#logClear').on('click', function () { logger.clear(); });
       function inactiveAllLeaf() {
-        $('#menuDash,#menuWorkflow,#menuNetArch,#menuErdDiagram,#menuWireframe,#menuReportEditor,#menuFormEditor,#menuRole,#menuUnit,#menuUser,#menuDictionary,#menuSystemSetting,#menuFirewallMan,#menuFortigate,#menuJuniper,#menuHaproxy,#menuKyklosHa,#menuNginx,#menuNetplan,#menuPcap,#menuSnmp,#menuSys,#menuTools,#menuShell,#menuWidgets,#menuLogViewer,#menuCrontab,#menuApiManNew,#menuDbManNew,#menuSecurityCvs,#menuSecurityScan,#menuSecurityWhitelist,#menuAI,#menuDoc').removeClass('active');
+        $('#menuDash,#menuWorkflow,#menuNetArch,#menuErdDiagram,#menuWireframe,#menuReportEditor,#menuFormEditor,#menuRole,#menuUnit,#menuUser,#menuDictionary,#menuSystemSetting,#menuNotificationSettings,#menuFirewallMan,#menuFortigate,#menuJuniper,#menuHaproxy,#menuKyklosHa,#menuNginx,#menuNetplan,#menuPcap,#menuSnmp,#menuSys,#menuTools,#menuShell,#menuWidgets,#menuLogViewer,#menuCrontab,#menuOperationLog,#menuBackupData,#menuApiManNew,#menuDbManNew,#menuSecurityCvs,#menuSecurityScan,#menuSecurityWhitelist,#menuAI,#menuDoc').removeClass('active');
       }
       function hideAllViews() {
         hideAllWorkViews();
@@ -143,6 +147,7 @@
             menuUserLink: 'user',
             menuDictionaryLink: 'dictionary',
             menuSystemSettingLink: 'systemSetting',
+            menuNotificationSettingsLink: 'notificationSettings',
             menuFirewallManLink: 'firewallMan',
             menuFortigateLink: 'fortigate',
             menuJuniperLink: 'juniper',
@@ -156,6 +161,8 @@
             menuWidgetsLink: 'widgets',
             menuLogViewerLink: 'logViewer',
             menuCrontabLink: 'crontab',
+            menuOperationLogLink: 'operationLog',
+            menuBackupDataLink: 'backup',
             menuAILink: 'ai',
             menuDbManNewLink: 'dbman',
             menuSecurityCvsLink: 'security',
@@ -208,6 +215,9 @@
       $('#menuSecurityCvsLink').on('click', function (e) { e.preventDefault(); switchView('security'); setTimeout(function () { setSecuritySubView('cvs'); }, 100); });
       $('#menuSecurityScanLink').on('click', function (e) { e.preventDefault(); switchView('security'); setTimeout(function () { setSecuritySubView('scan'); }, 100); });
       $('#menuSecurityWhitelistLink').on('click', function (e) { e.preventDefault(); switchView('securityWhitelist'); setTimeout(function () { setSecuritySubView('whitelist'); }, 100); });
+      $('#menuOperationLogLink').on('click', function (e) { e.preventDefault(); switchView('operationLog'); });
+      $('#menuBackupDataLink').on('click', function (e) { e.preventDefault(); switchView('backup'); });
+      $('#menuNotificationSettingsLink').on('click', function (e) { e.preventDefault(); switchView('notificationSettings'); });
       $('#menuSysLink').on('click', function (e) { e.preventDefault(); switchView('system'); });
       $('#menuToolsLink').on('click', function (e) { e.preventDefault(); switchView('tools'); });
       $('#menuShellLink').on('click', function (e) { e.preventDefault(); switchView('shell'); });
@@ -313,13 +323,24 @@
       };
       // ─── Restore tabs from localStorage ───
       loadTabs();
-      if (tabState.tabs.length > 0) {
+      var defaultMode = window.kyklosDefaultView || 'dashboard';
+      var forceDefaultTab = window.kyklosForceDefaultTab === true || sessionStorage.getItem('kyklos_force_default_tab') === '1';
+      if (forceDefaultTab) {
+        tabState = { tabs: [{ id: defaultMode }], activeId: defaultMode };
+        saveTabs();
+        try { sessionStorage.removeItem('kyklos_force_default_tab'); } catch(e) {}
+        window.kyklosForceDefaultTab = false;
+        renderTabs();
+        switchView(defaultMode);
+      } else if (tabState.tabs.length > 0) {
         renderTabs();
         if (tabState.activeId && findTab(tabState.activeId) >= 0) {
           switchView(tabState.activeId);
         } else {
           switchView(tabState.tabs[0].id);
         }
+      } else {
+        switchView(defaultMode);
       }
       // ─── Load rules ───
       function loadListRule(tableName, chainName, done) {

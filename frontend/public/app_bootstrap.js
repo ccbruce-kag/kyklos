@@ -163,11 +163,12 @@ var _orig_ready = $;
       'role', 'unit', 'user', 'dictionary', 'systemSetting',
       'firewallMan', 'system', 'fortigate', 'juniper', 'haproxy', 'kyklosHa', 'nginx', 'netplan',
       'pcap', 'snmp', 'sftp', 'samba', 'apiman', 'dbman', 'security', 'securityWhitelist', 'tools', 'ai',
-      'shell', 'widgets', 'logViewer', 'crontab'
+      'shell', 'widgets', 'logViewer', 'crontab', 'operationLog', 'backup', 'backupExport', 'backupImport', 'notificationSettings'
     ];
     let tabState = { tabs: [], activeId: null };
     function viewModeFor(mode) {
       if (mode === 'securityWhitelist') return 'security';
+      if (mode === 'backupExport' || mode === 'backupImport') return 'backup';
       return mode;
     }
     function hideAllWorkViews() {
@@ -223,6 +224,11 @@ var _orig_ready = $;
         dbman: 'DbMan',
         security: lang.securityLabel || 'Security',
         securityWhitelist: lang.menuSecurityWhitelist || 'Whitelist',
+        operationLog: '操作記錄',
+        backup: '資料備份',
+        backupExport: '資料備份',
+        backupImport: '資料備份',
+        notificationSettings: '告警通知設定',
       };
       return map[mode] || mode;
     }
@@ -236,6 +242,7 @@ var _orig_ready = $;
         shell: 'bx-terminal', widgets: 'bx-cube', logViewer: 'bx-file', crontab: 'bx-time-five', ai: 'bx-bot', tools: 'bx-wrench', fortigate: 'bx-shield-alt-2', haproxy: 'bx-transfer', kyklosHa: 'bx-git-branch',
         nginx: 'bx-windows', juniper: 'bx-network-chart', netplan: 'bx-wifi',
         apiman: 'bx-link', dbman: 'bx-data', security: 'bx-shield', securityWhitelist: 'bx-list-check',
+        operationLog: 'bx-history', backup: 'bx-data', backupExport: 'bx-data', backupImport: 'bx-data', notificationSettings: 'bx-bell',
       };
       return map[mode] || 'bx-file';
     }

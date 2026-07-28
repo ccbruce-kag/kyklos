@@ -410,6 +410,50 @@
       // Timestamp
       $('#dashUpdated').html('<span class="dot-pulse"></span>' + (lang.dashUpdated || 'Updated') + ': ' + new Date().toLocaleTimeString());
     }
+    function renderGovernanceSummary(data) {
+      data = data || {};
+      var ops = data.recent_operations || [];
+      var notifications = data.notifications || [];
+      var activity = data.recent_activity || [];
+      var opHtml = '<div class="dash-feed-list">';
+      ops.slice(0, 20).forEach(function (item) {
+        var ok = item.status === 'ok';
+        opHtml += '<div class="dash-feed-item">' +
+          '<span class="dash-feed-icon ' + (ok ? 'is-ok' : 'is-danger') + '"><i class="bx ' + (ok ? 'bx-check' : 'bx-error') + '"></i></span>' +
+          '<div><strong>' + escHtml(item.username || '-') + ' · ' + escHtml(item.action || '-') + '</strong>' +
+          '<small>' + escHtml((item.target || '').substring(0, 80)) + '</small></div>' +
+          '<time>' + escHtml((item.start_time || '').substring(0, 19).replace('T', ' ')) + '</time></div>';
+      });
+      opHtml += '</div>';
+      $('#dashRecentOperations').html(ops.length ? opHtml : '<div class="text-muted">尚無操作記錄</div>');
+
+      var noticeHtml = '<div class="dash-feed-list">';
+      notifications.slice(0, 10).forEach(function (item) {
+        var cls = item.severity === 'danger' ? 'is-danger' : item.severity === 'warning' ? 'is-warning' : 'is-ok';
+        var target = item.target_view || (item.category === 'blocked_ip' ? 'securityWhitelist' : item.category === 'backup_overdue' ? 'backup' : 'notificationSettings');
+        noticeHtml += '<button type="button" class="dash-feed-item dash-feed-button ' + (item.acknowledged ? 'is-read' : 'is-unread') + '" data-notification-target="' + escHtml(target) + '">' +
+          '<span class="dash-feed-icon ' + cls + '"><i class="bx bx-bell"></i></span>' +
+          '<div><strong>' + escHtml(item.title || '-') + '</strong>' +
+          '<small>' + escHtml(item.message || '') + '</small></div>' +
+          '<span class="badge ' + (item.acknowledged ? 'bg-label-secondary' : 'bg-label-warning') + '">' + (item.acknowledged ? '已讀' : '未讀') + '</span></button>';
+      });
+      noticeHtml += '</div>';
+      $('#dashNotificationSummary').html(notifications.length ? noticeHtml : '<div class="text-muted">尚無通知</div>');
+
+      var actHtml = '<div style="display:flex;flex-direction:column;gap:2px">';
+      activity.forEach(function (item) {
+        var time = (item.time || '').substring(0, 19).replace('T', ' ');
+        var icon = item.icon || 'bx-circle';
+        var statusCls = item.status === 'completed' || item.status === 'enabled' || item.status === 'ok' ? 'text-success' :
+          item.status === 'running' || item.status === 'pending' ? 'text-primary' : 'text-muted';
+        actHtml += '<div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid var(--bs-border-color)">' +
+          '<i class="bx ' + icon + ' ' + statusCls + '"></i>' +
+          '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(item.label || '-') + '</span>' +
+          '<small class="text-muted" style="flex-shrink:0">' + escHtml(time) + '</small></div>';
+      });
+      actHtml += '</div>';
+      $('#dashActivityBody').html(activity.length ? actHtml : '<div class="text-muted">尚無活動記錄</div>');
+    }
     let dashLoading = false;
     function loadDash() {
       if (dashLoading) return;
@@ -419,28 +463,23 @@
       $.post('/listRule', { table: tn, chain: '', protocol: protocol }, function (res) {
         dashLoading = false;
         if (res.code === 0) {
-          $('#dashKpiRow,#dashPortInOut,#dashProtocolDist,#dashTopSrc,#dashTopDst,#dashTargetDist,#dashTopPorts,#dashActivityBody').empty();
+          $('#dashKpiRow,#dashPortInOut,#dashProtocolDist,#dashTopSrc,#dashTopDst,#dashTargetDist,#dashTopPorts').empty();
           renderDash(res);
           logger.debug('Dashboard 更新', tn);
         }
       }, 'json');
-      // Load activity feed
-      $.get('/activity', function (res) {
+      $.get('/governance/summary', function (res) {
         if (res.code === 0 && res.data) {
-          var items = res.data || [];
-          var html = '<div style="display:flex;flex-direction:column;gap:2px">';
-          items.forEach(function (item) {
-            var time = (item.time || '').substring(0, 19).replace('T', ' ');
-            var icon = item.icon || 'bx-circle';
-            var statusCls = item.status === 'completed' || item.status === 'enabled' ? 'text-success' :
-              item.status === 'running' || item.status === 'pending' ? 'text-primary' : 'text-muted';
-            html += '<div class="d-flex align-items-center gap-2 py-1" style="border-bottom:1px solid var(--bs-border-color)">' +
-              '<i class="bx ' + icon + ' ' + statusCls + '"></i>' +
-              '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(item.label) + '</span>' +
-              '<small class="text-muted" style="flex-shrink:0">' + escHtml(time) + '</small></div>';
-          });
-          html += '</div>';
-          $('#dashActivityBody').html(html || '<div class="text-muted">尚無活動記錄</div>');
+          renderGovernanceSummary(res.data);
         }
       });
     }
+    $(document).off('click.dashNotificationNav').on('click.dashNotificationNav', '.dash-feed-button[data-notification-target]', function () {
+      var target = $(this).data('notification-target');
+      var linkId = target === 'securityWhitelist'
+        ? 'menuSecurityWhitelistLink'
+        : target === 'backup'
+          ? 'menuBackupDataLink'
+          : 'menuNotificationSettingsLink';
+      $('#' + linkId).trigger('click');
+    });

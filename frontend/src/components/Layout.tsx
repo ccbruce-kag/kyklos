@@ -29,6 +29,7 @@ import ContentEditorView from './views/Apps/ApiMan/ContentEditorView'
 import DbManView from './views/Apps/DbMan/DbManView'
 import ErdDiagramView from './views/Apps/DbMan/ErdDiagramView'
 import SecurityView from './views/Security/SecurityView'
+import GovernanceView from './views/Governance/GovernanceView'
 import AiView from './views/AI/AiView'
 import RolesView from './views/Settings/RolesView'
 import UnitsView from './views/Settings/UnitsView'
@@ -36,29 +37,34 @@ import UsersView from './views/Settings/UsersView'
 import DictionaryView from './views/Settings/DictionaryView'
 import SystemSettingsView from './views/Settings/SystemSettingsView'
 
-export default function Layout() {
+type AuthProfile = {
+  username: string
+  display_name?: string | null
+  role_codes?: string[]
+}
+
+type LayoutProps = {
+  authProfile?: AuthProfile | null
+}
+
+export default function Layout({ authProfile }: LayoutProps) {
+  const roles = authProfile?.role_codes || []
+  const whitelistOnly = roles.includes('security_whitelist') && !roles.includes('admin')
+
   return (
     <div className="layout-wrapper layout-content-navbar">
       <div className="layout-container">
-        <Sidebar />
+        <Sidebar authProfile={authProfile} />
         <div className="layout-page">
-          <Navbar />
+          <Navbar authProfile={authProfile} />
           <div className="content-wrapper">
             <div className="container-xxl flex-grow-1 container-p-y d-flex flex-column" style={{ paddingBottom: 0 }}>
               <div className="tab-bar" id="tabBar"></div>
               <div id="tabContentRoot" className="flex-grow-1" style={{ paddingTop: '.75rem' }}>
-                <div className="row mb-3">
-                  <div className="col-12 d-flex align-items-center gap-3">
-                    <div className="protocol-switch" id="protocolSwitch">
-                      <div className="btn-group btn-group-sm" role="group">
-                        <input type="radio" className="btn-check" name="protocol" id="proto4" value="ipv4" defaultChecked />
-                        <label className="btn btn-outline-primary" htmlFor="proto4">IPv4</label>
-                        <input type="radio" className="btn-check" name="protocol" id="proto6" value="ipv6" />
-                        <label className="btn btn-outline-primary" htmlFor="proto6">IPv6</label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                {whitelistOnly ? (
+                  <SecurityView whitelistOnly />
+                ) : (
+                <>
                 <DashboardView />
                 <FirewallView />
                 <FortigateView />
@@ -93,6 +99,9 @@ export default function Layout() {
                 <DictionaryView />
                 <SystemSettingsView />
                 <SecurityView />
+                <GovernanceView />
+                </>
+                )}
               </div>
             </div>
             <Logger />

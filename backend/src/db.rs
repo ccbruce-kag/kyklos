@@ -235,6 +235,56 @@ pub struct SecurityWhitelistConnectionLog {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct OperationLog {
+    pub id: i64,
+    pub username: String,
+    pub action: String,
+    pub target: String,
+    pub method: String,
+    pub status: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub duration_ms: i64,
+    pub detail: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct BackupRecord {
+    pub id: i64,
+    pub backup_type: String,
+    pub file_name: String,
+    pub file_path: String,
+    pub size_bytes: i64,
+    pub status: String,
+    pub note: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct NotificationSetting {
+    pub id: i64,
+    pub category: String,
+    pub enabled: bool,
+    pub persistent: bool,
+    pub interval_minutes: i64,
+    pub email: String,
+    pub send_email: bool,
+    pub last_notified_at: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct NotificationItem {
+    pub id: i64,
+    pub category: String,
+    pub title: String,
+    pub message: String,
+    pub severity: String,
+    pub acknowledged: bool,
+    pub created_at: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CronJob {
     pub id: i64,
     pub name: String,
@@ -1227,6 +1277,331 @@ impl AppDb {
         Ok(affected > 0)
     }
 
+    pub fn db_path(&self) -> PathBuf {
+        self.path.clone()
+    }
+
+    pub fn record_operation_log(
+        &self,
+        username: &str,
+        action: &str,
+        target: &str,
+        method: &str,
+        status: &str,
+        start_time: &str,
+        end_time: &str,
+        duration_ms: i64,
+        detail: &str,
+    ) -> Result<(), String> {
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO operation_logs
+                (username, action, target, method, status, start_time, end_time, duration_ms, detail)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                username.trim(),
+                action.trim(),
+                target.trim(),
+                method.trim(),
+                status.trim(),
+                start_time,
+                end_time,
+                duration_ms,
+                detail.trim(),
+            ],
+        )
+        .map_err(|e| format!("record operation log failed: {e}"))?;
+        Ok(())
+    }
+
+    pub fn list_operation_logs(
+        &self,
+        limit: i64,
+        start: Option<&str>,
+        end: Option<&str>,
+    ) -> Result<Vec<OperationLog>, String> {
+        let conn = self.connect()?;
+        let mut sql = String::from(
+            "SELECT id, username, action, target, method, status, start_time, end_time, duration_ms, detail
+             FROM operation_logs
+             WHERE NOT (
+                method = 'GET'
+                AND target NOT LIKE '%/export%'
+             )
+             AND target NOT IN (
+                '/listRule',
+                '/api/listRule',
+                '/governance/summary',
+                '/api/governance/summary',
+                '/notifications',
+                '/api/notifications',
+                '/operation-logs',
+                '/api/operation-logs',
+                '/backups',
+                '/api/backups',
+                '/notification-settings',
+                '/api/notification-settings',
+                '/platform',
+                '/health',
+                '/auth/me',
+                '/log'
+             )",
+        );
+        let mut params_vec: Vec<String> = Vec::new();
+        if let Some(start) = start {
+            sql.push_str(" AND start_time >= ?");
+            params_vec.push(start.to_string());
+        }
+        if let Some(end) = end {
+            sql.push_str(" AND start_time <= ?");
+            params_vec.push(end.to_string());
+        }
+        sql.push_str(" ORDER BY id DESC");
+        if limit > 0 {
+            sql.push_str(" LIMIT ?");
+            params_vec.push(limit.to_string());
+        }
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| format!("prepare operation logs failed: {e}"))?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+                Ok(OperationLog {
+                    id: row.get(0)?,
+                    username: row.get(1)?,
+                    action: row.get(2)?,
+                    target: row.get(3)?,
+                    method: row.get(4)?,
+                    status: row.get(5)?,
+                    start_time: row.get(6)?,
+                    end_time: row.get(7)?,
+                    duration_ms: row.get(8)?,
+                    detail: row.get(9)?,
+                })
+            })
+            .map_err(|e| format!("query operation logs failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("read operation log failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn record_backup(
+        &self,
+        backup_type: &str,
+        file_name: &str,
+        file_path: &str,
+        size_bytes: i64,
+        status: &str,
+        note: &str,
+    ) -> Result<BackupRecord, String> {
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO backup_records
+                (backup_type, file_name, file_path, size_bytes, status, note)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![backup_type, file_name, file_path, size_bytes, status, note],
+        )
+        .map_err(|e| format!("record backup failed: {e}"))?;
+        let id = conn.last_insert_rowid();
+        self.get_backup_record(id)
+    }
+
+    fn get_backup_record(&self, id: i64) -> Result<BackupRecord, String> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT id, backup_type, file_name, file_path, size_bytes, status, note, created_at
+             FROM backup_records WHERE id = ?1",
+            params![id],
+            map_backup_record_row,
+        )
+        .map_err(|e| format!("load backup record failed: {e}"))
+    }
+
+    pub fn list_backup_records(&self, limit: i64) -> Result<Vec<BackupRecord>, String> {
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, backup_type, file_name, file_path, size_bytes, status, note, created_at
+                 FROM backup_records ORDER BY id DESC LIMIT ?1",
+            )
+            .map_err(|e| format!("prepare backup records failed: {e}"))?;
+        let rows = stmt
+            .query_map(params![limit], map_backup_record_row)
+            .map_err(|e| format!("query backup records failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("read backup record failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn latest_backup_at(&self) -> Result<Option<String>, String> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT created_at FROM backup_records WHERE status = 'success' ORDER BY id DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("load latest backup time failed: {e}"))
+    }
+
+    pub fn notification_settings(&self) -> Result<Vec<NotificationSetting>, String> {
+        let conn = self.connect()?;
+        seed_notification_settings(&conn)?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, category, enabled, persistent, interval_minutes, email, send_email, last_notified_at, updated_at
+                 FROM notification_settings ORDER BY id",
+            )
+            .map_err(|e| format!("prepare notification settings failed: {e}"))?;
+        let rows = stmt
+            .query_map([], map_notification_setting_row)
+            .map_err(|e| format!("query notification settings failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("read notification setting failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn save_notification_setting(
+        &self,
+        category: &str,
+        enabled: bool,
+        persistent: bool,
+        interval_minutes: i64,
+        email: &str,
+        send_email: bool,
+    ) -> Result<NotificationSetting, String> {
+        let interval = interval_minutes.clamp(1, 525600);
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO notification_settings
+                (category, enabled, persistent, interval_minutes, email, send_email, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+             ON CONFLICT(category) DO UPDATE SET
+                enabled = excluded.enabled,
+                persistent = excluded.persistent,
+                interval_minutes = excluded.interval_minutes,
+                email = excluded.email,
+                send_email = excluded.send_email,
+                last_notified_at = NULL,
+                updated_at = excluded.updated_at",
+            params![
+                category.trim(),
+                if enabled { 1 } else { 0 },
+                if persistent { 1 } else { 0 },
+                interval,
+                email.trim(),
+                if send_email { 1 } else { 0 },
+            ],
+        )
+        .map_err(|e| format!("save notification setting failed: {e}"))?;
+        conn.execute(
+            "UPDATE notifications SET acknowledged = 1 WHERE category = ?1 AND acknowledged = 0",
+            params![category.trim()],
+        )
+        .map_err(|e| format!("acknowledge existing notifications for setting failed: {e}"))?;
+        self.notification_setting(category)
+    }
+
+    fn notification_setting(&self, category: &str) -> Result<NotificationSetting, String> {
+        let conn = self.connect()?;
+        conn.query_row(
+            "SELECT id, category, enabled, persistent, interval_minutes, email, send_email, last_notified_at, updated_at
+             FROM notification_settings WHERE category = ?1",
+            params![category.trim()],
+            map_notification_setting_row,
+        )
+        .map_err(|e| format!("load notification setting failed: {e}"))
+    }
+
+    pub fn create_notification(
+        &self,
+        category: &str,
+        title: &str,
+        message: &str,
+        severity: &str,
+    ) -> Result<(), String> {
+        let conn = self.connect()?;
+        conn.execute(
+            "INSERT INTO notifications (category, title, message, severity)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![category, title, message, severity],
+        )
+        .map_err(|e| format!("create notification failed: {e}"))?;
+        conn.execute(
+            "UPDATE notification_settings
+             SET last_notified_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE category = ?1",
+            params![category],
+        )
+        .map_err(|e| format!("update notification last sent time failed: {e}"))?;
+        Ok(())
+    }
+
+    pub fn list_notifications(&self, limit: i64) -> Result<Vec<NotificationItem>, String> {
+        let conn = self.connect()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, category, title, message, severity, acknowledged, created_at
+                 FROM notifications ORDER BY id DESC LIMIT ?1",
+            )
+            .map_err(|e| format!("prepare notifications failed: {e}"))?;
+        let rows = stmt
+            .query_map(params![limit], map_notification_row)
+            .map_err(|e| format!("query notifications failed: {e}"))?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row.map_err(|e| format!("read notification failed: {e}"))?);
+        }
+        Ok(items)
+    }
+
+    pub fn acknowledge_notification(&self, id: i64) -> Result<bool, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE notifications SET acknowledged = 1 WHERE id = ?1",
+                params![id],
+            )
+            .map_err(|e| format!("acknowledge notification failed: {e}"))?;
+        Ok(affected > 0)
+    }
+
+    pub fn acknowledge_all_notifications(&self) -> Result<usize, String> {
+        let conn = self.connect()?;
+        let affected = conn
+            .execute(
+                "UPDATE notifications SET acknowledged = 1 WHERE acknowledged = 0",
+                [],
+            )
+            .map_err(|e| format!("acknowledge all notifications failed: {e}"))?;
+        Ok(affected)
+    }
+
+    pub fn clear_notifications(&self) -> Result<usize, String> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE notification_settings
+             SET last_notified_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE category IN (SELECT DISTINCT category FROM notifications)",
+            [],
+        )
+        .map_err(|e| format!("update notification clear time failed: {e}"))?;
+        conn.execute("DELETE FROM notifications", [])
+            .map_err(|e| format!("clear notifications failed: {e}"))
+    }
+
+    pub fn clear_security_whitelist_logs(&self) -> Result<usize, String> {
+        let conn = self.connect()?;
+        conn.execute("DELETE FROM security_whitelist_connection_logs", [])
+            .map_err(|e| format!("clear whitelist connection logs failed: {e}"))
+    }
+
     fn init(&self) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -1437,6 +1812,48 @@ impl AppDb {
                 note TEXT NOT NULL DEFAULT '',
                 observed_count INTEGER NOT NULL DEFAULT 1,
                 last_seen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            );
+            CREATE TABLE IF NOT EXISTS operation_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target TEXT NOT NULL DEFAULT '',
+                method TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'ok',
+                start_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                end_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                detail TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS backup_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_type TEXT NOT NULL DEFAULT 'export',
+                file_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'success',
+                note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            );
+            CREATE TABLE IF NOT EXISTS notification_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL UNIQUE,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                persistent INTEGER NOT NULL DEFAULT 1,
+                interval_minutes INTEGER NOT NULL DEFAULT 60,
+                email TEXT NOT NULL DEFAULT '',
+                send_email INTEGER NOT NULL DEFAULT 0,
+                last_notified_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            );
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'warning',
+                acknowledged INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             );
             CREATE TABLE IF NOT EXISTS dbman_saved_queries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1683,6 +2100,10 @@ impl AppDb {
         );
         let _ = conn.execute(
             "ALTER TABLE nginx_sites ADD COLUMN listen_port INTEGER NOT NULL DEFAULT 80",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE notification_settings ADD COLUMN last_notified_at TEXT",
             [],
         );
         migrate_security_whitelist_ips_schema(&conn)?;
@@ -2882,8 +3303,7 @@ impl AppDb {
         &self,
         input: SecurityWhitelistIpInput,
     ) -> Result<SecurityWhitelistIp, String> {
-        let ip_address = input.ip_address.trim().to_string();
-        validate_security_ip_or_cidr(&ip_address)?;
+        let ip_address = normalize_security_ip_entry(&input.ip_address)?;
         let protocol = normalize_security_whitelist_protocol(&input.protocol)?;
         let (port_start, port_end) =
             normalize_security_whitelist_ports(&protocol, input.port_start, input.port_end)?;
@@ -3107,7 +3527,9 @@ impl AppDb {
             .map_err(|e| format!("query whitelist connection log export failed: {e}"))?;
         let mut items = Vec::new();
         for row in rows {
-            items.push(row.map_err(|e| format!("read whitelist connection log export failed: {e}"))?);
+            items.push(
+                row.map_err(|e| format!("read whitelist connection log export failed: {e}"))?,
+            );
         }
         Ok(items)
     }
@@ -4104,7 +4526,7 @@ impl AppDb {
 
     fn ensure_seeded(&self) -> Result<(), String> {
         let conn = self.connect()?;
-        let exists: Option<i64> = conn
+        let device_exists: Option<i64> = conn
             .query_row(
                 "SELECT id FROM juniper_devices WHERE id = ?1",
                 params![DEFAULT_DEVICE_ID],
@@ -4112,33 +4534,128 @@ impl AppDb {
             )
             .optional()
             .map_err(|e| format!("check Juniper device seed failed: {e}"))?;
-        if exists.is_some() {
-            return Ok(());
+        if device_exists.is_none() {
+            let config = JuniperConfig::from_env();
+            conn.execute(
+                "INSERT INTO juniper_devices
+                 (id, name, host, port, username, password, connect_timeout_secs, strict_host_key_checking)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    DEFAULT_DEVICE_ID,
+                    "default",
+                    config.host,
+                    i64::from(config.port),
+                    config.username,
+                    config.password,
+                    config.connect_timeout_secs as i64,
+                    if config.strict_host_key_checking { 1 } else { 0 }
+                ],
+            )
+            .map_err(|e| format!("seed Juniper device settings failed: {e}"))?;
         }
 
-        let config = JuniperConfig::from_env();
+        self.ensure_security_whitelist_user_seed(&conn)?;
+        seed_notification_settings(&conn)?;
+        Ok(())
+    }
+
+    fn ensure_security_whitelist_user_seed(&self, conn: &Connection) -> Result<(), String> {
         conn.execute(
-            "INSERT INTO juniper_devices
-             (id, name, host, port, username, password, connect_timeout_secs, strict_host_key_checking)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO roles (code, name, description, enabled)
+             VALUES (?1, ?2, ?3, 1)
+             ON CONFLICT(code) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                enabled = 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
             params![
-                DEFAULT_DEVICE_ID,
-                "default",
-                config.host,
-                i64::from(config.port),
-                config.username,
-                config.password,
-                config.connect_timeout_secs as i64,
-                if config.strict_host_key_checking { 1 } else { 0 }
+                "security_whitelist",
+                "資安白名單",
+                "僅允許使用資安白名單功能",
             ],
         )
-        .map_err(|e| format!("seed Juniper device settings failed: {e}"))?;
+        .map_err(|e| format!("seed whitelist role failed: {e}"))?;
+
+        let password_hash = crate::apps::settings::hash_password(
+            "75370905",
+            &crate::apps::settings::derive_salt("fpg"),
+        );
+        conn.execute(
+            "INSERT INTO users
+                (username, display_name, email, phone, password_hash, unit_id, role_codes, enabled)
+             VALUES (?1, ?2, NULL, NULL, ?3, NULL, ?4, 1)
+             ON CONFLICT(username) DO UPDATE SET
+                display_name = excluded.display_name,
+                password_hash = excluded.password_hash,
+                role_codes = excluded.role_codes,
+                enabled = 1,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+            params![
+                "fpg",
+                "FPG使用者",
+                password_hash,
+                "[\"security_whitelist\"]",
+            ],
+        )
+        .map_err(|e| format!("seed whitelist user failed: {e}"))?;
         Ok(())
     }
 
     fn connect(&self) -> Result<Connection, String> {
         Connection::open(&self.path).map_err(|e| format!("open database failed: {e}"))
     }
+}
+
+fn map_backup_record_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<BackupRecord> {
+    Ok(BackupRecord {
+        id: row.get(0)?,
+        backup_type: row.get(1)?,
+        file_name: row.get(2)?,
+        file_path: row.get(3)?,
+        size_bytes: row.get(4)?,
+        status: row.get(5)?,
+        note: row.get(6)?,
+        created_at: row.get(7)?,
+    })
+}
+
+fn map_notification_setting_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<NotificationSetting> {
+    Ok(NotificationSetting {
+        id: row.get(0)?,
+        category: row.get(1)?,
+        enabled: row.get::<_, i64>(2)? != 0,
+        persistent: row.get::<_, i64>(3)? != 0,
+        interval_minutes: row.get(4)?,
+        email: row.get(5)?,
+        send_email: row.get::<_, i64>(6)? != 0,
+        last_notified_at: row.get(7)?,
+        updated_at: row.get(8)?,
+    })
+}
+
+fn map_notification_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<NotificationItem> {
+    Ok(NotificationItem {
+        id: row.get(0)?,
+        category: row.get(1)?,
+        title: row.get(2)?,
+        message: row.get(3)?,
+        severity: row.get(4)?,
+        acknowledged: row.get::<_, i64>(5)? != 0,
+        created_at: row.get(6)?,
+    })
+}
+
+fn seed_notification_settings(conn: &Connection) -> Result<(), String> {
+    for (category, interval) in [("blocked_ip", 15_i64), ("backup_overdue", 1440_i64)] {
+        conn.execute(
+            "INSERT OR IGNORE INTO notification_settings
+                (category, enabled, persistent, interval_minutes, email, send_email)
+             VALUES (?1, 1, 1, ?2, '', 0)",
+            params![category, interval],
+        )
+        .map_err(|e| format!("seed notification setting failed: {e}"))?;
+    }
+    Ok(())
 }
 
 fn validate_haproxy_update(update: &HaproxyLoadBalancerUpdate) -> Result<(), String> {
@@ -5261,6 +5778,39 @@ impl AppDb {
         .map_err(|e| format!("load user failed: {e}"))
     }
 
+    pub fn authenticate_user(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<Option<User>, String> {
+        let conn = self.connect()?;
+        let user = conn
+            .query_row(
+                "SELECT id, username, display_name, email, phone, password_hash, unit_id,
+                        role_codes, enabled, last_login_at, created_at, updated_at
+                 FROM users WHERE username = ?1",
+                params![username.trim()],
+                map_user_row,
+            )
+            .optional()
+            .map_err(|e| format!("load login user failed: {e}"))?;
+        let Some(user) = user else {
+            return Ok(None);
+        };
+        if !user.enabled || !crate::apps::settings::verify_password(password, &user.password_hash) {
+            return Ok(None);
+        }
+        conn.execute(
+            "UPDATE users
+             SET last_login_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE id = ?1",
+            params![user.id],
+        )
+        .map_err(|e| format!("update last login failed: {e}"))?;
+        Ok(Some(user))
+    }
+
     pub fn create_user(&self, input: UserInput) -> Result<User, String> {
         validate_user_input(&input, true)?;
         let conn = self.connect()?;
@@ -6128,10 +6678,13 @@ impl AppDb {
     }
 }
 
-fn validate_security_ip_or_cidr(value: &str) -> Result<(), String> {
+fn normalize_security_ip_entry(value: &str) -> Result<String, String> {
     let value = value.trim();
     if value.is_empty() {
         return Err("IP address is required".to_string());
+    }
+    if let Some((start, end)) = parse_ipv4_range(value)? {
+        return Ok(format!("{start} - {end}"));
     }
     if let Some((ip, prefix)) = value.split_once('/') {
         ip.parse::<std::net::IpAddr>()
@@ -6143,12 +6696,42 @@ fn validate_security_ip_or_cidr(value: &str) -> Result<(), String> {
         if prefix > max {
             return Err(format!("invalid whitelist CIDR prefix: {value}"));
         }
-        return Ok(());
+        return Ok(value.to_string());
     }
     value
         .parse::<std::net::IpAddr>()
-        .map(|_| ())
+        .map(|_| value.to_string())
         .map_err(|_| format!("invalid whitelist IP: {value}"))
+}
+
+fn parse_ipv4_range(
+    value: &str,
+) -> Result<Option<(std::net::Ipv4Addr, std::net::Ipv4Addr)>, String> {
+    let Some((start_raw, end_raw)) = value.split_once('-') else {
+        return Ok(None);
+    };
+    let start: std::net::Ipv4Addr = start_raw
+        .trim()
+        .parse()
+        .map_err(|_| "IP 範圍格式錯誤，請使用 172.23.23.10 - 172.23.23.110".to_string())?;
+    let end: std::net::Ipv4Addr = end_raw
+        .trim()
+        .parse()
+        .map_err(|_| "IP 範圍格式錯誤，請使用 172.23.23.10 - 172.23.23.110".to_string())?;
+    let start_octets = start.octets();
+    let end_octets = end.octets();
+    if start_octets[..3] != end_octets[..3] {
+        return Err("IP 範圍前三碼必須相同，例如 172.23.23.15 - 172.23.23.30".to_string());
+    }
+    let start_num = u32::from(start);
+    let end_num = u32::from(end);
+    if start_num > end_num {
+        return Err("IP 範圍起始位址不可大於結束位址".to_string());
+    }
+    if end_num - start_num + 1 > 100 {
+        return Err("一次性設定 IP 範圍不可大於 100 個位址".to_string());
+    }
+    Ok(Some((start, end)))
 }
 
 fn normalize_security_whitelist_protocol(value: &str) -> Result<String, String> {
@@ -6213,7 +6796,10 @@ fn migrate_security_whitelist_ips_schema(conn: &Connection) -> Result<(), String
         .optional()
         .map_err(|e| format!("inspect whitelist table failed: {e}"))?
         .unwrap_or_default();
-    if !table_sql.to_ascii_uppercase().contains("IP_ADDRESS TEXT NOT NULL UNIQUE") {
+    if !table_sql
+        .to_ascii_uppercase()
+        .contains("IP_ADDRESS TEXT NOT NULL UNIQUE")
+    {
         return Ok(());
     }
 

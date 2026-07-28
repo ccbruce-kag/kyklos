@@ -15,6 +15,12 @@ interface Window {
   i18n?: unknown;
   langOrder?: unknown;
   langNames?: unknown;
+  kyklosCurrentUser?: {
+    username: string;
+    display_name?: string | null;
+    role_codes?: string[];
+    source?: string;
+  };
   Helpers?: {
     mainMenu?: SneatMenuInstance;
     scrollToActive: (animate: boolean) => void;
@@ -33,6 +39,10 @@ interface Window {
   };
   setLanguage?: (lang: string, persist?: boolean) => void;
   loadIptables?: () => void;
+  fwmSwitchView?: (mode: string) => void;
+  fwmSetSecuritySubView?: (subview: string) => void;
+  kyklosDefaultView?: string;
+  kyklosForceDefaultTab?: boolean;
 }
 
 declare module 'reportbro-designer' {

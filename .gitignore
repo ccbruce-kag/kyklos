@@ -22,3 +22,5 @@ run/web/sneat/assets/**/*
 
 ##
 **/FortiGate 90D畫面-legacy/*
+bin/**/*
+pack-kyklos-*.tgz

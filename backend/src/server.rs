@@ -13,8 +13,8 @@ use crate::bapi_log;
 use crate::db::{
     AppDb, CronJobInput, FortigateFirewallPolicy, FortigateFirewallPolicyUpdate,
     HaproxyBackendServerUpdate, HaproxyLoadBalancerUpdate, JuniperDeviceUpdate,
-    KyklosHaBackendServerUpdate, KyklosHaServiceUpdate, SecurityWhitelistIp,
-    SecurityWhitelistIpInput,
+    KyklosHaBackendServerUpdate, KyklosHaServiceUpdate, NotificationItem, NotificationSetting,
+    SecurityWhitelistIp, SecurityWhitelistIpInput,
 };
 use crate::net::firewall::FirewallCmd;
 use crate::net::haproxy::{BackendServer, HaproxyClient};
@@ -29,7 +29,7 @@ use crate::sys::shell;
 use crate::sys::system;
 use crate::sys::tools;
 use crate::utils;
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::extract::{Form, Path, Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
@@ -42,7 +42,14 @@ use regex::Regex;
 use rust_embed::RustEmbed;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::env;
+use std::fs;
+use std::io::Write;
+use std::path::{Path as FsPath, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::time::Instant;
 
 static ARGS_VERIFY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[0-9A-z-_]+$").unwrap());
 
@@ -59,6 +66,8 @@ pub struct AppState {
     pub ipv6: Option<Arc<dyn FirewallCmd>>,
     pub username: String,
     pub password: String,
+    pub session_nonce: std::sync::Mutex<String>,
+    pub sessions: std::sync::Mutex<HashMap<String, AuthUser>>,
     pub platform: String,
     pub db: AppDb,
     pub juniper: Arc<JuniperClient>,
@@ -67,6 +76,20 @@ pub struct AppState {
     pub fortigate_lb: Arc<KyklosHaManager>,
     pub nginx: std::sync::Mutex<NginxClient>,
     pub cron: Arc<CronService>,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct AuthUser {
+    pub username: String,
+    pub display_name: Option<String>,
+    pub role_codes: Vec<String>,
+    pub source: String,
+}
+
+#[derive(Deserialize)]
+pub struct AuthLoginForm {
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Deserialize)]
@@ -361,29 +384,228 @@ fn parse_u16_text(value: Option<&str>, default: u16, label: &str) -> Result<u16,
     Ok(parsed)
 }
 
-async fn auth_middleware(State(state): State<Arc<AppState>>, req: Request, next: Next) -> Response {
-    let auth = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(decode_basic_auth);
+const BOOT_SESSION_COOKIE: &str = "kyklos_boot_session";
+const AUTH_SESSION_COOKIE: &str = "kyklos_auth_session";
 
-    let authorized = match auth {
-        Some((user, pass)) => user == state.username && pass == state.password,
-        None => false,
+fn current_session_nonce(state: &AppState) -> String {
+    state
+        .session_nonce
+        .lock()
+        .map(|nonce| nonce.clone())
+        .unwrap_or_else(|_| "kyklos-session".to_string())
+}
+
+fn request_has_current_boot_session(req: &Request, session_nonce: &str) -> bool {
+    req.headers()
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .map(|cookies| {
+            cookies.split(';').any(|cookie| {
+                let mut parts = cookie.trim().splitn(2, '=');
+                matches!(
+                    (parts.next(), parts.next()),
+                    (Some(name), Some(value)) if name == BOOT_SESSION_COOKIE && value == session_nonce
+                )
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn cookie_value(req: &Request, name: &str) -> Option<String> {
+    req.headers()
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                let mut parts = cookie.trim().splitn(2, '=');
+                match (parts.next(), parts.next()) {
+                    (Some(cookie_name), Some(value)) if cookie_name == name => {
+                        Some(value.to_string())
+                    }
+                    _ => None,
+                }
+            })
+        })
+}
+
+fn session_user_from_request(state: &AppState, req: &Request) -> Option<AuthUser> {
+    let token = cookie_value(req, AUTH_SESSION_COOKIE)?;
+    state
+        .sessions
+        .lock()
+        .ok()
+        .and_then(|sessions| sessions.get(&token).cloned())
+}
+
+fn set_auth_session_cookie(resp: &mut Response, token: &str) {
+    let cookie = format!("{AUTH_SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax");
+    if let Ok(value) = HeaderValue::from_str(&cookie) {
+        resp.headers_mut().insert(header::SET_COOKIE, value);
+    }
+}
+
+fn clear_auth_session_cookie(resp: &mut Response) {
+    if let Ok(value) = HeaderValue::from_str(&format!(
+        "{AUTH_SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+    )) {
+        resp.headers_mut().append(header::SET_COOKIE, value);
+    }
+}
+
+fn now_iso() -> String {
+    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+fn operation_action_for(method: &str, path: &str) -> String {
+    if path.contains("/auth/login") {
+        return "登入".to_string();
+    }
+    if path.contains("/auth/logout") {
+        return "登出".to_string();
+    }
+    match method {
+        "GET" => "查詢".to_string(),
+        "POST" => "新增/套用".to_string(),
+        "PUT" => "更新".to_string(),
+        "DELETE" => "刪除".to_string(),
+        _ => method.to_string(),
+    }
+}
+
+fn should_record_operation(method: &str, path: &str) -> bool {
+    if path.contains("/auth/login") || path.contains("/auth/logout") {
+        return true;
+    }
+    if path.contains("/export") {
+        return true;
+    }
+    if path == "/listRule" || path == "/api/listRule" || path == "/log" {
+        return false;
+    }
+    if method == "GET" {
+        return false;
+    }
+    !(path == "/"
+        || path == "/favicon.ico"
+        || path.starts_with("/assets/")
+        || path.starts_with("/sneat/")
+        || path.starts_with("/layui/")
+        || path.ends_with(".js")
+        || path.ends_with(".css")
+        || path.ends_with(".svg")
+        || path.ends_with(".ico")
+        || path == "/auth/me"
+        || path == "/health")
+}
+
+fn auth_unauthorized_response(state: &AppState, set_boot_cookie: bool) -> Response {
+    let session_nonce = current_session_nonce(state);
+    let mut resp = Response::new(Body::from("Unauthorized"));
+    let challenge = format!(
+        "Basic realm=\"kyklos-{}\", charset=\"UTF-8\"",
+        session_nonce
+    );
+    resp.headers_mut().insert(
+        header::WWW_AUTHENTICATE,
+        HeaderValue::from_str(&challenge)
+            .unwrap_or_else(|_| HeaderValue::from_static("Basic realm=\"restricted\"")),
+    );
+    if set_boot_cookie {
+        let cookie = format!(
+            "{BOOT_SESSION_COOKIE}={}; Path=/; HttpOnly; SameSite=Lax",
+            session_nonce
+        );
+        if let Ok(value) = HeaderValue::from_str(&cookie) {
+            resp.headers_mut().insert(header::SET_COOKIE, value);
+        }
+    }
+    *resp.status_mut() = StatusCode::UNAUTHORIZED;
+    resp
+}
+
+fn auth_for_credentials(state: &AppState, username: &str, password: &str) -> Option<AuthUser> {
+    if username == state.username && password == state.password {
+        return Some(AuthUser {
+            username: username.to_string(),
+            display_name: Some(username.to_string()),
+            role_codes: vec!["admin".to_string()],
+            source: "startup".to_string(),
+        });
+    }
+
+    match state.db.authenticate_user(username, password) {
+        Ok(Some(user)) => Some(AuthUser {
+            username: user.username,
+            display_name: user.display_name,
+            role_codes: user.role_codes,
+            source: "database".to_string(),
+        }),
+        Ok(None) => None,
+        Err(err) => {
+            tracing::warn!("database authentication failed: {}", err);
+            None
+        }
+    }
+}
+
+fn auth_is_whitelist_only(user: &AuthUser) -> bool {
+    user.role_codes
+        .iter()
+        .any(|role| role == "security_whitelist")
+        && !user.role_codes.iter().any(|role| role == "admin")
+}
+
+fn whitelist_only_path_allowed(path: &str) -> bool {
+    path == "/"
+        || path == "/favicon.ico"
+        || path == "/platform"
+        || path == "/auth/me"
+        || path == "/auth/logout"
+        || path == "/log"
+        || path.starts_with("/assets/")
+        || path.starts_with("/sneat/")
+        || path.starts_with("/layui/")
+        || path.starts_with("/api/security/whitelist/")
+        || path.starts_with("/security/whitelist/")
+}
+
+async fn auth_middleware(
+    State(state): State<Arc<AppState>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let method = req.method().as_str().to_string();
+    let path = req.uri().path().to_string();
+    let start_time = now_iso();
+    let timer = Instant::now();
+    let auth_user = match session_user_from_request(&state, &req) {
+        Some(user) => user,
+        None => return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response(),
     };
 
-    if authorized {
-        next.run(req).await
-    } else {
-        let mut resp = Response::new(Body::from("Unauthorized"));
-        resp.headers_mut().insert(
-            header::WWW_AUTHENTICATE,
-            HeaderValue::from_static("Basic realm=\"restricted\", charset=\"UTF-8\""),
-        );
-        *resp.status_mut() = StatusCode::UNAUTHORIZED;
-        resp
+    if auth_is_whitelist_only(&auth_user) && !whitelist_only_path_allowed(req.uri().path()) {
+        return (StatusCode::FORBIDDEN, "Forbidden").into_response();
     }
+
+    let username = auth_user.username.clone();
+    req.extensions_mut().insert(auth_user);
+    let resp = next.run(req).await;
+    if should_record_operation(&method, &path) {
+        let status_code = resp.status().as_u16();
+        let status = if status_code < 400 { "ok" } else { "failed" };
+        let _ = state.db.record_operation_log(
+            &username,
+            &operation_action_for(&method, &path),
+            &path,
+            &method,
+            status,
+            &start_time,
+            &now_iso(),
+            timer.elapsed().as_millis().min(i64::MAX as u128) as i64,
+            &format!("HTTP {status_code}"),
+        );
+    }
+    resp
 }
 
 // ---- API Handlers ----
@@ -4799,11 +5021,13 @@ async fn handle_security_whitelist_save_ip(
         Some(value) if !value.trim().is_empty() => value.trim().to_string(),
         _ => return utils::output(Some("IP address is required"), None),
     };
-    let port_start = match parse_optional_i64_form_strict(form.port_start.as_deref(), "Port 起始值") {
+    let port_start = match parse_optional_i64_form_strict(form.port_start.as_deref(), "Port 起始值")
+    {
         Ok(value) => value,
         Err(e) => return utils::output(Some(&e), None),
     };
-    let port_end = match parse_optional_i64_form_strict(form.port_end.as_deref(), "Port 結束值") {
+    let port_end = match parse_optional_i64_form_strict(form.port_end.as_deref(), "Port 結束值")
+    {
         Ok(value) => value,
         Err(e) => return utils::output(Some(&e), None),
     };
@@ -4866,6 +5090,7 @@ async fn handle_security_whitelist_logs(State(state): State<Arc<AppState>>) -> J
 struct SecurityWhitelistLogExportQuery {
     pub start: Option<String>,
     pub end: Option<String>,
+    pub format: Option<String>,
 }
 
 async fn handle_security_whitelist_export_logs(
@@ -4892,6 +5117,58 @@ async fn handle_security_whitelist_export_logs(
         Ok(items) => items,
         Err(e) => return csv_error_response(&e),
     };
+    let range = export_range_name(start.as_deref(), end.as_deref());
+    let format = query
+        .format
+        .as_deref()
+        .unwrap_or("csv")
+        .to_ascii_lowercase();
+    if format == "pdf" {
+        let mut lines = vec![
+            format!("產生時間：{}", now_iso()),
+            format!("匯出範圍：{range}"),
+            format!("紀錄筆數：{}", items.len()),
+            String::new(),
+        ];
+        for item in items {
+            let decision = if item.decision == "allowed" {
+                "允許"
+            } else {
+                "阻擋"
+            };
+            let port = item
+                .destination_port
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            let end_time = item.end_time.unwrap_or_else(|| "-".to_string());
+            let duration = item
+                .duration_secs
+                .map(|value| format!("{value} 秒"))
+                .unwrap_or_else(|| "-".to_string());
+            lines.push(format!(
+                "#{}  {}  {}",
+                item.id,
+                decision,
+                item.protocol.to_uppercase()
+            ));
+            lines.push(format!("來源 IP：{}", item.source_ip));
+            lines.push(format!("目的地：{}:{}", item.destination_ip, port));
+            lines.push(format!("連線時間：{} 至 {}", item.start_time, end_time));
+            lines.push(format!(
+                "持續時間：{}，觀測次數：{}",
+                duration, item.observed_count
+            ));
+            if !item.note.trim().is_empty() {
+                lines.push(format!("備註：{}", item.note));
+            }
+            lines.push(String::new());
+        }
+        return pdf_download_response(
+            &format!("whitelist-logs-{range}.pdf"),
+            "白名單連線紀錄報表",
+            &lines,
+        );
+    }
     let mut csv = String::from(
         "\u{feff}id,source_ip,destination_ip,destination_port,protocol,decision,start_time,end_time,duration_secs,observed_count,last_seen,note\n",
     );
@@ -4923,16 +5200,6 @@ async fn handle_security_whitelist_export_logs(
         );
         csv.push('\n');
     }
-    let range = match (start.as_deref(), end.as_deref()) {
-        (Some(start), Some(end)) => format!(
-            "{}-{}",
-            whitelist_filename_time(start),
-            whitelist_filename_time(end)
-        ),
-        (Some(start), None) => format!("from-{}", whitelist_filename_time(start)),
-        (None, Some(end)) => format!("until-{}", whitelist_filename_time(end)),
-        (None, None) => "all".to_string(),
-    };
     Response::builder()
         .header(header::CONTENT_TYPE, "text/csv; charset=utf-8")
         .header(
@@ -4949,6 +5216,13 @@ async fn handle_security_whitelist_refresh_logs(State(state): State<Arc<AppState
             Ok(items) => utils::output(None, Some(json!({ "refreshed": count, "logs": items }))),
             Err(e) => utils::output(Some(&e), None),
         },
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_security_whitelist_clear_logs(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.clear_security_whitelist_logs() {
+        Ok(count) => utils::output(None, Some(json!({ "cleared": count }))),
         Err(e) => utils::output(Some(&e), None),
     }
 }
@@ -5008,6 +5282,993 @@ async fn handle_security_whitelist_block_log_ip(
 async fn handle_security_whitelist_sync(State(state): State<Arc<AppState>>) -> Json<Value> {
     match sync_security_whitelist_rules(&state).await {
         Ok(data) => utils::output(None, Some(data)),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+#[derive(Deserialize)]
+struct OperationLogQuery {
+    pub limit: Option<i64>,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub format: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NotificationQuery {
+    pub limit: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct NotificationSettingForm {
+    pub category: Option<String>,
+    pub enabled: Option<String>,
+    pub persistent: Option<String>,
+    pub interval_minutes: Option<String>,
+    pub email: Option<String>,
+    pub send_email: Option<String>,
+}
+
+fn normalize_export_range(
+    start: Option<&str>,
+    end: Option<&str>,
+) -> Result<(Option<String>, Option<String>), String> {
+    let start = normalize_whitelist_export_time(start)?;
+    let end = normalize_whitelist_export_time(end)?;
+    if let (Some(start), Some(end)) = (start.as_deref(), end.as_deref()) {
+        if start > end {
+            return Err("匯出起始時間不可晚於結束時間".to_string());
+        }
+    }
+    Ok((start, end))
+}
+
+fn export_range_name(start: Option<&str>, end: Option<&str>) -> String {
+    match (start, end) {
+        (Some(start), Some(end)) => format!(
+            "{}-{}",
+            whitelist_filename_time(start),
+            whitelist_filename_time(end)
+        ),
+        (Some(start), None) => format!("from-{}", whitelist_filename_time(start)),
+        (None, Some(end)) => format!("until-{}", whitelist_filename_time(end)),
+        (None, None) => "all".to_string(),
+    }
+}
+
+fn pdf_text_hex(value: &str) -> String {
+    let mut hex = String::new();
+    for unit in value.encode_utf16() {
+        hex.push_str(&format!("{unit:04X}"));
+    }
+    hex
+}
+
+fn pdf_wrap_line(value: &str, max_chars: usize) -> Vec<String> {
+    if value.chars().count() <= max_chars {
+        return vec![value.to_string()];
+    }
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for ch in value.chars() {
+        current.push(ch);
+        if current.chars().count() >= max_chars {
+            lines.push(current);
+            current = String::new();
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+fn simple_pdf_bytes(title: &str, lines: &[String]) -> Vec<u8> {
+    let mut printable = Vec::new();
+    for line in lines {
+        if line.is_empty() {
+            printable.push(String::new());
+        } else {
+            printable.extend(pdf_wrap_line(line, 56));
+        }
+    }
+    let page_line_limit = 44usize;
+    let chunks = printable
+        .chunks(page_line_limit)
+        .map(|chunk| chunk.to_vec())
+        .collect::<Vec<_>>();
+    let chunks = if chunks.is_empty() {
+        vec![Vec::new()]
+    } else {
+        chunks
+    };
+
+    let mut objects = vec![
+        "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n".to_string(),
+        String::new(),
+        "3 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /MSung-Light /Encoding /UniCNS-UCS2-H /DescendantFonts [4 0 R] >>\nendobj\n".to_string(),
+        "4 0 obj\n<< /Type /Font /Subtype /CIDFontType0 /BaseFont /MSung-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (CNS1) /Supplement 5 >> /FontDescriptor 5 0 R >>\nendobj\n".to_string(),
+        "5 0 obj\n<< /Type /FontDescriptor /FontName /MSung-Light /Flags 6 /FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 700 /StemV 80 >>\nendobj\n".to_string(),
+    ];
+
+    let mut page_refs = Vec::new();
+    for (index, page_lines) in chunks.iter().enumerate() {
+        let page_obj = 6 + index * 2;
+        let content_obj = page_obj + 1;
+        page_refs.push(format!("{page_obj} 0 R"));
+
+        let mut content = String::from("BT\n/F1 16 Tf\n50 790 Td\n");
+        let page_title = if chunks.len() > 1 {
+            format!("{title}  第 {}/{} 頁", index + 1, chunks.len())
+        } else {
+            title.to_string()
+        };
+        content.push_str(&format!("<{}> Tj\n", pdf_text_hex(&page_title)));
+        content.push_str("/F1 9 Tf\n0 -24 Td\n");
+        for line in page_lines {
+            if line.is_empty() {
+                content.push_str("0 -14 Td\n");
+            } else {
+                content.push_str(&format!("<{}> Tj\n0 -14 Td\n", pdf_text_hex(line)));
+            }
+        }
+        content.push_str("ET\n");
+
+        objects.push(format!(
+            "{page_obj} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents {content_obj} 0 R >>\nendobj\n"
+        ));
+        objects.push(format!(
+            "{content_obj} 0 obj\n<< /Length {} >>\nstream\n{}endstream\nendobj\n",
+            content.len(),
+            content
+        ));
+    }
+    objects[1] = format!(
+        "2 0 obj\n<< /Type /Pages /Kids [{}] /Count {} >>\nendobj\n",
+        page_refs.join(" "),
+        chunks.len()
+    );
+
+    let mut pdf = String::from("%PDF-1.4\n");
+    let mut offsets = vec![0usize];
+    for object in &objects {
+        offsets.push(pdf.len());
+        pdf.push_str(object);
+    }
+    let xref_offset = pdf.len();
+    pdf.push_str(&format!(
+        "xref\n0 {}\n0000000000 65535 f \n",
+        objects.len() + 1
+    ));
+    for offset in offsets.iter().skip(1) {
+        pdf.push_str(&format!("{offset:010} 00000 n \n"));
+    }
+    pdf.push_str(&format!(
+        "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+        objects.len() + 1
+    ));
+    pdf.into_bytes()
+}
+
+fn csv_download_response(filename: &str, csv: String) -> Response {
+    Response::builder()
+        .header(header::CONTENT_TYPE, "text/csv; charset=utf-8")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .body(Body::from(csv))
+        .unwrap_or_else(|_| Response::new(Body::from("failed to build csv response")))
+}
+
+fn pdf_download_response(filename: &str, title: &str, lines: &[String]) -> Response {
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/pdf")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .body(Body::from(simple_pdf_bytes(title, lines)))
+        .unwrap_or_else(|_| Response::new(Body::from("failed to build pdf response")))
+}
+
+fn backup_dir() -> Result<PathBuf, String> {
+    let path = PathBuf::from("backups");
+    fs::create_dir_all(&path).map_err(|e| format!("create backup directory failed: {e}"))?;
+    Ok(path)
+}
+
+fn notification_category_label(category: &str) -> &'static str {
+    match category {
+        "blocked_ip" => "阻擋 IP",
+        "backup_overdue" => "定期備份",
+        _ => "系統通知",
+    }
+}
+
+fn notification_email_template(category: &str) -> Value {
+    match category {
+        "blocked_ip" => json!({
+            "subject": "[KyKlos] 偵測到白名單阻擋連線",
+            "body": "系統偵測到來源 IP 不在白名單內而被阻擋。請至「白名單 > 連線紀錄 Log」確認來源、目的地、通訊埠與處置結果。"
+        }),
+        "backup_overdue" => json!({
+            "subject": "[KyKlos] 定期備份提醒",
+            "body": "系統偵測近期未建立完整備份。請至「備份 > 資料備份」建立最新備份，以保留設定與歷史紀錄。"
+        }),
+        _ => json!({
+            "subject": "[KyKlos] 系統通知",
+            "body": "KyKlos 有新的系統通知，請登入管理介面查看詳細內容。"
+        }),
+    }
+}
+
+fn notification_target_view(category: &str) -> &'static str {
+    match category {
+        "blocked_ip" => "securityWhitelist",
+        "backup_overdue" => "backup",
+        _ => "notificationSettings",
+    }
+}
+
+fn notification_display_title(item: &NotificationItem) -> String {
+    if item.category == "backup_overdue" {
+        "定期備份".to_string()
+    } else {
+        item.title.clone()
+    }
+}
+
+fn notification_to_value(item: &NotificationItem) -> Value {
+    json!({
+        "id": item.id,
+        "category": item.category,
+        "title": notification_display_title(item),
+        "message": item.message,
+        "severity": item.severity,
+        "acknowledged": item.acknowledged,
+        "created_at": item.created_at,
+        "target_view": notification_target_view(&item.category),
+    })
+}
+
+fn notification_interval_elapsed(setting: &NotificationSetting) -> bool {
+    let Some(last) = setting.last_notified_at.as_deref() else {
+        return true;
+    };
+    let Ok(last_time) = chrono::DateTime::parse_from_rfc3339(last) else {
+        return true;
+    };
+    let elapsed = chrono::Utc::now()
+        .signed_duration_since(last_time.with_timezone(&chrono::Utc))
+        .num_minutes();
+    elapsed >= setting.interval_minutes.max(1)
+}
+
+fn notification_can_emit(
+    category: &str,
+    settings: &[NotificationSetting],
+    existing: &[NotificationItem],
+) -> bool {
+    let setting = settings.iter().find(|item| item.category == category);
+    if setting.map(|item| !item.enabled).unwrap_or(false) {
+        return false;
+    }
+    if let Some(setting) = setting {
+        if !setting.persistent
+            && (setting.last_notified_at.is_some()
+                || existing.iter().any(|item| item.category == category))
+        {
+            return false;
+        }
+        notification_interval_elapsed(setting)
+    } else {
+        true
+    }
+}
+
+fn clean_mail_header(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| *ch != '\r' && *ch != '\n')
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+fn split_notification_recipients(value: &str) -> Vec<String> {
+    value
+        .split([',', ';'])
+        .map(clean_mail_header)
+        .filter(|email| {
+            let email = email.as_str();
+            !email.is_empty() && email.contains('@') && !email.contains(' ')
+        })
+        .collect()
+}
+
+fn sendmail_message(recipients: &[String], subject: &str, body: &str) -> String {
+    let from = clean_mail_header(
+        &env::var("KYKLOS_MAIL_FROM").unwrap_or_else(|_| "kyklos@localhost".to_string()),
+    );
+    let to = recipients.join(", ");
+    let subject_b64 = base64::engine::general_purpose::STANDARD.encode(subject.as_bytes());
+    format!(
+        "From: {from}\nTo: {to}\nSubject: =?UTF-8?B?{subject_b64}?=\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n\n{body}\n"
+    )
+}
+
+fn run_sendmail(command: &str, message: &str) -> Result<(), String> {
+    let mut child = Command::new(command)
+        .arg("-t")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("{command}: {e}"))?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin
+            .write_all(message.as_bytes())
+            .map_err(|e| format!("write sendmail stdin failed: {e}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("wait sendmail failed: {e}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            format!("{command} exited with {}", output.status)
+        } else {
+            format!("{command} exited with {}: {stderr}", output.status)
+        })
+    }
+}
+
+fn executable_in_path(name: &str) -> Option<String> {
+    if name.contains('/') {
+        return FsPath::new(name).is_file().then(|| name.to_string());
+    }
+    let paths = env::var_os("PATH")?;
+    env::split_paths(&paths)
+        .map(|path| path.join(name))
+        .find(|path| path.is_file())
+        .map(|path| path.display().to_string())
+}
+
+fn notification_mailer_status() -> Value {
+    let configured = env::var("KYKLOS_SENDMAIL_PATH")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let mut checked = Vec::new();
+    if let Some(path) = configured.as_deref() {
+        checked.push(path.to_string());
+        if let Some(found) = executable_in_path(path) {
+            return json!({
+                "available": true,
+                "path": found,
+                "configured": configured,
+                "message": "寄信工具可用"
+            });
+        }
+    }
+    for candidate in ["/usr/sbin/sendmail", "sendmail", "msmtp"] {
+        if checked.iter().any(|item| item == candidate) {
+            continue;
+        }
+        checked.push(candidate.to_string());
+        if let Some(found) = executable_in_path(candidate) {
+            return json!({
+                "available": true,
+                "path": found,
+                "configured": configured,
+                "message": "寄信工具可用"
+            });
+        }
+    }
+    json!({
+        "available": false,
+        "path": Value::Null,
+        "configured": configured,
+        "message": "找不到 sendmail/msmtp，E-mail 通知無法寄出。請安裝 msmtp-mta 或設定 KYKLOS_SENDMAIL_PATH。"
+    })
+}
+
+fn send_notification_email_if_enabled(
+    settings: &[NotificationSetting],
+    category: &str,
+    title: &str,
+    message: &str,
+) {
+    let Some(setting) = settings.iter().find(|item| item.category == category) else {
+        return;
+    };
+    if !setting.send_email {
+        return;
+    }
+    let recipients = split_notification_recipients(&setting.email);
+    if recipients.is_empty() {
+        tracing::warn!(
+            "notification email skipped: category={} has no valid recipient",
+            category
+        );
+        return;
+    }
+
+    let subject = notification_email_template(category)
+        .get("subject")
+        .and_then(Value::as_str)
+        .unwrap_or(title)
+        .to_string();
+    let body = format!(
+        "{title}\n\n{message}\n\n通知類別：{}\n產生時間：{}",
+        notification_category_label(category),
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    );
+    let mail = sendmail_message(&recipients, &subject, &body);
+    let preferred =
+        env::var("KYKLOS_SENDMAIL_PATH").unwrap_or_else(|_| "/usr/sbin/sendmail".to_string());
+    let result = run_sendmail(&preferred, &mail).or_else(|first_err| {
+        if preferred == "sendmail" {
+            Err(first_err)
+        } else {
+            run_sendmail("sendmail", &mail)
+                .map_err(|second_err| format!("{first_err}; fallback sendmail: {second_err}"))
+        }
+    });
+    match result {
+        Ok(()) => tracing::info!(
+            "notification email sent: category={} to={}",
+            category,
+            recipients.join(",")
+        ),
+        Err(err) => tracing::warn!(
+            "notification email failed: category={} err={}",
+            category,
+            err
+        ),
+    }
+}
+
+fn backup_overdue_by_setting(latest: Option<&str>, setting: Option<&NotificationSetting>) -> bool {
+    let Some(latest) = latest else {
+        return true;
+    };
+    let Ok(latest_time) = chrono::DateTime::parse_from_rfc3339(latest) else {
+        return true;
+    };
+    let interval_minutes = setting
+        .map(|item| item.interval_minutes)
+        .unwrap_or(1440)
+        .max(1);
+    chrono::Utc::now()
+        .signed_duration_since(latest_time.with_timezone(&chrono::Utc))
+        .num_minutes()
+        >= interval_minutes
+}
+
+fn maybe_create_governance_notifications(state: &AppState) {
+    let settings = state.db.notification_settings().unwrap_or_default();
+    let existing = state.db.list_notifications(50).unwrap_or_default();
+
+    if notification_can_emit("blocked_ip", &settings, &existing) {
+        if let Ok(logs) = state.db.list_security_whitelist_logs() {
+            let blocked = logs
+                .iter()
+                .filter(|item| item.decision == "blocked")
+                .count();
+            if blocked > 0 {
+                let title = "偵測到阻擋 IP";
+                let msg =
+                    format!("白名單連線紀錄中目前有 {blocked} 筆維持阻擋，請檢查是否需要允許。");
+                if state
+                    .db
+                    .create_notification("blocked_ip", title, &msg, "danger")
+                    .is_ok()
+                {
+                    send_notification_email_if_enabled(&settings, "blocked_ip", title, &msg);
+                }
+            }
+        }
+    }
+
+    if notification_can_emit("backup_overdue", &settings, &existing) {
+        let latest = state.db.latest_backup_at().unwrap_or(None);
+        let setting = settings
+            .iter()
+            .find(|item| item.category == "backup_overdue");
+        let overdue = backup_overdue_by_setting(latest.as_deref(), setting);
+        if overdue {
+            let msg = latest
+                .map(|time| {
+                    let interval = setting
+                        .map(|item| item.interval_minutes)
+                        .unwrap_or(1440)
+                        .max(1);
+                    format!("最近一次備份時間為 {time}，已超過設定的 {interval} 分鐘備份週期。")
+                })
+                .unwrap_or_else(|| "尚未建立任何完整備份。".to_string());
+            let title = "定期備份";
+            if state
+                .db
+                .create_notification("backup_overdue", title, &msg, "warning")
+                .is_ok()
+            {
+                send_notification_email_if_enabled(&settings, "backup_overdue", title, &msg);
+            }
+        }
+    } else if settings
+        .iter()
+        .find(|item| item.category == "backup_overdue")
+        .map(|item| item.enabled)
+        .unwrap_or(true)
+    {
+        let latest = state.db.latest_backup_at().unwrap_or(None);
+        let setting = settings
+            .iter()
+            .find(|item| item.category == "backup_overdue");
+        let overdue = backup_overdue_by_setting(latest.as_deref(), setting);
+        if !overdue {
+            for item in existing
+                .iter()
+                .filter(|item| item.category == "backup_overdue" && !item.acknowledged)
+            {
+                let _ = state.db.acknowledge_notification(item.id);
+            }
+        }
+    }
+}
+
+async fn handle_operation_logs(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<OperationLogQuery>,
+) -> Json<Value> {
+    let (start, end) = match normalize_export_range(query.start.as_deref(), query.end.as_deref()) {
+        Ok(value) => value,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    match state.db.list_operation_logs(
+        query.limit.unwrap_or(100).clamp(1, 1000),
+        start.as_deref(),
+        end.as_deref(),
+    ) {
+        Ok(items) => utils::output(None, Some(serde_json::to_value(items).unwrap_or_default())),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_operation_logs_export(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<OperationLogQuery>,
+) -> Response {
+    let (start, end) = match normalize_export_range(query.start.as_deref(), query.end.as_deref()) {
+        Ok(value) => value,
+        Err(e) => return csv_error_response(&e),
+    };
+    let items = match state
+        .db
+        .list_operation_logs(0, start.as_deref(), end.as_deref())
+    {
+        Ok(items) => items,
+        Err(e) => return csv_error_response(&e),
+    };
+    let range = export_range_name(start.as_deref(), end.as_deref());
+    if query
+        .format
+        .as_deref()
+        .unwrap_or("csv")
+        .eq_ignore_ascii_case("pdf")
+    {
+        let mut lines = vec![
+            format!("產生時間：{}", now_iso()),
+            format!("匯出範圍：{range}"),
+            format!("紀錄筆數：{}", items.len()),
+            String::new(),
+        ];
+        for item in items {
+            let status = if item.status == "ok" {
+                "成功"
+            } else {
+                "失敗"
+            };
+            lines.push(format!("#{}  {}  {}", item.id, item.username, status));
+            lines.push(format!("操作動作：{}", item.action));
+            lines.push(format!("目標：{} {}", item.method, item.target));
+            lines.push(format!("時間：{} 至 {}", item.start_time, item.end_time));
+            lines.push(format!("持續時間：{} ms", item.duration_ms));
+            if !item.detail.trim().is_empty() {
+                lines.push(format!("詳細：{}", item.detail));
+            }
+            lines.push(String::new());
+        }
+        return pdf_download_response(
+            &format!("operation-logs-{range}.pdf"),
+            "操作記錄報表",
+            &lines,
+        );
+    }
+
+    let mut csv = String::from(
+        "\u{feff}id,username,action,target,method,status,start_time,end_time,duration_ms,detail\n",
+    );
+    for item in items {
+        let fields = [
+            item.id.to_string(),
+            item.username,
+            item.action,
+            item.target,
+            item.method,
+            item.status,
+            item.start_time,
+            item.end_time,
+            item.duration_ms.to_string(),
+            item.detail,
+        ];
+        csv.push_str(
+            &fields
+                .iter()
+                .map(|field| csv_escape(field))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        csv.push('\n');
+    }
+    csv_download_response(&format!("operation-logs-{range}.csv"), csv)
+}
+
+async fn handle_notifications(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<NotificationQuery>,
+) -> Json<Value> {
+    maybe_create_governance_notifications(&state);
+    match state
+        .db
+        .list_notifications(query.limit.unwrap_or(20).clamp(1, 100))
+    {
+        Ok(items) => utils::output(
+            None,
+            Some(json!(items
+                .iter()
+                .map(notification_to_value)
+                .collect::<Vec<_>>())),
+        ),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_ack_notification(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Json<Value> {
+    match state.db.acknowledge_notification(id) {
+        Ok(true) => utils::output(None, None),
+        Ok(false) => utils::output(Some("notification not found"), None),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_ack_all_notifications(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.acknowledge_all_notifications() {
+        Ok(count) => utils::output(None, Some(json!({ "acknowledged": count }))),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_clear_notifications(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.clear_notifications() {
+        Ok(count) => utils::output(None, Some(json!({ "cleared": count }))),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_notification_settings(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.notification_settings() {
+        Ok(items) => {
+            let mailer_status = notification_mailer_status();
+            let enriched = items
+                .into_iter()
+                .map(|item| {
+                    json!({
+                        "id": item.id,
+                        "category": item.category,
+                        "label": notification_category_label(&item.category),
+                        "enabled": item.enabled,
+                        "persistent": item.persistent,
+                        "interval_minutes": item.interval_minutes,
+                        "email": item.email,
+                        "send_email": item.send_email,
+                        "last_notified_at": item.last_notified_at,
+                        "updated_at": item.updated_at,
+                        "email_template": notification_email_template(&item.category),
+                        "mailer_status": mailer_status.clone(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            utils::output(None, Some(json!(enriched)))
+        }
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_save_notification_setting(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<NotificationSettingForm>,
+) -> Json<Value> {
+    let category = form.category.unwrap_or_default();
+    if !matches!(category.as_str(), "blocked_ip" | "backup_overdue") {
+        return utils::output(Some("invalid notification category"), None);
+    }
+    let interval = parse_optional_i64_form(form.interval_minutes.as_deref()).unwrap_or(60);
+    match state.db.save_notification_setting(
+        &category,
+        parse_form_bool(form.enabled.as_deref()),
+        parse_form_bool(form.persistent.as_deref()),
+        interval,
+        form.email.as_deref().unwrap_or(""),
+        parse_form_bool(form.send_email.as_deref()),
+    ) {
+        Ok(item) => {
+            maybe_create_governance_notifications(&state);
+            utils::output(
+                None,
+                Some(json!({
+                    "setting": item,
+                    "email_template": notification_email_template(&category),
+                    "mailer_status": notification_mailer_status()
+                })),
+            )
+        }
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_governance_summary(State(state): State<Arc<AppState>>) -> Json<Value> {
+    maybe_create_governance_notifications(&state);
+    let recent_operations = match state.db.list_operation_logs(20, None, None) {
+        Ok(items) => items,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let notifications = match state.db.list_notifications(10) {
+        Ok(items) => items,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let latest_backup_at = state.db.latest_backup_at().unwrap_or(None);
+    let backups = state.db.list_backup_records(5).unwrap_or_default();
+    let recent_activity = recent_operations
+        .iter()
+        .take(10)
+        .map(|item| {
+            json!({
+                "time": item.start_time,
+                "label": format!("{} {} {}", item.username, item.action, item.target),
+                "status": item.status,
+                "icon": if item.status == "ok" { "bx-check-circle" } else { "bx-error-circle" },
+            })
+        })
+        .chain(notifications.iter().take(5).map(|item| {
+            json!({
+                "time": item.created_at,
+                "label": format!("{}：{}", notification_display_title(item), item.message),
+                "status": if item.acknowledged { "completed" } else { "pending" },
+                "icon": "bx-bell",
+            })
+        }))
+        .collect::<Vec<_>>();
+    utils::output(
+        None,
+        Some(json!({
+            "recent_operations": recent_operations,
+            "recent_activity": recent_activity,
+            "notifications": notifications.iter().map(notification_to_value).collect::<Vec<_>>(),
+            "latest_backup_at": latest_backup_at,
+            "recent_backups": backups,
+        })),
+    )
+}
+
+async fn handle_backup_records(State(state): State<Arc<AppState>>) -> Json<Value> {
+    match state.db.list_backup_records(50) {
+        Ok(items) => utils::output(
+            None,
+            Some(json!({
+                "latest_backup_at": state.db.latest_backup_at().unwrap_or(None),
+                "items": items
+            })),
+        ),
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_backup_export(State(state): State<Arc<AppState>>) -> Response {
+    let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S").to_string();
+    let filename = format!("kyklos-backup-{timestamp}.sqlite3");
+    let dir = match backup_dir() {
+        Ok(dir) => dir,
+        Err(e) => return csv_error_response(&e),
+    };
+    let target = dir.join(&filename);
+    let db_path = state.db.db_path();
+    if let Err(e) = fs::copy(&db_path, &target) {
+        let _ = state.db.record_backup(
+            "export",
+            &filename,
+            &target.display().to_string(),
+            0,
+            "failed",
+            &format!("copy database failed: {e}"),
+        );
+        return csv_error_response(&format!("export backup failed: {e}"));
+    }
+    let size = fs::metadata(&target)
+        .map(|meta| meta.len() as i64)
+        .unwrap_or(0);
+    let _ = state.db.record_backup(
+        "export",
+        &filename,
+        &target.display().to_string(),
+        size,
+        "success",
+        "完整 SQLite 設定與歷史紀錄備份",
+    );
+    match fs::read(&target) {
+        Ok(bytes) => Response::builder()
+            .header(header::CONTENT_TYPE, "application/octet-stream")
+            .header(
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            )
+            .body(Body::from(bytes))
+            .unwrap_or_else(|_| Response::new(Body::from("failed to build backup response"))),
+        Err(e) => csv_error_response(&format!("read backup failed: {e}")),
+    }
+}
+
+async fn handle_backup_import(State(state): State<Arc<AppState>>, body: Bytes) -> Json<Value> {
+    if body.is_empty() {
+        return utils::output(Some("backup file is empty"), None);
+    }
+    let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S").to_string();
+    let dir = match backup_dir() {
+        Ok(dir) => dir,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    let staged_name = format!("kyklos-import-{timestamp}.sqlite3");
+    let staged_path = dir.join(&staged_name);
+    if let Err(e) = fs::write(&staged_path, &body) {
+        return utils::output(Some(&format!("save imported backup failed: {e}")), None);
+    }
+    match rusqlite::Connection::open(&staged_path).and_then(|conn| {
+        conn.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        })
+    }) {
+        Ok(_) => {}
+        Err(e) => {
+            let _ = state.db.record_backup(
+                "import",
+                &staged_name,
+                &staged_path.display().to_string(),
+                body.len() as i64,
+                "failed",
+                &format!("invalid sqlite backup: {e}"),
+            );
+            return utils::output(Some(&format!("invalid sqlite backup: {e}")), None);
+        }
+    }
+    let record = match state.db.record_backup(
+        "import",
+        &staged_name,
+        &staged_path.display().to_string(),
+        body.len() as i64,
+        "success",
+        "備份檔已匯入並安全暫存；正式還原請停機後替換資料庫檔。",
+    ) {
+        Ok(record) => record,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    utils::output(
+        None,
+        Some(json!({
+            "record": record,
+            "message": "備份已匯入暫存，避免執行中直接覆蓋 SQLite。若需完整還原，請停用服務後以此檔替換目前資料庫。"
+        })),
+    )
+}
+
+fn audit_firewall_rules(data: &Value) -> Value {
+    let mut total_rules = 0_i64;
+    let mut broad_accepts = Vec::new();
+    let mut log_rules = 0_i64;
+    for group in ["system", "custom"] {
+        let Some(chains) = data.get(group).and_then(Value::as_array) else {
+            continue;
+        };
+        for chain in chains {
+            let chain_name = chain
+                .get("title")
+                .and_then(|title| title.get("chain"))
+                .and_then(Value::as_str)
+                .unwrap_or("-");
+            let Some(rules) = chain.get("list").and_then(Value::as_array) else {
+                continue;
+            };
+            for rule in rules {
+                total_rules += 1;
+                let target = rule.get("target").and_then(Value::as_str).unwrap_or("");
+                let source = rule.get("source").and_then(Value::as_str).unwrap_or("");
+                let destination = rule
+                    .get("destination")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let action = rule.get("action").and_then(Value::as_str).unwrap_or("");
+                if target == "LOG" {
+                    log_rules += 1;
+                }
+                if target == "ACCEPT"
+                    && matches!(source, "0.0.0.0/0" | "::/0")
+                    && matches!(destination, "0.0.0.0/0" | "::/0")
+                    && (action.contains("dpt:") || action.contains("dpt="))
+                {
+                    broad_accepts.push(json!({
+                        "chain": chain_name,
+                        "source": source,
+                        "destination": destination,
+                        "action": action,
+                        "risk": "來源與目的皆為 Any，請確認是否為必要開放通道。"
+                    }));
+                }
+            }
+        }
+    }
+    json!({
+        "total_rules": total_rules,
+        "log_rules": log_rules,
+        "logging_enabled": log_rules > 0,
+        "broad_accepts": broad_accepts,
+        "recommendations": [
+            "建議定期檢查 Any -> Any 的 ACCEPT 規則。",
+            "建議針對 DROP/REJECT 前加入限速 LOG 規則，避免日誌爆量。",
+            "若需導入監控/日誌分析平台，可將 iptables LOG 接到 rsyslog/syslog-ng 後送 SIEM。"
+        ]
+    })
+}
+
+async fn handle_firewall_monitoring_status(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let ipc = match pick_firewall(&state, Some("ipv4")) {
+        Ok(ipc) => ipc,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    match ipc.list_rule("filter", "").await {
+        Ok(data) => {
+            let value = serde_json::to_value(data).unwrap_or_default();
+            let audit = audit_firewall_rules(&value);
+            utils::output(
+                None,
+                Some(json!({
+                    "logging_enabled": audit.get("logging_enabled").and_then(Value::as_bool).unwrap_or(false),
+                    "log_rules": audit.get("log_rules").cloned().unwrap_or(json!(0)),
+                    "monitoring_platform": "未設定",
+                    "ingest_status": "待設定 rsyslog / syslog-ng / SIEM",
+                    "audit_interval": "建議每週稽核一次",
+                    "audit": audit
+                })),
+            )
+        }
+        Err(e) => utils::output(Some(&e), None),
+    }
+}
+
+async fn handle_firewall_monitoring_audit(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let ipc = match pick_firewall(&state, Some("ipv4")) {
+        Ok(ipc) => ipc,
+        Err(e) => return utils::output(Some(&e), None),
+    };
+    match ipc.list_rule("filter", "").await {
+        Ok(data) => {
+            let value = serde_json::to_value(data).unwrap_or_default();
+            utils::output(None, Some(audit_firewall_rules(&value)))
+        }
         Err(e) => utils::output(Some(&e), None),
     }
 }
@@ -5203,6 +6464,12 @@ fn csv_error_response(message: &str) -> Response {
 
 fn ip_matches_entry(source: std::net::IpAddr, entry: &str) -> bool {
     let entry = entry.trim();
+    if let (std::net::IpAddr::V4(source), Some((start, end))) =
+        (source, parse_ipv4_range_entry(entry))
+    {
+        let source = u32::from(source);
+        return source >= u32::from(start) && source <= u32::from(end);
+    }
     if let Some((ip, prefix)) = entry.split_once('/') {
         let network = match ip.parse::<std::net::IpAddr>() {
             Ok(ip) => ip,
@@ -5218,6 +6485,13 @@ fn ip_matches_entry(source: std::net::IpAddr, entry: &str) -> bool {
         .parse::<std::net::IpAddr>()
         .map(|ip| ip == source)
         .unwrap_or(false)
+}
+
+fn parse_ipv4_range_entry(entry: &str) -> Option<(std::net::Ipv4Addr, std::net::Ipv4Addr)> {
+    let (start, end) = entry.split_once('-')?;
+    let start = start.trim().parse::<std::net::Ipv4Addr>().ok()?;
+    let end = end.trim().parse::<std::net::Ipv4Addr>().ok()?;
+    Some((start, end))
 }
 
 fn ip_in_cidr(source: std::net::IpAddr, network: std::net::IpAddr, prefix: u8) -> bool {
@@ -5248,11 +6522,8 @@ async fn sync_security_whitelist_rules(state: &AppState) -> Result<Value, String
     }
     let settings = state.db.security_whitelist_settings()?;
     let items = state.db.list_security_whitelist_ips()?;
-    let enabled_rules: Vec<SecurityWhitelistIp> = items
-        .iter()
-        .filter(|item| item.enabled)
-        .cloned()
-        .collect();
+    let enabled_rules: Vec<SecurityWhitelistIp> =
+        items.iter().filter(|item| item.enabled).cloned().collect();
     const CHAIN: &str = "KYKLOS_SECURITY_WHITELIST";
     if settings.enabled && enabled_rules.is_empty() {
         return Err(
@@ -5288,9 +6559,16 @@ async fn sync_security_whitelist_rules(state: &AppState) -> Result<Value, String
                 "filter".to_string(),
                 "-A".to_string(),
                 CHAIN.to_string(),
-                "-s".to_string(),
-                rule.ip_address.clone(),
             ];
+            if let Some((start, end)) = parse_ipv4_range_entry(&rule.ip_address) {
+                args.push("-m".to_string());
+                args.push("iprange".to_string());
+                args.push("--src-range".to_string());
+                args.push(format!("{start}-{end}"));
+            } else {
+                args.push("-s".to_string());
+                args.push(rule.ip_address.clone());
+            }
             let protocol = rule.protocol.trim().to_ascii_lowercase();
             if protocol == "tcp" || protocol == "udp" {
                 args.push("-p".to_string());
@@ -5960,6 +7238,117 @@ async fn handle_platform(State(state): State<Arc<AppState>>) -> Json<Value> {
     utils::output(None, Some(Value::String(state.platform.clone())))
 }
 
+async fn handle_auth_login(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<AuthLoginForm>,
+) -> Response {
+    let start_time = now_iso();
+    let timer = Instant::now();
+    let Some(user) = auth_for_credentials(&state, &form.username, &form.password) else {
+        let _ = state.db.record_operation_log(
+            form.username.trim(),
+            "登入",
+            "/auth/login",
+            "POST",
+            "failed",
+            &start_time,
+            &now_iso(),
+            timer.elapsed().as_millis().min(i64::MAX as u128) as i64,
+            "帳號或密碼錯誤",
+        );
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"code": 1, "msg": "帳號或密碼錯誤", "data": null})),
+        )
+            .into_response();
+    };
+
+    let token = uuid::Uuid::new_v4().to_string();
+    if let Ok(mut sessions) = state.sessions.lock() {
+        sessions.insert(token.clone(), user.clone());
+    } else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"code": 1, "msg": "建立登入 session 失敗", "data": null})),
+        )
+            .into_response();
+    }
+    let _ = state.db.record_operation_log(
+        &user.username,
+        "登入",
+        "/auth/login",
+        "POST",
+        "ok",
+        &start_time,
+        &now_iso(),
+        timer.elapsed().as_millis().min(i64::MAX as u128) as i64,
+        "登入成功",
+    );
+
+    let mut resp = Json(json!({
+        "code": 0,
+        "msg": "OK",
+        "data": {
+            "user": user,
+            "session_nonce": current_session_nonce(&state),
+        }
+    }))
+    .into_response();
+    set_auth_session_cookie(&mut resp, &token);
+    resp
+}
+
+async fn handle_auth_me(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let Some(user) = session_user_from_request(&state, &req) else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"code": 1, "msg": "未登入", "data": null})),
+        )
+            .into_response();
+    };
+    Json(json!({
+        "code": 0,
+        "msg": "OK",
+        "data": {
+            "user": user,
+            "session_nonce": current_session_nonce(&state),
+        }
+    }))
+    .into_response()
+}
+
+async fn handle_auth_logout(State(state): State<Arc<AppState>>, req: Request) -> Response {
+    let start_time = now_iso();
+    let timer = Instant::now();
+    let mut username = "unknown".to_string();
+    if let Some(token) = cookie_value(&req, AUTH_SESSION_COOKIE) {
+        if let Ok(mut sessions) = state.sessions.lock() {
+            if let Some(user) = sessions.get(&token) {
+                username = user.username.clone();
+            }
+            sessions.remove(&token);
+        }
+    }
+    let new_nonce = uuid::Uuid::new_v4().to_string();
+    if let Ok(mut nonce) = state.session_nonce.lock() {
+        *nonce = new_nonce.clone();
+    }
+    let _ = state.db.record_operation_log(
+        &username,
+        "登出",
+        "/auth/logout",
+        "POST",
+        "ok",
+        &start_time,
+        &now_iso(),
+        timer.elapsed().as_millis().min(i64::MAX as u128) as i64,
+        "登出成功",
+    );
+    let mut resp = Json(json!({"code": 0, "msg": "Logged out", "data": null})).into_response();
+    clear_auth_session_cookie(&mut resp);
+    resp
+}
+
 async fn handle_interfaces(State(state): State<Arc<AppState>>) -> Json<Value> {
     let interfaces = system::get_interfaces(&state.platform).await;
     utils::output(None, Some(interfaces))
@@ -6088,6 +7477,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health", get(handle_health))
         .route("/activity", get(handle_activity))
         .route("/platform", get(handle_platform))
+        .route("/auth/login", post(handle_auth_login))
+        .route("/auth/me", get(handle_auth_me))
+        .route("/auth/logout", post(handle_auth_logout))
         .route("/interfaces", get(handle_interfaces))
         .route("/log", post(handle_log))
         .route("/log/api", get(handle_api_log))
@@ -6553,6 +7945,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             post(handle_security_whitelist_refresh_logs),
         )
         .route(
+            "/security/whitelist/logs/clear",
+            post(handle_security_whitelist_clear_logs),
+        )
+        .route(
             "/security/whitelist/logs/:id/allow",
             post(handle_security_whitelist_allow_log_ip),
         )
@@ -6563,6 +7959,28 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/security/whitelist/sync",
             post(handle_security_whitelist_sync),
+        )
+        .route("/operation-logs", get(handle_operation_logs))
+        .route("/operation-logs/export", get(handle_operation_logs_export))
+        .route("/governance/summary", get(handle_governance_summary))
+        .route("/notifications", get(handle_notifications))
+        .route("/notifications/:id/ack", post(handle_ack_notification))
+        .route("/notifications/ack-all", post(handle_ack_all_notifications))
+        .route("/notifications/clear", post(handle_clear_notifications))
+        .route(
+            "/notification-settings",
+            get(handle_notification_settings).post(handle_save_notification_setting),
+        )
+        .route("/backups", get(handle_backup_records))
+        .route("/backups/export", get(handle_backup_export))
+        .route("/backups/import", post(handle_backup_import))
+        .route(
+            "/firewall-monitoring/status",
+            get(handle_firewall_monitoring_status),
+        )
+        .route(
+            "/firewall-monitoring/audit",
+            get(handle_firewall_monitoring_audit),
         )
         .route(
             "/apiman/workspaces/export/:ws_id",
@@ -7009,6 +8427,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             post(handle_security_whitelist_refresh_logs),
         )
         .route(
+            "/api/security/whitelist/logs/clear",
+            post(handle_security_whitelist_clear_logs),
+        )
+        .route(
             "/api/security/whitelist/logs/:id/allow",
             post(handle_security_whitelist_allow_log_ip),
         )
@@ -7019,6 +8441,34 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/security/whitelist/sync",
             post(handle_security_whitelist_sync),
+        )
+        .route("/api/operation-logs", get(handle_operation_logs))
+        .route(
+            "/api/operation-logs/export",
+            get(handle_operation_logs_export),
+        )
+        .route("/api/governance/summary", get(handle_governance_summary))
+        .route("/api/notifications", get(handle_notifications))
+        .route("/api/notifications/:id/ack", post(handle_ack_notification))
+        .route(
+            "/api/notifications/ack-all",
+            post(handle_ack_all_notifications),
+        )
+        .route("/api/notifications/clear", post(handle_clear_notifications))
+        .route(
+            "/api/notification-settings",
+            get(handle_notification_settings).post(handle_save_notification_setting),
+        )
+        .route("/api/backups", get(handle_backup_records))
+        .route("/api/backups/export", get(handle_backup_export))
+        .route("/api/backups/import", post(handle_backup_import))
+        .route(
+            "/api/firewall-monitoring/status",
+            get(handle_firewall_monitoring_status),
+        )
+        .route(
+            "/api/firewall-monitoring/audit",
+            get(handle_firewall_monitoring_audit),
         )
         .route("/tools/log/list", get(handle_log_list))
         .route("/tools/log/tail", post(handle_log_tail))
@@ -7151,9 +8601,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/sftp/mkdir", post(handle_sftp_mkdir))
         .route("/api/sftp/rm", post(handle_sftp_rm));
 
-    // Auth layer applied to both web and API routes
+    // Browser shell routes stay public; API routes use Kyklos session cookies.
     let auth_layer = middleware::from_fn_with_state(state.clone(), auth_middleware);
-    let auth_web = web_routes.layer(auth_layer.clone());
     let auth_api = api_routes.layer(auth_layer.clone());
 
     // Prefixed API routes
@@ -7167,7 +8616,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .merge(ws_routes)
-        .merge(auth_web)
+        .merge(web_routes)
         .merge(auth_api)
         .merge(prefixed_backend_api)
         .with_state(state)

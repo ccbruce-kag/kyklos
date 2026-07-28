@@ -23,6 +23,7 @@ use crate::net::kyklos_ha::KyklosHaManager;
 use crate::net::nginx::{NginxClient, NginxSettings};
 use crate::server::{build_router, AppState};
 use crate::sys::crontab::CronService;
+use axum::Router;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tracing::{info, warn};
@@ -47,6 +48,57 @@ fn detect_platform() -> Platform {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+struct TlsSettings {
+    cert_path: Option<String>,
+    key_path: Option<String>,
+}
+
+impl TlsSettings {
+    fn enabled(&self) -> bool {
+        self.cert_path.is_some() && self.key_path.is_some()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        match (&self.cert_path, &self.key_path) {
+            (Some(_), Some(_)) | (None, None) => Ok(()),
+            (Some(_), None) => Err("KYKLOS_TLS_CERT 已設定，但缺少 KYKLOS_TLS_KEY".to_string()),
+            (None, Some(_)) => Err("KYKLOS_TLS_KEY 已設定，但缺少 KYKLOS_TLS_CERT".to_string()),
+        }
+    }
+}
+
+async fn serve_management_app(
+    addr: std::net::SocketAddr,
+    app: Router,
+    tls: &TlsSettings,
+) -> Result<(), String> {
+    tls.validate()?;
+    if tls.enabled() {
+        let cert_path = tls.cert_path.as_deref().unwrap();
+        let key_path = tls.key_path.as_deref().unwrap();
+        let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert_path, key_path)
+            .await
+            .map_err(|e| format!("load TLS certificate/key failed: {e}"))?;
+        info!("management interface TLS enabled");
+        info!("listen URL: https://{}", addr);
+        axum_server::bind_rustls(addr, config)
+            .serve(app.into_make_service())
+            .await
+            .map_err(|e| format!("HTTPS server failed: {e}"))?;
+    } else {
+        info!("management interface TLS disabled; serving HTTP");
+        info!("listen URL: http://{}", addr);
+        let listener = TcpListener::bind(addr)
+            .await
+            .map_err(|e| format!("bind address failed: {e}"))?;
+        axum::serve(listener, app)
+            .await
+            .map_err(|e| format!("HTTP server failed: {e}"))?;
+    }
+    Ok(())
+}
+
 fn main() {
     tracing_subscriber::fmt::init();
 
@@ -55,6 +107,8 @@ fn main() {
     let mut username = String::from("admin");
     let mut password = String::from("admin");
     let mut address = String::from(":10002");
+    let mut tls = TlsSettings::default();
+    let session_nonce = uuid::Uuid::new_v4().to_string();
 
     let mut i = 1;
     while i < args.len() {
@@ -77,6 +131,18 @@ fn main() {
                     i += 1;
                 }
             }
+            "--tls-cert" => {
+                if i + 1 < args.len() {
+                    tls.cert_path = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--tls-key" => {
+                if i + 1 < args.len() {
+                    tls.key_path = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
             _ => {}
         }
         i += 1;
@@ -95,6 +161,16 @@ fn main() {
     if let Ok(v) = std::env::var("IPT_WEB_ADDRESS") {
         if !v.is_empty() {
             address = v;
+        }
+    }
+    if let Ok(v) = std::env::var("KYKLOS_TLS_CERT") {
+        if !v.is_empty() {
+            tls.cert_path = Some(v);
+        }
+    }
+    if let Ok(v) = std::env::var("KYKLOS_TLS_KEY") {
+        if !v.is_empty() {
+            tls.key_path = Some(v);
         }
     }
 
@@ -151,6 +227,8 @@ fn main() {
                     ipv6,
                     username,
                     password,
+                    session_nonce: std::sync::Mutex::new(session_nonce.clone()),
+                    sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
                     platform: "linux".to_string(),
                     db: db.clone(),
                     juniper: Arc::new(JuniperClient::new(db.clone())),
@@ -179,8 +257,7 @@ fn main() {
                     BUILD_VERSION, BUILD_DATE, GIT_HASH
                 );
 
-                let listener = TcpListener::bind(addr).await.unwrap();
-                axum::serve(listener, app).await.unwrap();
+                serve_management_app(addr, app, &tls).await.unwrap();
             }
             Platform::MacOS => {
                 info!("initializing pfctl backend for macOS");
@@ -201,6 +278,8 @@ fn main() {
                     ipv6: Some(pf_shared),
                     username,
                     password,
+                    session_nonce: std::sync::Mutex::new(session_nonce.clone()),
+                    sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
                     platform: "macos".to_string(),
                     db: db.clone(),
                     juniper: Arc::new(JuniperClient::new(db.clone())),
@@ -228,8 +307,7 @@ fn main() {
                     BUILD_VERSION, BUILD_DATE, GIT_HASH
                 );
 
-                let listener = TcpListener::bind(addr).await.unwrap();
-                axum::serve(listener, app).await.unwrap();
+                serve_management_app(addr, app, &tls).await.unwrap();
             }
             Platform::Windows => {
                 info!("initializing Windows Firewall backend");
@@ -250,6 +328,8 @@ fn main() {
                     ipv6: Some(wf_shared),
                     username,
                     password,
+                    session_nonce: std::sync::Mutex::new(session_nonce.clone()),
+                    sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
                     platform: "windows".to_string(),
                     db: db.clone(),
                     juniper: Arc::new(JuniperClient::new(db.clone())),
@@ -277,8 +357,7 @@ fn main() {
                     BUILD_VERSION, BUILD_DATE, GIT_HASH
                 );
 
-                let listener = TcpListener::bind(addr).await.unwrap();
-                axum::serve(listener, app).await.unwrap();
+                serve_management_app(addr, app, &tls).await.unwrap();
             }
         }
     });

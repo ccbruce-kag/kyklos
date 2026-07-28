@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import Layout from './components/Layout'
 import type { LangCode } from './types'
 import i18nData from './i18n'
@@ -47,6 +47,88 @@ const GLOBAL_SCRIPTS = new Set([
   '/sneat/libs/xterm/xterm.min.js',
   '/sneat/libs/xterm-addon-fit/xterm-addon-fit.min.js',
 ]);
+
+const TAB_STORAGE_KEY = 'fwm_tabs'
+const FORCE_DEFAULT_TAB_KEY = 'kyklos_force_default_tab'
+
+type AuthProfile = {
+  username: string
+  display_name?: string | null
+  role_codes?: string[]
+  source?: string
+}
+
+function LoginView() {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      const body = new URLSearchParams()
+      body.set('username', username)
+      body.set('password', password)
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      })
+      if (!res.ok) {
+        let msg = '帳號或密碼錯誤'
+        try {
+          const data = await res.json()
+          msg = data?.msg || msg
+        } catch { /* ignore */ }
+        setError(msg)
+        return
+      }
+      localStorage.removeItem(TAB_STORAGE_KEY)
+      sessionStorage.setItem(FORCE_DEFAULT_TAB_KEY, '1')
+      window.location.reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '登入失敗')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-vh-100 d-flex align-items-center justify-content-center bg-body-tertiary px-3">
+      <div className="card shadow-sm" style={{ width: 'min(420px, 100%)' }}>
+        <div className="card-body p-4">
+          <div className="mb-4">
+            <h4 className="mb-1 fw-bold">Kyklos 登入</h4>
+            <p className="text-muted mb-0">請輸入使用者帳號與密碼。</p>
+          </div>
+          {error && <div className="alert alert-danger py-2">{error}</div>}
+          <form onSubmit={submit}>
+            <div className="mb-3">
+              <label className="form-label">使用者名稱</label>
+              <input className="form-control" value={username} onChange={(event) => setUsername(event.target.value)} autoFocus />
+            </div>
+            <div className="mb-4">
+              <label className="form-label">密碼</label>
+              <input className="form-control" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            </div>
+            <button className="btn btn-primary w-100" type="submit" disabled={loading || !username || !password}>
+              {loading ? '登入中...' : '登入'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function isWhitelistOnlyUser(authProfile?: AuthProfile | null): boolean {
+  const roles = authProfile?.role_codes || []
+  return roles.includes('security_whitelist') && !roles.includes('admin')
+}
 
 function loadScripts(urls: string[]): Promise<void> {
   return urls.reduce((p, src) => p.then(() => new Promise<void>((resolve) => {
@@ -137,6 +219,8 @@ function bootMenu() {
 
 function App() {
   const inited = useRef(false);
+  const [authProfile, setAuthProfile] = useState<AuthProfile | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     if (inited.current) return;
@@ -147,6 +231,38 @@ function App() {
         ? `${window.FWM_API_SCHEME}://${window.FWM_API_HOST}:${window.FWM_API_PORT}`
         : '';
       const useProxy = !base || base.includes('localhost:10002') || base.includes('127.0.0.1:10002');
+      let whitelistOnly = false;
+
+      try {
+        const authUrl = useProxy ? '/auth/me' : `${base}/auth/me`;
+        const authRes = await fetch(authUrl, { cache: 'no-store', credentials: 'same-origin' });
+        if (!authRes.ok) {
+          setAuthChecked(true);
+          return;
+        }
+        const authData = await authRes.json();
+        const user = authData?.data?.user || null;
+        const sessionNonce = authData?.data?.session_nonce;
+        if (!user) {
+          setAuthChecked(true);
+          return;
+        }
+        setAuthProfile(user);
+        setAuthChecked(true);
+        window.kyklosCurrentUser = user;
+        whitelistOnly = isWhitelistOnlyUser(user);
+        window.kyklosDefaultView = whitelistOnly ? 'securityWhitelist' : 'dashboard';
+        window.kyklosForceDefaultTab = sessionStorage.getItem(FORCE_DEFAULT_TAB_KEY) === '1';
+        if (window.kyklosForceDefaultTab) {
+          localStorage.removeItem(TAB_STORAGE_KEY);
+        }
+        if (typeof sessionNonce === 'string' && sessionNonce) {
+          localStorage.setItem('kyklos_boot_session', sessionNonce);
+        }
+      } catch {
+        setAuthChecked(true);
+        return;
+      }
 
       try {
         const url = useProxy ? '/platform' : `${base}/platform`;
@@ -165,13 +281,28 @@ function App() {
       if (typeof window.setLanguage === 'function') {
         window.setLanguage(window.currentLang || 'en', false);
       }
-      if (typeof window.loadIptables === 'function') {
+      if (whitelistOnly && typeof window.fwmSwitchView === 'function') {
+        setTimeout(() => {
+          window.fwmSwitchView && window.fwmSwitchView('securityWhitelist');
+          window.fwmSetSecuritySubView && window.fwmSetSecuritySubView('whitelist');
+        }, 200);
+      } else if (typeof window.loadIptables === 'function') {
         setTimeout(() => window.loadIptables && window.loadIptables(), 200);
       }
     })();
   }, []);
 
-  return <Layout />;
+  if (!authChecked) {
+    return (
+      <div className="min-vh-100 d-flex align-items-center justify-content-center bg-body-tertiary">
+        <div className="text-muted">載入登入狀態...</div>
+      </div>
+    )
+  }
+
+  if (!authProfile) return <LoginView />
+
+  return <Layout authProfile={authProfile} />;
 }
 
 export default App

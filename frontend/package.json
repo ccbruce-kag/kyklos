@@ -4,10 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node ./scripts/with-node20.mjs ./node_modules/vite/bin/vite.js",
+    "build": "node ./scripts/with-node20.mjs ./node_modules/typescript/bin/tsc -b && node ./scripts/with-node20.mjs ./node_modules/vite/bin/vite.js build",
+    "postbuild": "node ./scripts/clean-build-cache.mjs",
+    "clean:cache": "node ./scripts/clean-build-cache.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "node ./scripts/with-node20.mjs ./node_modules/vite/bin/vite.js preview"
   },
   "dependencies": {
     "@douyinfe/semi-icons": "^2.100.0",

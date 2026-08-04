@@ -11,6 +11,8 @@
 #   -m          最小化打包 (strip 二進位 + 跳過 web/logs)
 #   -a          同時打包共用函式庫 (打造免安裝環境)
 #   -c          清除舊的 bin 目錄後重新打包
+#   -d          同時下載 Debian/Ubuntu 離線運行時 .deb 套件
+#   -U <ver>    鎖定 Ubuntu 離線套件版本，例如 24.04；需在相同版本主機執行
 #   -h          顯示說明
 #
 set -euo pipefail
@@ -23,8 +25,42 @@ BUNDLE_LIBS=false
 CLEAN_FIRST=false
 DO_BUILD=false
 MINIMAL=false
+OFFLINE_DEBS=false
+OFFLINE_TARGET_VERSION=""
 VERSION="$(date +%Y%m%d%H%M%S)"
 ARCH="$(uname -m)"
+APT_RUNTIME_PACKAGES=(
+    iptables
+    openssh-client
+    sshpass
+    ca-certificates
+    msmtp-mta
+    curl
+    openssl
+)
+
+is_essential_or_required_package() {
+    local pkg="$1"
+    apt-cache show "$pkg" 2>/dev/null \
+        | awk -F': ' '
+            $1 == "Essential" && $2 == "yes" { found = 1 }
+            $1 == "Priority" && $2 == "required" { found = 1 }
+            END { exit found ? 0 : 1 }
+        '
+}
+
+is_core_runtime_lib() {
+    local name
+    name="$(basename "$1")"
+    case "$name" in
+        ld-linux*|libc.so*|libm.so*|libpthread.so*|librt.so*|libdl.so*|libresolv.so*|libnsl.so*|libutil.so*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
 # ─── 顏色 ─────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -48,6 +84,8 @@ usage() {
   -m          最小化打包 (strip 二進位 + 跳過 web/logs)
   -a          同時打包共用函式庫 (打造免安裝環境)
   -c          清除舊的 bin 目錄後重新打包
+  -d          同時下載 Debian/Ubuntu 離線運行時 .deb 套件
+  -U <ver>    鎖定 Ubuntu 離線套件版本，例如 24.04；需在相同版本主機執行
   -h          顯示說明
 
 範例:
@@ -55,6 +93,8 @@ usage() {
   ./pack_app.sh -b                 # 從原始碼建置 + 打包
   ./pack_app.sh -b -m -a           # 建置 + 最小化 + 函式庫
   ./pack_app.sh -m                 # 最小化打包
+  ./pack_app.sh -m -a -d           # 離線部署包：程式 + 函式庫 + 目前主機版本 .deb 依賴
+  ./pack_app.sh -m -a -d -U 24.04  # Ubuntu 24.04 離線部署包；必須在 Ubuntu 24.04 執行
   ./pack_app.sh -o /tmp/kyklos -a  # 自訂輸出 + 函式庫
 EOF
     exit 0
@@ -203,7 +243,9 @@ install_runtime_deps() {
                 iptables \
                 openssh-client \
                 sshpass \
-                ca-certificates
+                ca-certificates \
+                curl \
+                openssl
             ;;
         dnf)
             sudo dnf install -y \
@@ -353,14 +395,95 @@ strip_binary() {
     info "  大小: $(( before / 1024 / 1024 )) MB → $(( after / 1024 / 1024 )) MB (釋出 ${saved_mb} MB)"
 }
 
+download_offline_debs() {
+    if ! command -v apt-cache &>/dev/null || ! command -v apt-get &>/dev/null; then
+        error "-d 目前只支援 Debian/Ubuntu apt 環境"
+        exit 1
+    fi
+
+    local deb_dir="${OUTPUT_DIR}/offline-debs"
+    mkdir -p "$deb_dir"
+    info "下載 Debian/Ubuntu 離線運行時套件至: ${deb_dir}"
+    info "套件: ${APT_RUNTIME_PACKAGES[*]}"
+
+    local os_id os_version os_codename deb_arch
+    os_id="unknown"
+    os_version="unknown"
+    os_codename="unknown"
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        os_id="${ID:-unknown}"
+        os_version="${VERSION_ID:-unknown}"
+        os_codename="${VERSION_CODENAME:-${UBUNTU_CODENAME:-unknown}}"
+    fi
+    deb_arch="$(dpkg --print-architecture)"
+
+    if [[ -n "$OFFLINE_TARGET_VERSION" ]]; then
+        if [[ "$os_id" != "ubuntu" || "$os_version" != "$OFFLINE_TARGET_VERSION" ]]; then
+            error "不能在 ${os_id} ${os_version} 產生 Ubuntu ${OFFLINE_TARGET_VERSION} 離線套件。"
+            echo "請改到 Ubuntu ${OFFLINE_TARGET_VERSION} amd64 可連外主機/VM 上執行："
+            echo "  ./pack_app.sh -m -a -d -U ${OFFLINE_TARGET_VERSION}"
+            echo "這是為了避免把不同 Ubuntu 版本的 .deb 帶到廠區主機造成降級。"
+            exit 1
+        fi
+    fi
+
+    cat > "${deb_dir}/MANIFEST.env" << EOF
+OFFLINE_OS_ID="${os_id}"
+OFFLINE_VERSION_ID="${os_version}"
+OFFLINE_VERSION_CODENAME="${os_codename}"
+OFFLINE_ARCH="${deb_arch}"
+OFFLINE_TARGET_VERSION="${OFFLINE_TARGET_VERSION}"
+OFFLINE_CREATED_AT="${VERSION}"
+EOF
+
+    (
+        cd "$deb_dir"
+        local package_list
+        package_list=$(
+            apt-cache depends --recurse \
+                --no-recommends --no-suggests --no-conflicts \
+                --no-breaks --no-replaces --no-enhances \
+                "${APT_RUNTIME_PACKAGES[@]}" \
+                | awk '/^[A-Za-z0-9]/ { print $1 }' \
+                | sed 's/<//; s/>//' \
+                | sort -u
+        )
+
+        if [[ -z "$package_list" ]]; then
+            error "無法解析 apt 套件依賴"
+            exit 1
+        fi
+
+        while IFS= read -r pkg; do
+            [[ -z "$pkg" ]] && continue
+            if is_essential_or_required_package "$pkg"; then
+                warn "略過系統核心套件，避免離線安裝時降級破壞系統: ${pkg}"
+                continue
+            fi
+            apt-get download "$pkg" >/dev/null 2>&1 || warn "下載套件失敗或為虛擬套件，略過: ${pkg}"
+        done <<< "$package_list"
+    )
+
+    local count
+    count=$(find "$deb_dir" -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d ' ')
+    if [[ "$count" == "0" ]]; then
+        error "沒有成功下載任何 .deb 套件"
+        exit 1
+    fi
+    info "已下載 ${count} 個 .deb 套件 ($(du -sh "$deb_dir" | cut -f1))"
+}
+
 # ─── 參數解析 ─────────────────────────────────────────────
-while getopts "o:bmac h" opt; do
+while getopts "o:bmacdU:h" opt; do
     case $opt in
         o) OUTPUT_DIR="$OPTARG" ;;
         b) DO_BUILD=true ;;
         m) MINIMAL=true ;;
         a) BUNDLE_LIBS=true ;;
         c) CLEAN_FIRST=true ;;
+        d) OFFLINE_DEBS=true ;;
+        U) OFFLINE_TARGET_VERSION="$OPTARG" ;;
         h) usage ;;
         *) usage ;;
     esac
@@ -425,6 +548,9 @@ if [[ "$MINIMAL" == false ]]; then
 fi
 if [[ "$BUNDLE_LIBS" == true ]]; then
     mkdir -p "${OUTPUT_DIR}/libs"
+fi
+if [[ "$OFFLINE_DEBS" == true ]]; then
+    mkdir -p "${OUTPUT_DIR}/offline-debs"
 fi
 
 # ─── 複製執行檔 ───────────────────────────────────────────
@@ -493,6 +619,11 @@ if [[ "$BUNDLE_LIBS" == true ]]; then
             lib_real=$(readlink -f "$lib")
             lib_name=$(basename "$lib_real")
 
+            if is_core_runtime_lib "$lib_name"; then
+                warn "略過 OS 核心函式庫，改用目標主機系統版本: ${lib_name}"
+                continue
+            fi
+
             # 複製實體檔案
             cp "$lib_real" "${OUTPUT_DIR}/libs/${lib_name}"
 
@@ -506,15 +637,11 @@ if [[ "$BUNDLE_LIBS" == true ]]; then
     done
     info "已複製 ${LIB_COUNT} 個函式庫"
 
-    # 複製動態連結器
-    LD_LINUX=$(ldd "$BINARY_PATH" 2>/dev/null \
-        | grep 'ld-linux' \
-        | grep -oP '(/[^\s]+)\s' \
-        | awk '{print $1}' | head -1 || true)
-    if [[ -n "$LD_LINUX" ]] && [[ -f "$LD_LINUX" ]]; then
-        cp "$LD_LINUX" "${OUTPUT_DIR}/libs/"
-        info "已複製動態連結器: $(basename "$LD_LINUX")"
-    fi
+    info "OS 核心函式庫與動態連結器不打包，避免跨 Ubuntu 版本混用 libc/ld-linux"
+fi
+
+if [[ "$OFFLINE_DEBS" == true ]]; then
+    download_offline_debs
 fi
 
 # ─── 建立啟動腳本 ─────────────────────────────────────────
@@ -720,6 +847,101 @@ fi
 INSTALL_RUNTIME
 chmod +x "${OUTPUT_DIR}/install-runtime-deps.sh"
 
+# ─── 建立離線依賴安裝腳本 ─────────────────────────────────
+cat > "${OUTPUT_DIR}/install-offline-deps.sh" << 'INSTALL_OFFLINE_RUNTIME'
+#!/usr/bin/env bash
+#
+# kyklos 離線運行時依賴安裝腳本
+# 使用前需用 ./pack_app.sh -d 在可連外主機預先下載 offline-debs/*.deb
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEB_DIR="${SCRIPT_DIR}/offline-debs"
+MANIFEST="${DEB_DIR}/MANIFEST.env"
+
+info()  { echo "[INFO]  $*"; }
+warn()  { echo "[WARN]  $*"; }
+error() { echo "[ERROR] $*" >&2; }
+
+if [[ ! -d "$DEB_DIR" ]]; then
+    error "找不到 offline-debs 目錄。請先在可連外主機用 ./pack_app.sh -m -a -d 產生離線包。"
+    exit 1
+fi
+
+if [[ ! -f "$MANIFEST" ]]; then
+    error "找不到 offline-debs/MANIFEST.env，已拒絕安裝。"
+    echo "此離線包可能是舊版危險包，不能確認 OS 版本，請重新打包。"
+    exit 1
+fi
+
+# shellcheck disable=SC1090
+source "$MANIFEST"
+target_id="unknown"
+target_version="unknown"
+target_codename="unknown"
+if [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    target_id="${ID:-unknown}"
+    target_version="${VERSION_ID:-unknown}"
+    target_codename="${VERSION_CODENAME:-${UBUNTU_CODENAME:-unknown}}"
+fi
+target_arch="$(dpkg --print-architecture)"
+info "離線包: ${OFFLINE_OS_ID:-unknown} ${OFFLINE_VERSION_ID:-unknown} ${OFFLINE_VERSION_CODENAME:-unknown} ${OFFLINE_ARCH:-unknown}"
+info "本機:   ${target_id} ${target_version} ${target_codename} ${target_arch}"
+if [[ "${OFFLINE_OS_ID:-unknown}" != "$target_id" \
+    || "${OFFLINE_VERSION_ID:-unknown}" != "$target_version" \
+    || "${OFFLINE_ARCH:-unknown}" != "$target_arch" ]]; then
+    error "離線套件版本與本機不一致，已拒絕安裝以避免破壞系統。"
+    echo "請在相同 Ubuntu 版本/架構的可連外主機重新執行 ./pack_app.sh -m -a -d。"
+    exit 1
+fi
+
+shopt -s nullglob
+debs=("${DEB_DIR}"/*.deb)
+if [[ "${#debs[@]}" -eq 0 ]]; then
+    error "offline-debs 內沒有 .deb 套件。"
+    exit 1
+fi
+
+if ! command -v apt-get >/dev/null 2>&1; then
+    error "找不到 apt-get。離線安裝只支援 Debian/Ubuntu，且不使用 dpkg 盲裝。"
+    exit 1
+fi
+
+install_debs=()
+for deb in "${debs[@]}"; do
+    pkg="$(dpkg-deb -f "$deb" Package 2>/dev/null || true)"
+    debver="$(dpkg-deb -f "$deb" Version 2>/dev/null || true)"
+    essential="$(dpkg-deb -f "$deb" Essential 2>/dev/null || true)"
+    priority="$(dpkg-deb -f "$deb" Priority 2>/dev/null || true)"
+    [[ -z "$pkg" || -z "$debver" ]] && continue
+    if [[ "$essential" == "yes" || "$priority" == "required" ]]; then
+        warn "略過系統核心套件，避免破壞 OS: ${pkg}"
+        continue
+    fi
+    instver="$(dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null || true)"
+    if [[ -n "$instver" ]] && dpkg --compare-versions "$debver" lt "$instver"; then
+        warn "略過較舊套件，避免降級: ${pkg} ${debver} < 已安裝 ${instver}"
+        continue
+    fi
+    install_debs+=("$deb")
+done
+
+if [[ "${#install_debs[@]}" -eq 0 ]]; then
+    info "沒有需要安裝或更新的離線套件。"
+    exit 0
+fi
+
+info "安裝 ${#install_debs[@]} 個本地 .deb 套件，不會連外、不允許降級。"
+sudo apt-get install -s --no-download --no-install-recommends "${install_debs[@]}" >/dev/null
+sudo apt-get install -y --no-download --no-install-recommends -o Dpkg::Options::=--refuse-downgrade "${install_debs[@]}"
+
+info "離線依賴安裝完成。"
+INSTALL_OFFLINE_RUNTIME
+chmod +x "${OUTPUT_DIR}/install-offline-deps.sh"
+
 # ─── 建立卸載腳本 ─────────────────────────────────────────
 cat > "${OUTPUT_DIR}/uninstall.sh" << 'UNINSTALL'
 #!/usr/bin/env bash
@@ -799,6 +1021,7 @@ bin/
 ├── start.sh                    # 啟動腳本 (Linux/macOS)
 ├── start.bat                   # 啟動腳本 (Windows)
 ├── install-runtime-deps.sh      # 安裝運行時依賴與 E-mail 寄信工具
+├── install-offline-deps.sh      # 離線安裝 offline-debs/*.deb
 ├── create-system-service.sh    # 建立 systemd 系統服務
 ├── uninstall.sh                # 卸載腳本
 ├── data/                       # 資料庫目錄
@@ -807,6 +1030,7 @@ bin/
 ├── config/                     # 設定檔
 ├── web/                        # 前端資源 (備用，已內嵌於執行檔)
 ├── libs/                       # 共用函式庫 (選用)
+├── offline-debs/                # Debian/Ubuntu 離線依賴套件 (-d 時產生)
 └── README.md                   # 本檔案
 ```
 
@@ -825,6 +1049,34 @@ bin/
 ```bash
 sudo ./install-runtime-deps.sh
 ```
+
+### 離線廠區部署
+
+如果目標主機不能連外，請在可連外且相同發行版/版本/架構的打包主機上產生離線包：
+
+```bash
+./pack_app.sh -m -a -d
+```
+
+若廠區目標是 Ubuntu Desktop 24.04 amd64，請在 Ubuntu 24.04 amd64 可連外主機/VM 上產生：
+
+```bash
+./pack_app.sh -m -a -d -U 24.04
+```
+
+`-d` 會把 Debian/Ubuntu 運行時 `.deb` 套件下載到 `offline-debs/`，並一起放入壓縮包。廠區主機解壓後執行：
+
+```bash
+sudo ./install-offline-deps.sh
+sudo ./start.sh
+```
+
+注意：
+
+- 離線 `.deb` 包只能用在相同 OS 版本與 CPU 架構，例如 Ubuntu 24.04 amd64 → Ubuntu 24.04 amd64。
+- `install-offline-deps.sh` 會讀取 `offline-debs/MANIFEST.env`，版本或架構不一致會直接拒絕安裝。
+- 安裝時會略過 Essential/required 系統核心套件，並拒絕降級，避免破壞 `/bin/bash`、`libc6`、`dpkg` 等 OS 元件。
+- 若廠區主機已經有 `iptables`、`ssh`、`curl`、`openssl` 等命令，也可以不執行依賴安裝腳本，直接 `sudo ./start.sh`。
 
 ### E-mail 通知
 

@@ -559,6 +559,15 @@ EOF
         done <<< "$package_list"
     )
 
+    while IFS= read -r -d '' deb; do
+        local pkg_arch
+        pkg_arch="$(dpkg-deb -f "$deb" Architecture 2>/dev/null || echo unknown)"
+        if [[ "$pkg_arch" != "all" && "$pkg_arch" != "$deb_arch" ]]; then
+            warn "移除非目標架構套件，避免 amd64 主機嘗試安裝外部架構: $(basename "$deb") (${pkg_arch})"
+            rm -f "$deb"
+        fi
+    done < <(find "$deb_dir" -maxdepth 1 -type f -name '*.deb' -print0)
+
     local count
     count=$(find "$deb_dir" -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d ' ')
     if [[ "$count" == "0" ]]; then
@@ -1008,9 +1017,14 @@ install_debs=()
 for deb in "${debs[@]}"; do
     pkg="$(dpkg-deb -f "$deb" Package 2>/dev/null || true)"
     debver="$(dpkg-deb -f "$deb" Version 2>/dev/null || true)"
+    debarch="$(dpkg-deb -f "$deb" Architecture 2>/dev/null || true)"
     essential="$(dpkg-deb -f "$deb" Essential 2>/dev/null || true)"
     priority="$(dpkg-deb -f "$deb" Priority 2>/dev/null || true)"
     [[ -z "$pkg" || -z "$debver" ]] && continue
+    if [[ "$debarch" != "all" && "$debarch" != "$target_arch" ]]; then
+        warn "略過非本機架構套件: ${pkg} ${debarch}"
+        continue
+    fi
     if [[ "$essential" == "yes" || "$priority" == "required" ]]; then
         warn "略過系統核心套件，避免破壞 OS: ${pkg}"
         continue

@@ -38,6 +38,11 @@ APT_RUNTIME_PACKAGES=(
     curl
     openssl
 )
+OFFLINE_SKIP_PACKAGES=(
+    cdebconf
+    libdebian-installer4
+    libtextwrap1
+)
 
 is_essential_or_required_package() {
     local pkg="$1"
@@ -47,6 +52,17 @@ is_essential_or_required_package() {
             $1 == "Priority" && $2 == "required" { found = 1 }
             END { exit found ? 0 : 1 }
         '
+}
+
+is_offline_skip_package() {
+    local pkg="$1"
+    local skip
+    for skip in "${OFFLINE_SKIP_PACKAGES[@]}"; do
+        if [[ "$pkg" == "$skip" ]]; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 is_core_runtime_lib() {
@@ -551,6 +567,10 @@ EOF
 
         while IFS= read -r pkg; do
             [[ -z "$pkg" ]] && continue
+            if is_offline_skip_package "$pkg"; then
+                warn "略過非 Kyklos runtime 必要套件: ${pkg}"
+                continue
+            fi
             if is_essential_or_required_package "$pkg"; then
                 warn "略過系統核心套件，避免離線安裝時降級破壞系統: ${pkg}"
                 continue
@@ -1021,6 +1041,12 @@ for deb in "${debs[@]}"; do
     essential="$(dpkg-deb -f "$deb" Essential 2>/dev/null || true)"
     priority="$(dpkg-deb -f "$deb" Priority 2>/dev/null || true)"
     [[ -z "$pkg" || -z "$debver" ]] && continue
+    case "$pkg" in
+        cdebconf|libdebian-installer4|libtextwrap1)
+            warn "略過非 Kyklos runtime 必要套件: ${pkg}"
+            continue
+            ;;
+    esac
     if [[ "$debarch" != "all" && "$debarch" != "$target_arch" ]]; then
         warn "略過非本機架構套件: ${pkg} ${debarch}"
         continue

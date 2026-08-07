@@ -1030,9 +1030,15 @@ for deb in "${debs[@]}"; do
         continue
     fi
     instver="$(dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null || true)"
-    if [[ -n "$instver" ]] && dpkg --compare-versions "$debver" lt "$instver"; then
-        warn "略過較舊套件，避免降級: ${pkg} ${debver} < 已安裝 ${instver}"
-        continue
+    if [[ -n "$instver" ]]; then
+        if dpkg --compare-versions "$debver" lt "$instver"; then
+            warn "略過較舊套件，避免降級: ${pkg} ${debver} < 已安裝 ${instver}"
+            continue
+        fi
+        if dpkg --compare-versions "$debver" eq "$instver"; then
+            info "略過已安裝同版本套件: ${pkg} ${debver}"
+            continue
+        fi
     fi
     install_debs+=("$deb")
 done
@@ -1043,7 +1049,11 @@ if [[ "${#install_debs[@]}" -eq 0 ]]; then
 fi
 
 info "安裝 ${#install_debs[@]} 個本地 .deb 套件，不會連外、不允許降級。"
-sudo apt-get install -s --no-download --no-install-recommends "${install_debs[@]}" >/dev/null
+if ! sudo apt-get install -s --no-download --no-install-recommends "${install_debs[@]}"; then
+    error "離線套件相依性檢查失敗。上方 apt 訊息會列出缺少或衝突的套件。"
+    echo "請在 Ubuntu 24.04 可連外打包機上重新產生離線包，或將缺少的 .deb 補入 offline-debs。"
+    exit 1
+fi
 sudo apt-get install -y --no-download --no-install-recommends -o Dpkg::Options::=--refuse-downgrade "${install_debs[@]}"
 
 info "離線依賴安裝完成。"

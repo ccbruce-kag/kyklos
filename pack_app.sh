@@ -155,6 +155,8 @@ install_build_deps() {
                 build-essential \
                 git \
                 file \
+                nodejs \
+                npm \
                 pkg-config \
                 libpcap-dev \
                 libssl-dev \
@@ -175,6 +177,8 @@ install_build_deps() {
                 make \
                 git \
                 file \
+                nodejs \
+                npm \
                 pkgconf \
                 libpcap-devel \
                 openssl-devel \
@@ -195,6 +199,8 @@ install_build_deps() {
                 make \
                 git \
                 file \
+                nodejs \
+                npm \
                 pkgconf \
                 libpcap-devel \
                 openssl-devel \
@@ -214,6 +220,8 @@ install_build_deps() {
                 build-base \
                 git \
                 file \
+                nodejs \
+                npm \
                 pkgconf \
                 libpcap-dev \
                 openssl-dev \

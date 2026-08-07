@@ -37,6 +37,9 @@ APT_RUNTIME_PACKAGES=(
     msmtp-mta
     curl
     openssl
+    krb5-locales
+    libcurl3t64-gnutls
+    libssl3t64
 )
 OFFLINE_SKIP_PACKAGES=(
     cdebconf

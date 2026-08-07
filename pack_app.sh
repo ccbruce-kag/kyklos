@@ -356,6 +356,18 @@ build_frontend() {
         info "  node_modules 已存在，略過 npm install"
     fi
 
+    if [[ "$(uname -s)" == "Linux" \
+        && "$(uname -m)" == "x86_64" \
+        && -d "node_modules/rolldown" \
+        && ! -d "node_modules/@rolldown/binding-linux-x64-gnu" ]]; then
+        warn "  rolldown Linux x64 native binding 仍缺失，明確安裝 binding 套件..."
+        binding_version="$(node -e "const p=require('./package-lock.json'); console.log(p.packages?.['node_modules/rolldown']?.optionalDependencies?.['@rolldown/binding-linux-x64-gnu'] || '')" 2>/dev/null || true)"
+        if [[ -z "$binding_version" ]]; then
+            binding_version="1.0.3"
+        fi
+        npm install --no-save --include=optional "@rolldown/binding-linux-x64-gnu@${binding_version}"
+    fi
+
     # 清除舊的 dist cache
     if [[ -d "dist" ]]; then
         info "  清除 dist/ cache..."

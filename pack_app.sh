@@ -1078,12 +1078,26 @@ if [[ "${#install_debs[@]}" -eq 0 ]]; then
 fi
 
 info "安裝 ${#install_debs[@]} 個本地 .deb 套件，不會連外、不允許降級。"
-if ! sudo apt-get install -s --no-download --no-install-recommends "${install_debs[@]}"; then
+STAGE_DIR="$(mktemp -d /tmp/kyklos-offline-debs.XXXXXX)"
+cleanup_stage() {
+    rm -rf "$STAGE_DIR"
+}
+trap cleanup_stage EXIT
+
+staged_debs=()
+for deb in "${install_debs[@]}"; do
+    cp "$deb" "$STAGE_DIR/"
+    staged_debs+=("${STAGE_DIR}/$(basename "$deb")")
+done
+chmod 755 "$STAGE_DIR"
+chmod 644 "${staged_debs[@]}"
+
+if ! sudo apt-get install -s --no-download --no-install-recommends "${staged_debs[@]}"; then
     error "離線套件相依性檢查失敗。上方 apt 訊息會列出缺少或衝突的套件。"
     echo "請在 Ubuntu 24.04 可連外打包機上重新產生離線包，或將缺少的 .deb 補入 offline-debs。"
     exit 1
 fi
-sudo apt-get install -y --no-download --no-install-recommends -o Dpkg::Options::=--refuse-downgrade "${install_debs[@]}"
+sudo apt-get install -y --no-download --no-install-recommends -o Dpkg::Options::=--refuse-downgrade "${staged_debs[@]}"
 
 info "離線依賴安裝完成。"
 INSTALL_OFFLINE_RUNTIME

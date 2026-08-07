@@ -336,9 +336,22 @@ build_frontend() {
     export KYKLOS_NODE20="$node20_bin"
     info "  frontend build node: $("$KYKLOS_NODE20" --version) (${KYKLOS_NODE20})"
 
+    if [[ -d "node_modules/rolldown" \
+        && "$(uname -s)" == "Linux" \
+        && "$(uname -m)" == "x86_64" \
+        && ! -d "node_modules/@rolldown/binding-linux-x64-gnu" ]]; then
+        warn "  偵測到 rolldown native binding 缺失，重建 node_modules..."
+        rm -rf node_modules
+    fi
+
     if [[ ! -d "node_modules" ]]; then
-        info "  npm install..."
-        npm install
+        if [[ -f "package-lock.json" ]]; then
+            info "  npm ci --include=optional..."
+            npm ci --include=optional
+        else
+            info "  npm install --include=optional..."
+            npm install --include=optional
+        fi
     else
         info "  node_modules 已存在，略過 npm install"
     fi

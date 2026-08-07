@@ -320,6 +320,22 @@ build_frontend() {
 
     info "  node: $(node --version), npm: $(npm --version)"
 
+    local node20_bin="${KYKLOS_NODE20:-}"
+    if [[ -z "$node20_bin" ]] || ! "$node20_bin" -e 'const v=process.versions.node.split(".").map(Number); process.exit(v[0] > 20 || (v[0] === 20 && (v[1] > 19 || (v[1] === 19 && v[2] >= 0))) ? 0 : 1)' >/dev/null 2>&1; then
+        if node -e 'const v=process.versions.node.split(".").map(Number); process.exit(v[0] > 20 || (v[0] === 20 && (v[1] > 19 || (v[1] === 19 && v[2] >= 0))) ? 0 : 1)' >/dev/null 2>&1; then
+            node20_bin="$(command -v node)"
+        else
+            warn "  目前 node 版本不足，Vite 需要 Node.js 20.19.0+"
+            info "  使用 npm 下載臨時 Node.js 20.19.0 給前端建置使用..."
+            node20_bin="$(npm exec --yes --package=node@20.19.0 -- node -p 'process.execPath')" || {
+                error "無法取得 Node.js 20.19.0。請先安裝 Node 20，或設定 KYKLOS_NODE20=/path/to/node20"
+                exit 1
+            }
+        fi
+    fi
+    export KYKLOS_NODE20="$node20_bin"
+    info "  frontend build node: $("$KYKLOS_NODE20" --version) (${KYKLOS_NODE20})"
+
     if [[ ! -d "node_modules" ]]; then
         info "  npm install..."
         npm install

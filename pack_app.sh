@@ -62,6 +62,49 @@ is_core_runtime_lib() {
     esac
 }
 
+cargo_supports_edition2024() {
+    command -v cargo >/dev/null 2>&1 || return 1
+    local version major minor patch
+    version="$(cargo --version | awk '{print $2}')"
+    IFS='.' read -r major minor patch <<< "$version"
+    major="${major:-0}"
+    minor="${minor:-0}"
+    if (( major > 1 )); then
+        return 0
+    fi
+    if (( major == 1 && minor >= 85 )); then
+        return 0
+    fi
+    return 1
+}
+
+ensure_modern_cargo() {
+    if [[ -d "${HOME}/.cargo/bin" ]]; then
+        export PATH="${HOME}/.cargo/bin:${PATH}"
+    fi
+
+    if cargo_supports_edition2024; then
+        return 0
+    fi
+
+    if command -v rustup >/dev/null 2>&1; then
+        warn "cargo 版本太舊，安裝/啟用 rustup stable toolchain..."
+        rustup toolchain install stable
+        rustup default stable
+        export PATH="${HOME}/.cargo/bin:${PATH}"
+        cargo_supports_edition2024 && return 0
+    fi
+
+    error "cargo 版本太舊，無法編譯需要 edition2024 的依賴。"
+    echo "目前版本: $(cargo --version 2>/dev/null || echo '未安裝')"
+    echo "請在打包主機安裝新版 Rust stable 後重跑："
+    echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    echo "  source \"\$HOME/.cargo/env\""
+    echo "  rustup default stable"
+    echo "  cargo --version"
+    exit 1
+}
+
 # ─── 顏色 ─────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -157,8 +200,6 @@ install_build_deps() {
                 file \
                 nodejs \
                 npm \
-                rustc \
-                cargo \
                 pkg-config \
                 libpcap-dev \
                 libssl-dev \
@@ -403,11 +444,7 @@ build_backend() {
         exit 1
     fi
 
-    # 檢查 cargo
-    if ! command -v cargo &>/dev/null; then
-        error "找不到 cargo，請先安裝 Rust (https://rustup.rs)"
-        exit 1
-    fi
+    ensure_modern_cargo
 
     info "  cargo: $(cargo --version)"
 

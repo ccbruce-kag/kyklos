@@ -157,6 +157,8 @@ install_build_deps() {
                 file \
                 nodejs \
                 npm \
+                rustc \
+                cargo \
                 pkg-config \
                 libpcap-dev \
                 libssl-dev \
@@ -179,6 +181,8 @@ install_build_deps() {
                 file \
                 nodejs \
                 npm \
+                rust \
+                cargo \
                 pkgconf \
                 libpcap-devel \
                 openssl-devel \
@@ -201,6 +205,8 @@ install_build_deps() {
                 file \
                 nodejs \
                 npm \
+                rust \
+                cargo \
                 pkgconf \
                 libpcap-devel \
                 openssl-devel \
@@ -222,6 +228,8 @@ install_build_deps() {
                 file \
                 nodejs \
                 npm \
+                rust \
+                cargo \
                 pkgconf \
                 libpcap-dev \
                 openssl-dev \

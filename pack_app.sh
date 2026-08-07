@@ -1037,6 +1037,7 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 install_debs=()
+install_specs=()
 for deb in "${debs[@]}"; do
     pkg="$(dpkg-deb -f "$deb" Package 2>/dev/null || true)"
     debver="$(dpkg-deb -f "$deb" Version 2>/dev/null || true)"
@@ -1070,6 +1071,7 @@ for deb in "${debs[@]}"; do
         fi
     fi
     install_debs+=("$deb")
+    install_specs+=("${pkg}=${debver}")
 done
 
 if [[ "${#install_debs[@]}" -eq 0 ]]; then
@@ -1092,12 +1094,14 @@ done
 chmod 755 "$STAGE_DIR"
 chmod 644 "${staged_debs[@]}"
 
-if ! sudo apt-get install -s --no-download --no-install-recommends "${staged_debs[@]}"; then
+sudo cp "${staged_debs[@]}" /var/cache/apt/archives/
+
+if ! sudo apt-get install -s --no-download --no-install-recommends "${install_specs[@]}"; then
     error "離線套件相依性檢查失敗。上方 apt 訊息會列出缺少或衝突的套件。"
     echo "請在 Ubuntu 24.04 可連外打包機上重新產生離線包，或將缺少的 .deb 補入 offline-debs。"
     exit 1
 fi
-sudo apt-get install -y --no-download --no-install-recommends -o Dpkg::Options::=--refuse-downgrade "${staged_debs[@]}"
+sudo apt-get install -y --no-download --no-install-recommends -o Dpkg::Options::=--refuse-downgrade "${install_specs[@]}"
 
 info "離線依賴安裝完成。"
 INSTALL_OFFLINE_RUNTIME

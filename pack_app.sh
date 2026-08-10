@@ -27,6 +27,7 @@ DO_BUILD=false
 MINIMAL=false
 OFFLINE_DEBS=false
 OFFLINE_TARGET_VERSION=""
+OFFLINE_INSTALLER_VERSION="20260807-apt-cache-v2"
 VERSION="$(date +%Y%m%d%H%M%S)"
 ARCH="$(uname -m)"
 APT_RUNTIME_PACKAGES=(
@@ -990,6 +991,8 @@ info()  { echo "[INFO]  $*"; }
 warn()  { echo "[WARN]  $*"; }
 error() { echo "[ERROR] $*" >&2; }
 
+info "installer version: __OFFLINE_INSTALLER_VERSION__"
+
 if [[ ! -d "$DEB_DIR" ]]; then
     error "找不到 offline-debs 目錄。請先在可連外主機用 ./pack_app.sh -m -a -d 產生離線包。"
     exit 1
@@ -1105,6 +1108,7 @@ sudo apt-get install -y --no-download --no-install-recommends -o Dpkg::Options::
 
 info "離線依賴安裝完成。"
 INSTALL_OFFLINE_RUNTIME
+sed -i "s/__OFFLINE_INSTALLER_VERSION__/${OFFLINE_INSTALLER_VERSION}/g" "${OUTPUT_DIR}/install-offline-deps.sh"
 chmod +x "${OUTPUT_DIR}/install-offline-deps.sh"
 
 # ─── 建立卸載腳本 ─────────────────────────────────────────
